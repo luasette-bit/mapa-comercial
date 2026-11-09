@@ -329,7 +329,7 @@
   function telaRegiao() {
     const R = S.reg;
     const lista = filtrados(R.rows, R.tipo).sort((a, b) => (R.dist.get(a.cnpj) ?? 99) - (R.dist.get(b.cnpj) ?? 99));
-    const cont = (t) => (t === "Todas" ? R.rows.length : R.rows.filter((r) => r.tipo === t).length);
+    const cont = (t) => filtrados(R.rows, t).length;
     let html = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Prospectar por região</h1><p class="fraco" style="margin:0">Digite o local que a equipe vai visitar e veja as administradoras em volta, da mais perto para a mais longe.</p></div></div>
     <section class="cartao regiao-busca">
       <div class="linha-filtros">

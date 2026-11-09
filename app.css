@@ -135,8 +135,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px max(16px, 2vw) 48px; dis
 .lista-cab { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--linha); }
 .legenda { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--fraco); }
 .rolagem { overflow-x: auto; }
-.tabela { min-width: 920px; }
-.t-cab, .t-linha { display: grid; grid-template-columns: 2.6fr 1.35fr 1.35fr 1.4fr 1.35fr 1.15fr; gap: 12px; padding: 10px 18px; }
+.tabela { min-width: 800px; }
+.t-cab, .t-linha { display: grid; grid-template-columns: 2.4fr 1.3fr 1.3fr 1.35fr 1.3fr 1.25fr; gap: 10px; padding: 10px 18px; }
 .regiao .t-cab, .regiao .t-linha { grid-template-columns: 0.7fr 2.6fr 1.35fr 1.35fr 1.4fr 1.15fr; }
 .t-cab { background: var(--cinza); font-size: 11px; font-weight: 700; color: var(--fraco); text-transform: uppercase; letter-spacing: .04em; }
 .t-linha { width: 100%; align-items: center; padding: 14px 18px; border: none; border-bottom: 1px solid var(--linha-clara); background: var(--branco); text-align: left; }
@@ -150,7 +150,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px max(16px, 2vw) 48px; dis
 .b-alta { background: var(--verde) !important; } .b-media { background: var(--ouro) !important; } .b-baixa { background: var(--vermelho) !important; }
 .riscado { color: #8A93A6; text-decoration: line-through; }
 
-.painel { flex: 1 1 360px; padding: 20px; display: flex; flex-direction: column; gap: 18px; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.painel { flex: 0 1 380px; min-width: 320px; padding: 20px; display: flex; flex-direction: column; gap: 18px; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
 .caixa-cinza { background: var(--cinza); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 .campo-ficha { display: flex; flex-direction: column; gap: 3px; padding-bottom: 10px; border-bottom: 1px solid var(--linha-clara); }
 .valor { font-size: 13px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
