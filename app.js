@@ -340,7 +340,8 @@
       </div>
       ${R.lugar ? `<div class="linha-flex t13"><span class="selo s-ident">Centro</span><b>${esc(R.lugar.nome)}</b><span class="fraco">${esc(R.lugar.detalhe)}</span></div>` : ""}
       ${R.lugar ? `<div class="campo"><span class="rotulo">Tipo de empresa</span><div class="chips">${TIPOS.map((t) => `<button type="button" class="chip" data-acao="r-tipo" data-v="${t}" aria-pressed="${R.tipo === t}">${t}<b>${fmtN(cont(t))}</b></button>`).join("")}</div></div>` : ""}
-    </section>`;
+    </section>
+    <p id="geo-status" class="selo s-ident t13" style="margin:0;display:block;padding:10px 14px" ${S.geo ? "" : "hidden"}>${esc(textoGeo())}</p>`;
     if (!R.lugar) return html + `<div class="cartao vazio">Comece digitando o endereço do lugar que a equipe vai visitar. Só aparecem empresas de cidades que já foram mapeadas na aba <b>Mapeamento</b>.</div>`;
     html += `<div id="mapa" class="mapa" role="img" aria-label="Mapa com as empresas em volta do local escolhido"></div>`;
     html += `<p class="t12 fraco" style="margin:-8px 0 0">${R.carregando ? "Procurando empresas em volta…" : `${fmtN(lista.length)} ${lista.length === 1 ? "empresa" : "empresas"} até ${R.raio < 1 ? R.raio * 1000 + " m" : R.raio + " km"}. A posição vem do endereço da Receita: quando a rua é longa, o ponto pode ficar algumas quadras deslocado.`}</p>`;
@@ -368,15 +369,92 @@
     mapa.fitBounds(circ.getBounds(), { padding: [20, 20] });
   }
 
+  /* Localização feita pelo navegador (o serviço de mapas bloqueia servidores) */
+  const BRASIL = "-74,-34,-34,6";
+  async function photon(q, limite = 5) {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=${limite}&bbox=${BRASIL}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error("photon " + r.status);
+    return ((await r.json()).features || []).filter((f) => f.properties?.countrycode === "BR");
+  }
+  const rotuloLugar = (p) => ({
+    nome: p.street ? `${p.street}${p.housenumber ? ", " + p.housenumber : ""}` : p.name || "",
+    detalhe: [p.street && p.name && p.name !== p.street ? p.name : null, p.district || p.locality, p.city, p.state].filter(Boolean).join(" · "),
+  });
+
   let buscaT, buscaSeq = 0;
   async function buscarLugar(texto) {
     const seq = ++buscaSeq;
     if (texto.trim().length < 4) { S.reg.lugares = []; render(); focarLocal(); return; }
-    const data = await chamar(FUNCAO, { acao: "local", texto });
+    let lugares = [];
+    try {
+      let q = texto;
+      const cep = texto.replace(/\D/g, "");
+      if (cep.length === 8 && /^[\d\s.-]+$/.test(texto.trim())) {
+        const c = await fetch(`https://brasilapi.com.br/api/cep/v1/${cep}`, { signal: AbortSignal.timeout(8000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (c) q = [c.street, c.neighborhood, c.city, c.state].filter(Boolean).join(", ");
+      }
+      const vistos = new Set();
+      for (const f of await photon(q)) {
+        const [lon, lat] = f.geometry.coordinates, l = { ...rotuloLugar(f.properties), lat, lon };
+        const k = l.nome + l.detalhe; if (vistos.has(k)) continue; vistos.add(k); lugares.push(l);
+      }
+    } catch (e) { console.warn(e); }
     if (seq !== buscaSeq) return;
-    S.reg.lugares = data.lugares || [];
-    if (!S.reg.lugares.length) toast("Não achei esse lugar. Tente com o nome da rua e da cidade.");
+    S.reg.lugares = lugares;
+    if (!lugares.length) toast("Não achei esse lugar. Tente com o nome da rua e da cidade.");
     render(); focarLocal();
+  }
+
+  const textoGeo = () => (S.geo ? `Colocando no mapa as empresas mapeadas: ${fmtN(S.geo.feitas)} de ${fmtN(S.geo.total)}. Deixe esta página aberta; a lista se atualiza sozinha no fim.` : "");
+  function mostrarGeo() { const el = $("#geo-status"); if (el) { el.textContent = textoGeo(); el.hidden = !S.geo; } else if (S.view === "regiao" && S.geo) render(); }
+
+  // Coloca no mapa as empresas que ainda não têm ponto, uma por segundo, em segundo plano
+  let geoRodando = false;
+  async function localizarPendentes(uf) {
+    if (geoRodando || !uf) return;
+    geoRodando = true;
+    try {
+      const { data: fila, error } = await sb.rpc("sem_local", { p_uf: uf, p_limite: 400 });
+      if (error || !fila?.length) return;
+      S.geo = { feitas: 0, total: fila.length }; mostrarGeo();
+      const memo = new Map();
+      for (const e of fila) {
+        if (!S.user) break;
+        const cidade = norm(e.municipio);
+        const naCidade = (f) => [f.properties.city, f.properties.county, f.properties.name].some((c) => norm(c) === cidade);
+        const rua = (e.logradouro || "").trim(), num = (e.numero || "").replace(/\D/g, "");
+        const chave = `${rua}|${num}|${cidade}`;
+        let achou = memo.get(chave);
+        if (achou === undefined) {
+          achou = null;
+          const tentativas = [];
+          if (rua) tentativas.push([`${rua}${num ? " " + num : ""}, ${e.municipio}, ${e.uf}`, (t) => (t === "house" && num ? "endereco" : "rua")]);
+          if (e.bairro) tentativas.push([`${e.bairro}, ${e.municipio}, ${e.uf}`, () => "bairro"]);
+          for (const [q, prec] of tentativas) {
+            let fs = [];
+            try { fs = await photon(q, 3); } catch { await new Promise((r) => setTimeout(r, 3000)); }
+            await new Promise((r) => setTimeout(r, 1100));
+            const f = fs.find(naCidade);
+            if (f && ["house", "street", "district", "locality"].includes(f.properties.type)) {
+              const p = prec(f.properties.type);
+              achou = { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], precisao: f.properties.type === "street" || f.properties.type === "house" ? p : "bairro" };
+              break;
+            }
+          }
+          memo.set(chave, achou);
+        }
+        await sb.rpc("salvar_local", achou
+          ? { p_cnpj: e.cnpj, p_lat: achou.lat, p_lon: achou.lon, p_precisao: achou.precisao }
+          : { p_cnpj: e.cnpj, p_lat: null, p_lon: null, p_precisao: "nao_encontrado" });
+        S.geo.feitas++;
+        mostrarGeo();
+      }
+    } catch (e) { console.warn(e); }
+    finally {
+      geoRodando = false; S.geo = null;
+      if (S.view === "regiao") { if (S.reg.lugar) carregarRegiao(); else render(); }
+    }
   }
   function focarLocal() { const i = $("#r-local"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 
@@ -587,6 +665,7 @@
       S.msg = `${cidade}/${uf} mapeada: ${fmtN(tot.gravadas)} empresas no mapeamento.${tot.holdings ? ` ${fmtN(tot.holdings)} holdings ficaram de fora.` : ""}${tot.sem ? ` ${fmtN(tot.sem)} não tiveram resposta da Receita agora; mapeie de novo mais tarde para completar.` : ""}`;
       salvarPreferencias();
       await carregarMapeamento();
+      localizarPendentes(uf);
     } catch (e) {
       S.mapeando = null;
       S.erro = e.message === "rede" ? "Sem conexão com o servidor. Verifique a internet e tente de novo." : e.message;
@@ -602,7 +681,7 @@
     switch (a) {
       case "menu": S.menu = !S.menu; render(); break;
       case "sair": await sb.auth.signOut(); break;
-      case "ir": S.view = b.dataset.view; S.sel = null; S.selRow = null; S.show = 60; if (b.dataset.view === "listas") S.listas = null; if (b.dataset.view === "equipe") S.equipe = null; render(); break;
+      case "ir": S.view = b.dataset.view; S.sel = null; S.selRow = null; S.show = 60; if (b.dataset.view === "listas") S.listas = null; if (b.dataset.view === "equipe") S.equipe = null; render(); if (b.dataset.view === "regiao") localizarPendentes(S.uf); break;
       case "fechar-msg": S.msg = ""; render(); break;
       case "so-novas": S.soNovas = true; render(); break;
       case "tipo": S.tipo = b.dataset.v; S.show = 60; salvarPreferencias(); render(); break;
@@ -640,7 +719,7 @@
     }
   });
   app.addEventListener("change", (ev) => {
-    if (ev.target.id === "f-uf") { S.uf = ev.target.value; S.cidade = null; S.sel = null; S.selRow = null; salvarPreferencias(); carregarMapeamento(); }
+    if (ev.target.id === "f-uf") { S.uf = ev.target.value; S.cidade = null; S.sel = null; S.selRow = null; salvarPreferencias(); carregarMapeamento().then(() => localizarPendentes(S.uf)); }
   });
   app.addEventListener("input", (ev) => {
     if (ev.target.id === "r-local") { S.reg.texto = ev.target.value; clearTimeout(buscaT); buscaT = setTimeout(() => buscarLugar(S.reg.texto), 450); }
@@ -668,7 +747,8 @@
     if (!S.user) return render();
     await carregarPerfil();
     render();
-    carregarMapeamento();
+    await carregarMapeamento();
+    localizarPendentes(S.uf);
   }
   sb.auth.onAuthStateChange((evento, sessao) => {
     if (evento === "PASSWORD_RECOVERY") { S.recuperando = true; S.user = sessao?.user || null; render(); return; }
