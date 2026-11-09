@@ -228,7 +228,7 @@
       </div>
       <div class="acoes-filtro">
         <form class="mapear-campo" data-acao="mapear-form" autocomplete="off">
-          <div class="campo"><label for="f-mapear">Mapear cidade de ${esc(S.uf)}</label><input id="f-mapear" class="input" placeholder="Ex.: Santos" maxlength="80" value="${esc(S.cidade || "")}" ${S.mapeando ? "disabled" : ""}></div>
+          <div class="campo"><label for="f-mapear">Mapear cidade de ${esc(S.uf)}</label><input id="f-mapear" class="input" placeholder="Ex.: Santos" maxlength="80" value="${esc(S.mapeando ? S.mapeando.cidade : (S.cidade || ""))}" ${S.mapeando ? "disabled" : ""}></div>
           <button type="submit" class="btn btn-primario" ${S.mapeando ? "disabled" : ""}>${ICONE.pin} Mapear</button>
         </form>
         <button type="button" class="btn btn-sec" data-acao="exportar" ${filtrados(S.rows).length ? "" : "disabled"}>${ICONE.excel} Exportar Excel</button>
@@ -549,7 +549,7 @@
     cidade = cidade.trim().replace(/\s+/g, " ");
     if (cidade.length < 2) { toast("Digite o nome da cidade."); return; }
     const uf = S.uf;
-    S.mapeando = { etapa: `Procurando administradoras em ${cidade}/${uf}…`, feitas: 0, total: 0, detalhe: "" }; S.msg = ""; S.erro = ""; render();
+    S.mapeando = { etapa: `Procurando administradoras em ${cidade}/${uf}…`, feitas: 0, total: 0, detalhe: "", cidade }; S.msg = ""; S.erro = ""; render();
     try {
       const cnpjs = []; let pagina = 1;
       for (;;) {
@@ -566,15 +566,20 @@
       if (!cnpjs.length) throw new Error(`Nenhuma empresa do ramo registrada em ${cidade}/${uf}.`);
       const tot = { gravadas: 0, holdings: 0, sem: 0 };
       S.mapeando.total = cnpjs.length;
-      const partes = chunk([...new Set(cnpjs)], 40);
-      for (const parte of partes) {
-        S.mapeando.etapa = `Buscando CNPJ, sócios e contatos na Receita…`;
-        S.mapeando.detalhe = `${fmtN(S.mapeando.feitas)} de ${fmtN(cnpjs.length)} empresas · ${fmtN(tot.gravadas)} guardadas no mapeamento`; render();
-        let r = null;
-        for (let t = 0; t < 2 && !r; t++) { const d = await chamar(FUNCAO, { acao: "gravar", cnpjs: parte }); if (d && !d.erro) r = d; }
-        if (r) { tot.gravadas += r.gravadas; tot.holdings += r.holdings; tot.sem += r.sem_dados; } else tot.sem += parte.length;
-        S.mapeando.feitas += parte.length;
-      }
+      // levas de 15 empresas, duas ao mesmo tempo
+      const fila = chunk([...new Set(cnpjs)], 15);
+      S.mapeando.etapa = `Buscando CNPJ, sócios e contatos na Receita…`;
+      const mostrar = () => { S.mapeando.detalhe = `${fmtN(S.mapeando.feitas)} de ${fmtN(cnpjs.length)} empresas consultadas · ${fmtN(tot.gravadas)} guardadas no mapeamento`; render(); };
+      mostrar();
+      await Promise.all([0, 1].map(async () => {
+        while (fila.length) {
+          const parte = fila.shift();
+          let r = null;
+          for (let t = 0; t < 2 && !r; t++) { const d = await chamar(FUNCAO, { acao: "gravar", cnpjs: parte }); if (d && !d.erro) r = d; }
+          if (r) { tot.gravadas += r.gravadas; tot.holdings += r.holdings; tot.sem += r.sem_dados; } else tot.sem += parte.length;
+          S.mapeando.feitas += parte.length; mostrar();
+        }
+      }));
       S.mapeando = null;
       const { data: c } = await sb.rpc("cidades_da_uf", { p_uf: uf, p_so_ativas: false });
       const achada = (c || []).find((x) => norm(x.municipio) === norm(cidade));
