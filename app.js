@@ -603,8 +603,8 @@
       <div class="marca"><div class="marca-icone">${ICONE.logo}</div><div><div class="marca-nome">Mapa Comercial</div><div class="marca-sub">PRG Software · Grupo WorkOffice</div></div></div>
       <div class="sino" style="width:48px;height:48px;border-radius:14px;font-size:22px" aria-hidden="true">⏳</div>
       <h1>Conta criada, ${primeiro}!</h1>
-      <p style="margin:0">Agora a administradora precisa liberar o seu acesso. Avise a Lua que você já se cadastrou.</p>
-      <ol class="passos"><li class="feito">Cadastro feito com <b>${esc(S.user?.email || "")}</b></li><li>A administradora aprova em <b>Equipe</b></li><li>Você entra e já vê as administradoras mapeadas</li></ol>
+      <p style="margin:0">Agora uma administradora precisa liberar o seu acesso. Avise a Lua que você já se cadastrou.</p>
+      <ol class="passos"><li class="feito"><span>Cadastro feito com <b>${esc(S.user?.email || "")}</b></span></li><li><span>A administradora aprova em <b>Equipe</b></span></li><li><span>Você entra e já vê as administradoras mapeadas</span></li></ol>
       <button type="button" class="btn btn-primario" id="a-verificar">Já fui aprovado, entrar</button>
       <button type="button" class="mini" style="align-self:center;border:none;text-decoration:underline" id="a-sair">Sair</button>
     </div></div>`;
