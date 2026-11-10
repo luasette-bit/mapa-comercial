@@ -330,7 +330,7 @@
       <div class="cid-lista" id="cid-lista" role="listbox" aria-label="Cidades">${opcoesCidadesHtml(todas)}</div>
     </div>`;
   }
-  const textoFaltam = (n) => `Trazer para o sistema as ${fmtN(n)} ${n === 1 ? "cidade que ainda não foi mapeada" : "cidades que ainda não foram mapeadas"}`;
+  const textoFaltam = (n) => `Mapear o estado inteiro: buscar as empresas ${n === 1 ? "da cidade que falta" : `das outras ${fmtN(n)} cidades`}`;
   function textoTodas() {
     const todas = cidadesDoEstado();
     const mapeadas = todas.filter((c) => c.mapeada).length;
