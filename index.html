@@ -6,6 +6,21 @@
 <title>Mapa Comercial · PRG</title>
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0a1847">
+<meta name="versao" content="9">
+<script>
+/* Se o navegador guardou uma versão antiga da página, busca a nova e recarrega uma vez. */
+(function () {
+  var V = "9", aqui = location.pathname + location.search;
+  try { if (sessionStorage.getItem("recarregou") === V) return; } catch (e) {}
+  fetch(location.pathname + "?nc=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (t) {
+    var m = t.match(/name="versao" content="(\d+)"/);
+    if (m && m[1] !== V) {
+      try { sessionStorage.setItem("recarregou", V); } catch (e) {}
+      fetch(aqui, { cache: "reload" }).finally(function () { location.reload(); });
+    }
+  }).catch(function () {});
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
