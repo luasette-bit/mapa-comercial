@@ -43,11 +43,11 @@
   function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 3200); }
 
   const lembrar = (() => { try { return JSON.parse(localStorage.getItem("mapa-comercial") || "{}") || {}; } catch { return {}; } })();
-  function salvarPreferencias() { try { localStorage.setItem("mapa-comercial", JSON.stringify({ uf: S.uf, cidade: S.cidade, tipo: S.tipo })); } catch { /* sem armazenamento */ } }
+  function salvarPreferencias() { try { localStorage.setItem("mapa-comercial", JSON.stringify({ uf: S.uf, cidade: S.cidade, cidadeId: S.cidadeId, tipo: S.tipo })); } catch { /* sem armazenamento */ } }
 
   const S = {
     user: null, perfil: null, view: "mapeamento", menu: false,
-    uf: lembrar.uf || "SP", cidade: lembrar.cidade || null, tipo: lembrar.tipo || "Todas", sistema: "Todos",
+    uf: lembrar.uf || "SP", cidade: lembrar.cidade || null, cidadeId: lembrar.cidadeId || null, cidMenu: false, cidBusca: "", estado: null, buscadas: new Map(), tipo: lembrar.tipo || "Todas", sistema: "Todos",
     soAtivas: true, escExp: false, soNovas: false, aba: "lista",
     rows: [], carregando: false, erro: "", cidades: [], socios: new Map(), marcas: new Map(),
     sel: null, selRow: null, grupo: [], show: 60, confirmarRemocao: false, msg: "",
@@ -81,18 +81,46 @@
       (data || []).forEach((m) => { S.marcas.get(m.cnpj)[m.campo] = m; });
     }
   }
+  const IBGE = new Map();
+  async function cidadesIbge(uf) {
+    if (IBGE.has(uf)) return IBGE.get(uf);
+    try {
+      const r = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`, { signal: AbortSignal.timeout(12000) });
+      if (!r.ok) throw new Error(r.status);
+      const lista = (await r.json()).map((m) => ({ id: String(m.id), nome: m.nome }));
+      IBGE.set(uf, lista); return lista;
+    } catch (e) { console.warn(e); return []; }
+  }
+  // junta a lista do IBGE com o que já foi mapeado (o banco às vezes guarda o nome sem acento)
+  function cidadesDoEstado() {
+    const ibge = IBGE.get(S.uf) || [];
+    const porId = new Map(), porNome = new Map();
+    S.cidades.forEach((c) => {
+      const k = c.municipio_ibge ? String(c.municipio_ibge) : null;
+      if (k) { const a = porId.get(k); porId.set(k, a ? { ...a, qtd: a.qtd + c.qtd, novas: (a.novas || 0) + (c.novas || 0) } : { ...c }); }
+      porNome.set(norm(c.municipio), c);
+    });
+    const lista = ibge.map((m) => { const c = porId.get(m.id) || porNome.get(norm(m.nome)); return { id: m.id, nome: m.nome, qtd: c ? c.qtd : 0, novas: c ? c.novas || 0 : 0, mapeada: !!c, semEmpresas: !c && S.buscadas.has(norm(m.nome)) }; });
+    // cidade mapeada que não veio do IBGE (sem internet, por exemplo) continua aparecendo
+    S.cidades.forEach((c) => { if (!lista.some((m) => (c.municipio_ibge && m.id === String(c.municipio_ibge)) || norm(m.nome) === norm(c.municipio))) lista.push({ id: c.municipio_ibge ? String(c.municipio_ibge) : null, nome: c.municipio, qtd: c.qtd, novas: c.novas || 0, mapeada: true }); });
+    return lista;
+  }
+
   async function carregarMapeamento() {
     S.carregando = true; S.erro = ""; render();
     try {
-      const [cid, info] = await Promise.all([
+      const [cid, info, busc] = await Promise.all([
         sb.rpc("cidades_da_uf", { p_uf: S.uf, p_so_ativas: S.soAtivas }),
         sb.rpc("info_base"),
+        sb.from("cidades_buscadas").select("nome,municipio_ibge,qtd,buscada_em").eq("uf", S.uf),
       ]);
+      S.buscadas = new Map((busc.data || []).map((c) => [norm(c.nome), c]));
       S.cidades = cid.data || [];
       S.info = info.data || null;
-      if (S.cidade && !S.cidades.some((c) => c.municipio === S.cidade)) S.cidade = null;
+      cidadesIbge(S.uf).then(() => { if (S.cidMenu) render(); });
       let q = sb.from("mapa").select(COLS).eq("uf", S.uf).eq("removido", false).neq("referencia_receita", "exemplo").order("nota", { ascending: false }).limit(3000);
-      if (S.cidade) q = q.eq("municipio", S.cidade);
+      if (S.cidadeId) q = q.eq("municipio_ibge", S.cidadeId);
+      else if (S.cidade) q = q.eq("municipio", S.cidade);
       const { data, error } = await q;
       if (error) throw error;
       S.rows = data || [];
@@ -129,6 +157,7 @@
   const ICONE = {
     pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
     excel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 13l6 6M15 13l-6 6"/></svg>',
+    seta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="ic-seta"><path d="m6 9 6 6 6-6"/></svg>',
     busca: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
     sino: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#1B2333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
     logo: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2A3F72" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>',
@@ -239,7 +268,10 @@
     return `<section class="cartao filtros" aria-label="Filtros">
       <div class="linha-filtros">
         <div class="campo"><label for="f-uf">Estado</label><select id="f-uf" data-acao="uf">${UFS.map(([u, n]) => `<option value="${u}" ${u === S.uf ? "selected" : ""}>${n} (${u})</option>`).join("")}</select></div>
-        <div class="campo"><span class="rotulo">Cidade</span>${S.cidade ? `<button type="button" class="cidade-chip" data-acao="limpar-cidade" aria-label="Remover filtro de cidade">${esc(S.cidade)}  ✕</button>` : `<button type="button" class="cidade-todas" data-acao="aba" data-aba="cidades">Todas · ver por cidade</button>`}</div>
+        <div class="campo cid-campo"><span class="rotulo" id="cid-rotulo">Cidade</span>
+          <button type="button" class="cid-botao ${S.cidade ? "com-cidade" : ""}" data-acao="cid-menu" aria-haspopup="listbox" aria-expanded="${S.cidMenu}" aria-labelledby="cid-rotulo cid-atual"><span id="cid-atual">${S.cidade ? esc(S.cidade) : `Todas as cidades`}</span>${ICONE.seta}</button>
+          ${S.cidMenu ? menuCidadesHtml() : ""}
+        </div>
         <div class="campo" style="flex:1 1 380px"><span class="rotulo">Tipo de empresa</span><div class="chips">${TIPOS.map((t) => `<button type="button" class="chip" data-acao="tipo" data-v="${t}" aria-pressed="${S.tipo === t}">${t}<b>${fmtN(cont(t))}</b></button>`).join("")}</div></div>
       </div>
       <div class="linha-filtros">
@@ -257,12 +289,34 @@
       </div>
     </section>`;
   }
+  function menuCidadesHtml() {
+    const todas = cidadesDoEstado();
+    const mapeadas = todas.filter((c) => c.mapeada);
+    const faltam = todas.filter((c) => !c.mapeada && !c.semEmpresas).length;
+    const totalEmp = S.cidades.reduce((t, c) => t + c.qtd, 0);
+    return `<div class="cid-menu" role="dialog" aria-label="Escolher cidade de ${esc(ufNome(S.uf))}">
+      <input id="cid-busca" class="input" type="search" placeholder="Buscar cidade de ${esc(S.uf)}" autocomplete="off" value="${esc(S.cidBusca)}">
+      <button type="button" class="cid-op cid-todas ${!S.cidade ? "atual" : ""}" data-acao="cid-todas"><span class="pilha" style="gap:0"><b>Todas as cidades</b><span class="t12 fraco">${esc(ufNome(S.uf))} inteiro · ${fmtN(totalEmp)} empresas em ${fmtN(mapeadas.length)} ${mapeadas.length === 1 ? "cidade mapeada" : "cidades mapeadas"}</span></span></button>
+      ${faltam && !S.mapeando ? `<button type="button" class="cid-estado" data-acao="mapear-estado">${ICONE.pin} Mapear as ${fmtN(faltam)} cidades que faltam em ${esc(S.uf)}</button>` : ""}
+      <div class="cid-lista" id="cid-lista" role="listbox" aria-label="Cidades">${opcoesCidadesHtml(todas)}</div>
+    </div>`;
+  }
+  function opcoesCidadesHtml(todas = cidadesDoEstado()) {
+    if (!todas.length) return `<p class="t13 fraco" style="padding:10px 12px;margin:0">Carregando as cidades…</p>`;
+    const q = norm(S.cidBusca);
+    const lista = q ? todas.filter((c) => norm(c.nome).includes(q)) : todas;
+    if (!lista.length) return `<p class="t13 fraco" style="padding:10px 12px;margin:0">Nenhuma cidade com esse nome em ${esc(S.uf)}.</p>`;
+    return lista.map((c) => `<button type="button" role="option" class="cid-op ${S.cidadeId && S.cidadeId === c.id ? "atual" : ""}" data-acao="cid-escolher" data-id="${esc(c.id || "")}" data-nome="${esc(c.nome)}" data-mapeada="${c.mapeada}">
+      <span>${esc(c.nome)}</span>${c.mapeada ? `<span class="cid-q num">${fmtN(c.qtd)}</span>` : c.semEmpresas ? `<span class="cid-nada">sem empresas</span>` : `<span class="cid-mapear">mapear</span>`}</button>`).join("");
+  }
+
   const alternar = (k, label) => `<button type="button" class="alternar" data-acao="alternar" data-k="${k}" aria-pressed="${S[k]}"><span class="cx">${S[k] ? "✓" : ""}</span><span>${label}</span></button>`;
 
   function progressoHtml() {
     const m = S.mapeando;
     const f = m.total ? Math.min(1, m.feitas / m.total) : 0.05;
-    return `<section class="cartao prog" aria-live="polite"><b>${esc(m.etapa)}</b><span class="barra"><i style="width:${(f * 100).toFixed(1)}%"></i></span><span class="t12 fraco">${esc(m.detalhe || "")}</span></section>`;
+    const est = S.estado;
+    return `<section class="cartao prog" aria-live="polite">${est ? `<div class="linha-flex" style="justify-content:space-between"><span class="t13"><b>Mapeando ${esc(ufNome(est.uf))}:</b> cidade ${fmtN(est.atual)} de ${fmtN(est.total)} · ${fmtN(est.empresas)} empresas guardadas até agora</span><button type="button" class="mini" data-acao="parar-estado" ${est.parar ? "disabled" : ""}>${est.parar ? "Parando depois desta cidade…" : "Parar"}</button></div><span class="barra"><i style="width:${(est.atual / est.total * 100).toFixed(1)}%"></i></span>` : ""}<b>${esc(m.etapa)}</b><span class="barra"><i style="width:${(f * 100).toFixed(1)}%"></i></span><span class="t12 fraco">${esc(m.detalhe || "")}</span></section>`;
   }
 
   function cidadesHtml() {
@@ -270,7 +324,7 @@
     const max = Math.max(...S.cidades.map((c) => c.qtd));
     return `<section class="cartao pad pilha" style="gap:14px" aria-label="Concentração por cidade">
       <div class="pilha" style="gap:2px"><span style="font-size:16px;font-weight:700">Onde estão as administradoras</span><span class="t13 fraco">Cidades de ${esc(ufNome(S.uf))} já mapeadas. Clique numa cidade para ver a lista dela.</span></div>
-      <div class="grade-cidades">${S.cidades.map((c) => `<button type="button" class="cidade" data-acao="cidade" data-v="${esc(c.municipio)}">
+      <div class="grade-cidades">${S.cidades.map((c) => `<button type="button" class="cidade" data-acao="cidade" data-v="${esc(c.municipio)}" data-id="${esc(c.municipio_ibge || "")}">
         <span class="linha-flex" style="justify-content:space-between;align-items:baseline"><b>${esc(c.municipio)}</b><span class="q num">${fmtN(c.qtd)}</span></span>
         <span class="barra"><i style="width:${(c.qtd / max * 100).toFixed(1)}%"></i></span>
         <span class="t12 fraco">${c.novas ? `${c.novas} ${c.novas === 1 ? "nova" : "novas"} no último mês` : "nenhuma nova no último mês"}</span></button>`).join("")}</div>
@@ -707,9 +761,17 @@
     S.listas = null;
   }
 
-  async function mapearCidade(cidade) {
+  async function registrarBusca(uf, cidade, qtd) {
+    const m = (IBGE.get(uf) || []).find((x) => norm(x.nome) === norm(cidade));
+    const linha = { uf, nome: m ? m.nome : cidade, municipio_ibge: m ? m.id : null, qtd, buscada_em: new Date().toISOString() };
+    S.buscadas.set(norm(linha.nome), linha);
+    await sb.from("cidades_buscadas").upsert(linha, { onConflict: "uf,nome" });
+  }
+
+  async function mapearCidade(cidade, lote = false) {
     cidade = cidade.trim().replace(/\s+/g, " ");
     if (cidade.length < 2) { toast("Digite o nome da cidade."); return; }
+    if (!lote && S.mapeando) { toast("Espere o mapeamento atual terminar."); return; }
     const uf = S.uf;
     S.mapeando = { etapa: `Procurando administradoras em ${cidade}/${uf}…`, feitas: 0, total: 0, detalhe: "", cidade }; S.msg = ""; S.erro = ""; render();
     try {
@@ -725,7 +787,7 @@
         S.mapeando.detalhe = `${fmtN(cnpjs.length)} de ${fmtN(r.total)} empresas do ramo encontradas`; render();
         if (!r.proxima) break; pagina = r.proxima;
       }
-      if (!cnpjs.length) throw new Error(`Nenhuma empresa do ramo registrada em ${cidade}/${uf}.`);
+      if (!cnpjs.length) { await registrarBusca(uf, cidade, 0); if (lote) return { gravadas: 0 }; throw new Error(`Nenhuma empresa do ramo registrada em ${cidade}/${uf}.`); }
       const tot = { gravadas: 0, holdings: 0, sem: 0 };
       S.mapeando.total = cnpjs.length;
       // levas de 15 empresas, duas ao mesmo tempo
@@ -742,22 +804,57 @@
           S.mapeando.feitas += parte.length; mostrar();
         }
       }));
+      await registrarBusca(uf, cidade, tot.gravadas);
+      if (lote) return tot;
       S.mapeando = null;
       const { data: c } = await sb.rpc("cidades_da_uf", { p_uf: uf, p_so_ativas: false });
       const achada = (c || []).find((x) => norm(x.municipio) === norm(cidade));
-      S.cidade = achada ? achada.municipio : null; S.aba = "lista"; S.sel = null; S.selRow = null;
+      const doIbge = (IBGE.get(uf) || []).find((m) => norm(m.nome) === norm(cidade));
+      S.cidade = doIbge ? doIbge.nome : achada ? achada.municipio : null;
+      S.cidadeId = doIbge ? doIbge.id : achada?.municipio_ibge ? String(achada.municipio_ibge) : null;
+      S.aba = "lista"; S.sel = null; S.selRow = null;
       S.msg = `${cidade}/${uf} mapeada: ${fmtN(tot.gravadas)} empresas no mapeamento.${tot.holdings ? ` ${fmtN(tot.holdings)} holdings ficaram de fora.` : ""}${tot.sem ? ` ${fmtN(tot.sem)} não tiveram resposta da Receita agora; mapeie de novo mais tarde para completar.` : ""}`;
       salvarPreferencias();
       await carregarMapeamento();
       localizarPendentes(uf);
     } catch (e) {
+      if (/^Não encontrei/.test(e.message)) await registrarBusca(uf, cidade, 0).catch(() => {});
+      if (lote) { if (e.message === "rede") throw e; return { gravadas: 0, falhou: !/^Não encontrei/.test(e.message) }; }
       S.mapeando = null;
       S.erro = e.message === "rede" ? "Sem conexão com o servidor. Verifique a internet e tente de novo." : e.message;
       render();
     }
   }
 
+  // Mapeia, uma por uma, as cidades do estado que ainda não têm nada no mapeamento
+  async function mapearEstado() {
+    if (S.mapeando) return;
+    const uf = S.uf;
+    await cidadesIbge(uf);
+    const faltam = cidadesDoEstado().filter((c) => !c.mapeada && !c.semEmpresas);
+    if (!faltam.length) { toast("Todas as cidades deste estado já foram mapeadas."); return; }
+    S.cidMenu = false; S.cidade = null; S.cidadeId = null; S.msg = ""; S.erro = "";
+    S.estado = { uf, atual: 0, total: faltam.length, empresas: 0, parar: false, falhas: 0 };
+    try {
+      for (const c of faltam) {
+        if (S.estado.parar || !S.user) break;
+        S.estado.atual++;
+        S.mapeando = { etapa: `Procurando administradoras em ${c.nome}/${uf}…`, feitas: 0, total: 0, detalhe: "", cidade: c.nome }; render();
+        const r = await mapearCidade(c.nome, true);
+        S.estado.empresas += r?.gravadas || 0; if (r?.falhou) S.estado.falhas++;
+      }
+      const e = S.estado;
+      S.msg = `${ufNome(uf)}: ${fmtN(e.atual)} de ${fmtN(e.total)} cidades que faltavam foram procuradas e ${fmtN(e.empresas)} empresas entraram no mapeamento.${e.atual < e.total ? " Clique de novo em Mapear as cidades que faltam para continuar de onde parou." : ""}${e.falhas ? ` Em ${fmtN(e.falhas)} cidades a busca não respondeu; elas continuam na lista para tentar de novo.` : ""}`;
+    } catch (e) {
+      S.erro = "Sem conexão com o servidor. O que já foi mapeado ficou guardado; clique de novo para continuar.";
+    } finally {
+      S.mapeando = null; S.estado = null; salvarPreferencias();
+      await carregarMapeamento(); localizarPendentes(uf);
+    }
+  }
+
   /* ------------------------------------------------------------ eventos */
+  document.addEventListener("click", (ev) => { if (S.cidMenu && !ev.target.closest(".cid-campo")) { S.cidMenu = false; render(); } });
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM" || b.tagName === "SELECT" || b.tagName === "INPUT") return;
     const a = b.dataset.acao;
@@ -772,8 +869,26 @@
       case "sistema": S.sistema = b.dataset.v; render(); break;
       case "alternar": S[b.dataset.k] = !S[b.dataset.k]; S.show = 60; if (b.dataset.k === "soAtivas") carregarMapeamento(); else render(); break;
       case "aba": S.aba = b.dataset.aba; render(); break;
-      case "cidade": S.cidade = b.dataset.v; S.aba = "lista"; S.show = 60; salvarPreferencias(); carregarMapeamento(); break;
-      case "limpar-cidade": S.cidade = null; salvarPreferencias(); carregarMapeamento(); break;
+      case "cidade": S.cidade = b.dataset.v; S.cidadeId = b.dataset.id || null; S.aba = "lista"; S.show = 60; salvarPreferencias(); carregarMapeamento(); break;
+      case "limpar-cidade": S.cidade = null; S.cidadeId = null; salvarPreferencias(); carregarMapeamento(); break;
+      case "cid-menu": S.cidMenu = !S.cidMenu; S.cidBusca = ""; render(); if (S.cidMenu) { cidadesIbge(S.uf).then(() => { if (S.cidMenu) { const l = $("#cid-lista"); if (l) l.innerHTML = opcoesCidadesHtml(); } }); $("#cid-busca")?.focus(); } break;
+      case "cid-todas": S.cidMenu = false; S.cidade = null; S.cidadeId = null; S.aba = "lista"; S.show = 60; salvarPreferencias(); carregarMapeamento(); break;
+      case "cid-escolher": {
+        S.cidMenu = false;
+        if (b.dataset.mapeada === "true") { S.cidade = b.dataset.nome; S.cidadeId = b.dataset.id || null; S.aba = "lista"; S.show = 60; salvarPreferencias(); carregarMapeamento(); }
+        else mapearCidade(b.dataset.nome);
+        break;
+      }
+      case "mapear-estado": {
+        if (!b.dataset.certeza) {
+          const n = cidadesDoEstado().filter((c) => !c.mapeada && !c.semEmpresas).length;
+          b.dataset.certeza = "1";
+          b.innerHTML = `${ICONE.pin} Confirmar: procurar ${fmtN(n)} cidades (leva uns ${fmtN(Math.max(1, Math.ceil(n * 5 / 60)))} min; deixe esta aba aberta)`;
+          break;
+        }
+        mapearEstado(); break;
+      }
+      case "parar-estado": if (S.estado) { S.estado.parar = true; render(); } break;
       case "mais": S.show += 60; render(); break;
       case "sel": selecionar(b.dataset.cnpj); break;
       case "fechar-painel": S.sel = null; S.selRow = null; render(); break;
@@ -805,13 +920,16 @@
     }
   });
   app.addEventListener("change", (ev) => {
-    if (ev.target.id === "f-uf") { S.uf = ev.target.value; S.cidade = null; S.sel = null; S.selRow = null; salvarPreferencias(); carregarMapeamento().then(() => localizarPendentes(S.uf)); }
+    if (ev.target.id === "f-uf") { S.uf = ev.target.value; S.cidade = null; S.cidadeId = null; S.cidMenu = false; S.sel = null; S.selRow = null; salvarPreferencias(); carregarMapeamento().then(() => localizarPendentes(S.uf)); }
   });
   app.addEventListener("input", (ev) => {
+    if (ev.target.id === "cid-busca") { S.cidBusca = ev.target.value; const l = $("#cid-lista"); if (l) l.innerHTML = opcoesCidadesHtml(); return; }
     if (ev.target.id === "r-local") { S.reg.texto = ev.target.value; clearTimeout(buscaT); buscaT = setTimeout(() => buscarLugar(S.reg.texto), 450); }
   });
   app.addEventListener("keydown", (ev) => {
     if (ev.target.id === "r-local" && ev.key === "Enter") { ev.preventDefault(); if (S.reg.lugares[0]) app.querySelector('[data-acao="lugar"][data-i="0"]').click(); else buscarLugar(S.reg.texto); }
+    if (ev.key === "Escape" && S.cidMenu) { S.cidMenu = false; render(); $(".cid-botao")?.focus(); return; }
+    if (ev.target.id === "cid-busca" && ev.key === "Enter") { ev.preventDefault(); $("#cid-lista .cid-op")?.click(); return; }
     if (ev.key === "Escape" && S.sel && window.innerWidth <= 900) { S.sel = null; S.selRow = null; render(); }
   });
   app.addEventListener("submit", async (ev) => {

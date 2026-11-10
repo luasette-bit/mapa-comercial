@@ -273,3 +273,27 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px max(16px, 2vw) 48px; dis
 .pendente { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 16px 18px; border-bottom: 1px solid var(--linha-clara); }
 .pendente:last-child { border-bottom: none; }
 .pendente .btn { height: 40px; font-size: 13px; }
+
+/* escolher cidade: lista do estado inteiro */
+.cid-campo { position: relative; min-width: 240px; }
+.cid-botao { height: 44px; padding: 0 12px 0 14px; border: 1px solid var(--borda); border-radius: 10px; background: var(--branco); display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; font-weight: 500; }
+.cid-botao:hover { border-color: #9AAAC6; }
+.cid-botao.com-cidade { border-color: var(--azul); background: var(--azul-claro); color: var(--azul-escuro); font-weight: 600; }
+.cid-botao[aria-expanded="true"] { border-color: var(--link); box-shadow: 0 0 0 3px rgba(44, 99, 219, .15); }
+.cid-botao[aria-expanded="true"] .ic-seta { transform: rotate(180deg); }
+.ic-seta { width: 18px; height: 18px; flex: none; color: var(--fraco); transition: transform .15s; }
+.cid-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(380px, calc(100vw - 32px)); z-index: 1300; background: var(--branco); border: 1px solid var(--linha); border-radius: 12px; box-shadow: var(--sombra); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.cid-menu .input { height: 40px; width: 100%; }
+.cid-lista { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; border-top: 1px solid var(--linha-clara); padding-top: 4px; }
+.cid-op { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border: none; border-radius: 8px; background: none; text-align: left; font-size: 13px; }
+.cid-op:hover, .cid-op:focus-visible { background: var(--azul-claro); }
+.cid-op.atual { background: var(--azul-claro); box-shadow: inset 3px 0 0 var(--link); font-weight: 600; }
+.cid-todas { padding: 10px; }
+.cid-q { font-size: 12px; font-weight: 600; color: var(--azul-escuro); background: var(--azul-selo); padding: 2px 8px; border-radius: 6px; }
+.cid-mapear { font-size: 12px; font-weight: 600; color: var(--link); }
+.cid-nada { font-size: 12px; color: #98A2B6; }
+.cid-estado { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px dashed #A9BDE6; border-radius: 8px; background: #F6F9FF; color: var(--link); font-size: 13px; font-weight: 600; text-align: left; }
+.cid-estado svg { width: 16px; height: 16px; flex: none; }
+.cid-estado:hover { background: var(--azul-claro); }
+@media (max-width: 640px) { .cid-campo { min-width: 0; width: 100%; } .cid-menu { width: 100%; } }
+.cid-op .t12 { font-weight: 400; }
