@@ -330,15 +330,16 @@
       <div class="cid-lista" id="cid-lista" role="listbox" aria-label="Cidades">${opcoesCidadesHtml(todas)}</div>
     </div>`;
   }
-  const textoFaltam = (n) => `Mapear as ${fmtN(n)} ${n === 1 ? "cidade que falta" : "cidades que faltam"} em ${S.uf}`;
+  const textoFaltam = (n) => `Trazer para o sistema as ${fmtN(n)} ${n === 1 ? "cidade que ainda não foi mapeada" : "cidades que ainda não foram mapeadas"}`;
   function textoTodas() {
     const todas = cidadesDoEstado();
     const mapeadas = todas.filter((c) => c.mapeada).length;
     const totalEmp = S.cidades.reduce((t, c) => t + c.qtd, 0);
     const fonte = todas.reduce((t, c) => t + (c.fonte || 0), 0);
-    const base = `${ufNome(S.uf)} inteiro · ${fmtN(totalEmp)} no mapeamento (${fmtN(mapeadas)} ${mapeadas === 1 ? "cidade" : "cidades"})`;
-    if (S.contando && S.contando.uf === S.uf) return `${base} · contando as cidades ${fmtN(S.contando.feitas)} de ${fmtN(S.contando.total)}…`;
-    return fonte ? `${base} · ${fmtN(fonte)} empresas do ramo no estado` : base;
+    const comEmp = todas.filter((c) => (c.fonte || 0) > 0 || c.mapeada).length;
+    const ja = `Já no sistema: ${fmtN(totalEmp)} ${totalEmp === 1 ? "empresa" : "empresas"} de ${fmtN(mapeadas)} ${mapeadas === 1 ? "cidade" : "cidades"}`;
+    if (S.contando && S.contando.uf === S.uf) return `${ja}\nContando quantas existem em cada cidade: ${fmtN(S.contando.feitas)} de ${fmtN(S.contando.total)}…`;
+    return fonte ? `${ja}\nExistem em ${ufNome(S.uf)}: ${fmtN(fonte)} empresas do ramo, em ${fmtN(comEmp)} cidades` : ja;
   }
   const qtdCidade = (c) => (c.mapeada ? c.qtd : c.fonte || 0);
   function opcoesCidadesHtml(todas = cidadesDoEstado()) {

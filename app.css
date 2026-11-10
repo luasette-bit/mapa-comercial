@@ -302,3 +302,4 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px max(16px, 2vw) 48px; dis
 .cid-ord[aria-pressed="true"] { border-color: var(--azul); background: var(--azul); color: var(--branco); }
 .cid-fonte { display: inline-flex; align-items: center; gap: 10px; }
 .cid-fonte .num { font-size: 12px; font-weight: 700; color: var(--tinta); }
+#cid-todas-sub { white-space: pre-line; line-height: 1.5; }
