@@ -168,7 +168,23 @@
   }
 
   /* --------------------------------------------------------------- telas */
+  // Lado esquerdo da tela de entrada: marca do grupo e o que o sistema faz
+  function ladoMarca() {
+    return `<section class="entrada-marca">
+      <img src="marca/workoffice.png?v=1" alt="Grupo WorkOffice" class="logo-wo" width="417" height="65">
+      <div class="entrada-titulo"><span class="selo-prg"><img src="marca/prg-software.png?v=1" alt="PRG Software" width="151" height="73"></span>
+        <div class="entrada-nome">Mapa Comercial</div></div>
+      <p>As administradoras de condomínio de cada cidade, com CNPJ, sócios e contatos, prontas para a equipe prospectar.</p>
+      <ul class="entrada-lista"><li>Digite a cidade e o sistema monta o mapeamento</li><li>Veja quem está perto do lugar da visita</li><li>Confirme os dados e exporte a lista</li></ul>
+    </section>`;
+  }
+  function fundo(ligado) {
+    document.body.classList.toggle("fora", ligado);
+    if (window.FundoPRG) ligado ? window.FundoPRG.ligar() : window.FundoPRG.desligar();
+  }
+
   function render() {
+    fundo(!S.user || S.recuperando || (S.perfil && !S.perfil.aprovado));
     if (S.recuperando) return renderNovaSenha();
     if (!S.user) return S.cadastro ? renderCadastro() : renderLogin();
     if (S.perfil && !S.perfil.aprovado) return renderAguardando();
@@ -535,8 +551,7 @@
 
   /* --------------------------------------------------------------- login */
   function renderLogin(msg = "", erro = "") {
-    app.innerHTML = `<div class="login-fundo"><form class="login" id="form-login" autocomplete="on">
-      <div class="marca" style="margin-bottom:14px"><div class="marca-icone">${ICONE.logo}</div><div><div class="marca-nome">Mapa Comercial</div><div class="marca-sub">PRG Software · Grupo WorkOffice</div></div></div>
+    app.innerHTML = `<div class="login-fundo">${ladoMarca()}<form class="login" id="form-login" autocomplete="on">
       <h1>Entrar</h1>
       <label for="l-email">E-mail</label><input id="l-email" type="email" autocomplete="username" required>
       <label for="l-senha">Senha</label><input id="l-senha" type="password" autocomplete="current-password" required>
@@ -561,8 +576,7 @@
   }
   function renderCadastro(erro = "") {
     const v = S.cadastroDados || {};
-    app.innerHTML = `<div class="login-fundo"><form class="login" id="form-cadastro" autocomplete="on" novalidate>
-      <div class="marca" style="margin-bottom:14px"><div class="marca-icone">${ICONE.logo}</div><div><div class="marca-nome">Mapa Comercial</div><div class="marca-sub">PRG Software · Grupo WorkOffice</div></div></div>
+    app.innerHTML = `<div class="login-fundo">${ladoMarca()}<form class="login" id="form-cadastro" autocomplete="on" novalidate>
       <h1>Crie sua conta</h1>
       <p class="fraco t13" style="margin:0 0 4px">Leva menos de 1 minuto. Assim que criar, você já entra.</p>
       <label for="c-nome">Nome completo</label><input id="c-nome" autocomplete="name" maxlength="60" required value="${esc(v.nome || "")}">
@@ -599,8 +613,7 @@
 
   function renderAguardando() {
     const primeiro = esc((S.perfil?.nome || "").split(" ")[0]);
-    app.innerHTML = `<div class="login-fundo"><div class="login" style="gap:14px">
-      <div class="marca"><div class="marca-icone">${ICONE.logo}</div><div><div class="marca-nome">Mapa Comercial</div><div class="marca-sub">PRG Software · Grupo WorkOffice</div></div></div>
+    app.innerHTML = `<div class="login-fundo">${ladoMarca()}<div class="login" style="gap:14px">
       <div class="sino" style="width:48px;height:48px;border-radius:14px;font-size:22px" aria-hidden="true">⏳</div>
       <h1>Conta criada, ${primeiro}!</h1>
       <p style="margin:0">Agora uma administradora precisa liberar o seu acesso. Avise a Lua que você já se cadastrou.</p>
@@ -618,7 +631,7 @@
   }
 
   function renderNovaSenha(erro = "") {
-    app.innerHTML = `<div class="login-fundo"><form class="login" id="form-senha"><h1>Criar senha nova</h1>
+    app.innerHTML = `<div class="login-fundo">${ladoMarca()}<form class="login" id="form-senha"><h1>Criar senha nova</h1>
       <label for="n-senha">Senha nova (mín. 8 caracteres)</label><input id="n-senha" type="password" minlength="8" autocomplete="new-password" required>
       ${erro ? `<p class="erro-txt" role="alert">${esc(erro)}</p>` : ""}<button type="submit" class="btn btn-primario">Salvar senha</button></form></div>`;
     $("#form-senha").onsubmit = async (e) => {
