@@ -9,10 +9,11 @@
 
   const UFS = [["AC","Acre"],["AL","Alagoas"],["AM","Amazonas"],["AP","Amapá"],["BA","Bahia"],["CE","Ceará"],["DF","Distrito Federal"],["ES","Espírito Santo"],["GO","Goiás"],["MA","Maranhão"],["MG","Minas Gerais"],["MS","Mato Grosso do Sul"],["MT","Mato Grosso"],["PA","Pará"],["PB","Paraíba"],["PE","Pernambuco"],["PI","Piauí"],["PR","Paraná"],["RJ","Rio de Janeiro"],["RN","Rio Grande do Norte"],["RO","Rondônia"],["RR","Roraima"],["RS","Rio Grande do Sul"],["SC","Santa Catarina"],["SE","Sergipe"],["SP","São Paulo"],["TO","Tocantins"]];
   const TIPOS = ["Todas", "Administradora", "Imobiliária", "Construtora", "Contabilidade"];
-  const SISTEMAS = ["Todos", "Superlógica", "Outro sistema", "Não identificado"];
+  // softwares que o sistema reconhece pelo link do portal no site da administradora
+  const SOFTWARES = ["Superlógica", "Group Software (Condomínio21)", "Almah", "CondoMob", "uCondo", "TownSq", "CondoPanel", "Condominizar", "Omeupredio (PRG)", "Ahreas", "Winker", "Webware", "Hitecnet"];
   const CNAES = { "6822600": "Gestão e administração da propriedade imobiliária", "6821801": "Corretagem na compra e venda de imóveis", "6821802": "Corretagem no aluguel de imóveis", "6810202": "Aluguel de imóveis próprios", "6920601": "Atividades de contabilidade", "8112500": "Condomínios prediais", "4120400": "Construção de edifícios" };
   const COR_TIPO = { "Administradora": "#2A3F72", "Imobiliária": "#B4410E", "Construtora": "#5B2A86", "Contabilidade": "#1E7A46" };
-  const COLS = "cnpj,cnpj_basico,razao_social,nome_fantasia,matriz,situacao,data_inicio,cnae_principal,cnaes_secundarios,tipo,atividade_principal_condominio,uf,municipio,logradouro,numero,complemento,bairro,cep,telefone1,telefone2,email,porte,referencia_receita,atualizado_em,tel_status,tel_por,tel_em,email_status,qtd_socios,removido,exportada,nova,nota,lat,lon,geo_precisao,nome_condominio";
+  const COLS = "cnpj,cnpj_basico,razao_social,nome_fantasia,matriz,situacao,data_inicio,cnae_principal,cnaes_secundarios,tipo,atividade_principal_condominio,uf,municipio,logradouro,numero,complemento,bairro,cep,telefone1,telefone2,email,porte,referencia_receita,atualizado_em,tel_status,tel_por,tel_em,email_status,qtd_socios,removido,exportada,nova,nota,lat,lon,geo_precisao,nome_condominio,site,site_situacao,sistema,sistema_prova,sistema_em,sistema_status,sistema_por,sistema_marcado";
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
   const $ = (s, r = document) => r.querySelector(s);
@@ -170,11 +171,22 @@
     await carregarMarcas([cnpj]);
   }
 
+  /* --------------------------------------------------------------- sistema */
+  function sistemaDe(r) {
+    if (r.sistema_status === "confirmado") return { nome: r.sistema_marcado || r.sistema, nivel: "confirmado" };
+    if (r.sistema_status === "errado") return r.sistema_marcado && r.sistema_marcado !== "Não sei" ? { nome: r.sistema_marcado, nivel: "corrigido" } : { nome: null, nivel: null };
+    return r.sistema ? { nome: r.sistema, nivel: "provavel" } : { nome: null, nivel: null };
+  }
+  function motivoSemSistema(r) {
+    if (!r.sistema_em) return "ainda vai ser verificada";
+    return { sem_site: "sem site (e-mail pessoal)", email_do_contador: "e-mail é do contador", fora_do_ar: "site fora do ar", sem_sistema_no_site: "site sem link do sistema" }[r.site_situacao] || "não identificado";
+  }
+
   /* --------------------------------------------------------------- filtros */
   function filtrados(rows, tipo = S.tipo) {
     return rows.filter((r) => {
       if (tipo !== "Todas" && r.tipo !== tipo) return false;
-      if (S.sistema === "Superlógica" || S.sistema === "Outro sistema") return false; // ainda sem identificação de sistema
+      if (S.sistema !== "Todos") { const n = sistemaDe(r).nome; if (S.sistema === "Não identificado" ? !!n : n !== S.sistema) return false; }
       if (S.soAtivas && r.situacao !== "ATIVA") return false;
       if (S.escExp && r.exportada) return false;
       if (S.soNovas && !r.nova) return false;
@@ -206,6 +218,11 @@
     if (r.matriz === false) t.push(`<span class="selo s-neutro">Filial</span>`);
     return t.join("");
   }
+  function celulaSistema(r) {
+    const s = sistemaDe(r);
+    if (!s.nome) return `<span class="pilha" style="gap:2px;align-items:flex-start"><span class="selo s-vazio">Não identificado</span><span class="t11 fraco">${esc(motivoSemSistema(r))}</span></span>`;
+    return `<span class="pilha" style="gap:2px;align-items:flex-start"><span class="selo s-sis">${esc(s.nome)}</span><span class="t11 ${s.nivel === "provavel" ? "fraco" : "origem-ok"}">${s.nivel === "provavel" ? "provável, pelo site" : s.nivel === "corrigido" ? "corrigido pela equipe" : "confirmado pela equipe"}</span></span>`;
+  }
   function linhaEmpresa(r, dist) {
     const soc = S.socios.get(r.cnpj_basico) || [];
     const [tl, tc] = nivelTel(r);
@@ -220,7 +237,7 @@
       ${dist == null ? `<span class="t13 num cnpj">${esc(fmtCnpj(r.cnpj))}</span>` : ""}
       <span class="pilha" style="gap:4px;align-items:flex-start"><span class="t13 num cnpj ${r.tel_status === "errado" ? "riscado" : ""}">${esc(r.telefone1 || "Sem telefone")}</span><span class="selo ${tc}">${tl}</span></span>
       <span class="pilha" style="gap:2px"><span class="t13 corta2">${esc(soc[0] ? titulo(soc[0].nome) : "Não informado")}</span><span class="t11 fraco">${esc(soc[0] ? (soc[0].qualificacao || "Sócio") + (soc.length > 1 ? ` · +${soc.length - 1}` : "") : "Sem sócio na Receita")}</span></span>
-      <span><span class="selo s-vazio">Não identificado</span></span>
+      ${celulaSistema(r)}
       <span class="pilha"><span class="linha-flex t12" style="justify-content:space-between"><span class="${nc}">${nl}</span><span class="fraco num">${r.nota || 0}/99</span></span><span class="barra" style="height:6px"><i class="${bc}" style="width:${r.nota || 0}%"></i></span></span>
     </button>`;
   }
@@ -277,8 +294,8 @@
     html += `<section class="cartao resumo" aria-label="Resumo">
       ${indicador("Empresas encontradas", total, "neste filtro")}
       ${indicador("Telefone confirmado", telConf, "pela equipe")}
-      ${indicador("Sistema identificado", 0, "chega na próxima etapa")}
-      ${indicador("Usam Superlógica", 0, "chega na próxima etapa")}
+      ${indicador("Sistema identificado", lista.filter((r) => sistemaDe(r).nome).length, "pelo site ou pela equipe")}
+      ${indicador("Usam Superlógica", lista.filter((r) => sistemaDe(r).nome === "Superlógica").length, "pelo site ou pela equipe")}
       ${indicador("Novas no último mês", novas, "abertas recentemente")}
     </section>
     <div class="abas" role="tablist" aria-label="Forma de ver">
@@ -304,7 +321,7 @@
         <div class="campo" style="flex:1 1 380px"><span class="rotulo">Tipo de empresa</span><div class="chips">${TIPOS.map((t) => `<button type="button" class="chip" data-acao="tipo" data-v="${t}" aria-pressed="${S.tipo === t}">${t}<b>${fmtN(cont(t))}</b></button>`).join("")}</div></div>
       </div>
       <div class="linha-filtros">
-        <div class="campo" style="flex:1 1 420px"><span class="rotulo">Sistema atual (concorrente)</span><div class="chips">${SISTEMAS.map((t) => `<button type="button" class="chip" data-acao="sistema" data-v="${t}" aria-pressed="${S.sistema === t}">${t}</button>`).join("")}</div></div>
+        <div class="campo" style="flex:1 1 420px"><span class="rotulo">Sistema atual (concorrente)${S.idSis ? ` <span class="fraco" style="font-weight:500">· verificando os sites ${fmtN(S.idSis.feitas)} de ${fmtN(S.idSis.total)}…</span>` : ""}</span><div class="chips">${botoesSistema(S.rows)}</div></div>
         <div class="campo" style="flex:1 1 420px"><span class="rotulo">Limpeza da lista</span><div class="chips">
           ${alternar("soAtivas", "Só empresas ativas")}${alternar("escExp", "Esconder já exportadas")}${alternar("soNovas", "Só novas (último mês)")}
         </div></div>
@@ -357,6 +374,18 @@
         : `<span class="cid-mapear">${contando ? "contando…" : "mapear"}</span>`}</button>`).join("");
   }
 
+  function botoesSistema(rows, tipo = S.tipo) {
+    const salvo = S.sistema; S.sistema = "Todos";
+    const base = filtrados(rows, tipo); S.sistema = salvo;
+    const cont = new Map(); let sem = 0;
+    base.forEach((r) => { const n = sistemaDe(r).nome; if (n) cont.set(n, (cont.get(n) || 0) + 1); else sem++; });
+    const lista = [...cont.entries()].sort((a, b) => b[1] - a[1]);
+    if (S.sistema !== "Todos" && S.sistema !== "Não identificado" && !cont.has(S.sistema)) S.sistema = "Todos";
+    const chip = (v, rot, n) => `<button type="button" class="chip ${v !== "Todos" && v !== "Não identificado" ? "chip-sis" : ""}" data-acao="sistema" data-v="${esc(v)}" aria-pressed="${S.sistema === v}">${esc(rot)}<b>${fmtN(n)}</b></button>`;
+    return chip("Todos", "Todos", base.length) + lista.map(([n, q]) => chip(n, n, q)).join("") + (sem ? chip("Não identificado", "Não identificado", sem) : "")
+      + (!lista.length && !S.idSis ? `<span class="t12 fraco" style="align-self:center">Nenhum sistema encontrado nos sites destas empresas ainda.</span>` : "");
+  }
+
   const alternar = (k, label) => `<button type="button" class="alternar" data-acao="alternar" data-k="${k}" aria-pressed="${S[k]}"><span class="cx">${S[k] ? "✓" : ""}</span><span>${label}</span></button>`;
 
   function progressoHtml() {
@@ -392,6 +421,26 @@
         ${mostrar.map((r) => linhaEmpresa(r, regiao ? dists.get(r.cnpj) : null)).join("")}</div></div>` : ""}
       ${lista.length > mostrar.length ? `<div class="mais"><button type="button" class="btn btn-sec" data-acao="mais">Mostrar mais (${fmtN(lista.length - mostrar.length)} restantes)</button></div>` : ""}
     </section>`;
+  }
+
+  function caixaSistema(r) {
+    const s = sistemaDe(r);
+    const site = r.site ? `<a href="https://${esc(r.site)}" target="_blank" rel="noopener noreferrer">${esc(r.site)}</a>` : "";
+    let corpo;
+    if (s.nome) {
+      const quem = r.sistema_status ? `<span class="origem origem-ok">${r.sistema_status === "confirmado" ? "Confirmado" : "Corrigido"} por ${esc(r.sistema_por || "")}</span>` : "";
+      corpo = `<span class="linha-flex" style="gap:6px"><span class="selo s-sis" style="font-size:12px">${esc(s.nome)}</span><span class="t12 ${s.nivel === "provavel" ? "fraco" : "origem-ok"}">${s.nivel === "provavel" ? "Provável" : s.nivel === "corrigido" ? "Corrigido pela equipe" : "Confirmado pela equipe"}</span></span>
+        ${r.sistema && s.nivel === "provavel" ? `<span class="t12 fraco" style="line-height:1.5">O site ${site} tem um link para o portal ${esc(r.sistema)}: <a href="${esc(r.sistema_prova)}" target="_blank" rel="noopener noreferrer" class="prova">ver o link</a>. Confirme na ligação.</span>` : ""}${quem}`;
+    } else {
+      const txt = { sem_site: "A empresa usa e-mail pessoal (Gmail, Hotmail…), então não há site para verificar.", email_do_contador: "O e-mail registrado na Receita é do contador, não da administradora.", fora_do_ar: `O site ${site} não abriu quando foi verificado.`, sem_sistema_no_site: `O site ${site} não tem link para nenhum dos sistemas que o Mapa reconhece.` }[r.site_situacao] || "Ainda vai ser verificado pelo site.";
+      corpo = `<span><span class="selo s-vazio">Não identificado</span></span><span class="t12 fraco" style="line-height:1.5">${txt} Pergunte na ligação.</span>`;
+    }
+    const marcado = !!r.sistema_status;
+    const escolher = S.sisCorrigir === r.cnpj ? `<div class="linha-flex" style="gap:6px"><select id="sis-certo" class="input" style="height:36px;flex:1 1 180px"><option value="">Qual sistema ela usa?</option>${SOFTWARES.map((n) => `<option>${esc(n)}</option>`).join("")}<option>Outro sistema</option><option>Planilha / sem sistema</option><option>Não sei</option></select><button type="button" class="mini mini-ok" data-acao="sis-salvar">Salvar</button><button type="button" class="mini" data-acao="sis-cancelar">Cancelar</button></div>` : "";
+    const botoes = marcado ? `<button type="button" class="mini" data-acao="desfazer" data-campo="Sistema">Desfazer</button>`
+      : s.nome ? `<button type="button" class="mini mini-ok" data-acao="marcar" data-campo="Sistema" data-status="confirmado">✓ Confirmei</button><button type="button" class="mini mini-erro" data-acao="sis-corrigir">✗ Está errado</button>`
+      : `<button type="button" class="mini mini-ok" data-acao="sis-corrigir">Informar o sistema</button>`;
+    return `<div class="caixa-cinza"><span class="rotulo">Sistema atual</span>${corpo}${escolher || `<span class="linha-flex">${botoes}</span>`}</div>`;
   }
 
   function painelHtml() {
@@ -433,7 +482,7 @@
         <span class="origem">Situação cadastral · Origem: Receita Federal${r.data_inicio ? ` · aberta em ${esc(fmtData(r.data_inicio))}` : ""}</span>
         <span class="origem">O tipo (${esc(r.tipo || "")}) é definido pelo sistema a partir do nome e da atividade registrada na Receita.</span>
       </div>
-      <div class="caixa-cinza"><span class="rotulo">Sistema atual</span><span><span class="selo s-vazio">Não identificado</span></span><span class="t12 fraco" style="line-height:1.5">A identificação automática do sistema (Superlógica e outros) pelo site da administradora entra na próxima etapa. Até lá, pergunte na ligação.</span></div>
+      ${caixaSistema(r)}
       <div class="pilha" style="gap:10px"><span style="font-size:12px;font-weight:700">Contato</span>${campos.map(campo).join("")}</div>
       <div class="pilha" style="gap:10px">
         <div class="linha-flex" style="justify-content:space-between"><span style="font-size:12px;font-weight:700">Sócios e administradores</span>${soc.length ? '<span class="selo s-ident">Identificado</span>' : ""}</div>
@@ -466,7 +515,8 @@
         <div class="campo"><span class="rotulo">Distância</span><div class="chips">${[0.5, 1, 2, 5].map((k) => `<button type="button" class="chip" data-acao="raio" data-v="${k}" aria-pressed="${R.raio === k}">${k < 1 ? k * 1000 + " m" : k + " km"}</button>`).join("")}</div></div>
       </div>
       ${R.lugar ? `<div class="linha-flex t13"><span class="selo s-ident">Centro</span><b>${esc(R.lugar.nome)}</b><span class="fraco">${esc(R.lugar.detalhe)}</span></div>` : ""}
-      ${R.lugar ? `<div class="campo"><span class="rotulo">Tipo de empresa</span><div class="chips">${TIPOS.map((t) => `<button type="button" class="chip" data-acao="r-tipo" data-v="${t}" aria-pressed="${R.tipo === t}">${t}<b>${fmtN(cont(t))}</b></button>`).join("")}</div></div>` : ""}
+      ${R.lugar ? `<div class="campo"><span class="rotulo">Tipo de empresa</span><div class="chips">${TIPOS.map((t) => `<button type="button" class="chip" data-acao="r-tipo" data-v="${t}" aria-pressed="${R.tipo === t}">${t}<b>${fmtN(cont(t))}</b></button>`).join("")}</div></div>
+      <div class="campo"><span class="rotulo">Sistema atual (concorrente)</span><div class="chips">${botoesSistema(R.rows, R.tipo)}</div></div>` : ""}
     </section>
     <p id="geo-status" class="selo s-ident t13" style="margin:0;display:block;padding:10px 14px" ${S.geo ? "" : "hidden"}>${esc(textoGeo())}</p>`;
     if (!R.lugar) return html + `<div class="cartao vazio">Comece digitando o endereço do lugar que a equipe vai visitar. Só aparecem empresas de cidades que já foram mapeadas na aba <b>Mapeamento</b>.</div>`;
@@ -535,6 +585,29 @@
 
   const textoGeo = () => (S.geo ? `Colocando no mapa as empresas mapeadas: ${fmtN(S.geo.feitas)} de ${fmtN(S.geo.total)}. Deixe esta página aberta; a lista se atualiza sozinha no fim.` : "");
   function mostrarGeo() { const el = $("#geo-status"); if (el) { el.textContent = textoGeo(); el.hidden = !S.geo; } else if (S.view === "regiao" && S.geo) render(); }
+
+  // Verifica os sites das empresas que ainda não passaram pela identificação do sistema
+  let sisRodando = false;
+  async function identificarSistemas(uf) {
+    if (sisRodando || !uf) return;
+    sisRodando = true;
+    try {
+      const { data: fila } = await sb.rpc("sem_sistema", { p_uf: uf, p_limite: 600 });
+      if (!fila?.length) return;
+      S.idSis = { feitas: 0, total: fila.length }; if (S.view === "mapeamento") render();
+      const partes = chunk(fila.map((x) => x.cnpj), 8);
+      await Promise.all([0, 1].map(async () => {
+        while (partes.length && S.user && S.uf === uf) {
+          const parte = partes.shift();
+          const r = await chamar(FUNCAO, { acao: "sistema", cnpjs: parte });
+          (r.resultados || []).forEach((x) => { const row = S.rows.find((y) => y.cnpj === x.cnpj); if (row) Object.assign(row, { site: x.site, site_situacao: x.site_situacao, sistema: x.sistema, sistema_prova: x.sistema_prova, sistema_em: new Date().toISOString() }); });
+          S.idSis.feitas += parte.length;
+          if (S.view === "mapeamento" && !S.cidMenu && !document.activeElement?.matches?.("input, select")) render();
+        }
+      }));
+    } catch (e) { console.warn(e); }
+    finally { sisRodando = false; S.idSis = null; if (S.view === "mapeamento" && !S.cidMenu) render(); }
+  }
 
   // Coloca no mapa as empresas que ainda não têm ponto, uma por segundo, em segundo plano
   let geoRodando = false;
@@ -766,9 +839,9 @@
     }
   }
 
-  async function marcar(campo, status) {
+  async function marcar(campo, status, valor = null) {
     const r = S.selRow; if (!r) return;
-    const { error } = await sb.from("marcacoes").upsert({ cnpj: r.cnpj, campo, status, usuario_id: S.user.id, usuario_nome: S.perfil.nome }, { onConflict: "cnpj,campo" });
+    const { error } = await sb.from("marcacoes").upsert({ cnpj: r.cnpj, campo, status, valor, usuario_id: S.user.id, usuario_nome: S.perfil.nome }, { onConflict: "cnpj,campo" });
     if (error) { toast("Não foi possível salvar. Tente de novo."); return; }
     await recarregarEmpresa(r.cnpj); toast(status === "confirmado" ? `${campo} confirmado` : `${campo} marcado como errado`); render();
   }
@@ -796,11 +869,11 @@
   async function exportar(lista, nomeLista) {
     if (!lista.length) return;
     const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const cab = ["Empresa", "Razão social", "CNPJ", "Tipo", "Situação", "Telefone", "Telefone 2", "Status do telefone", "E-mail", "Sócios", "Endereço", "Bairro", "Cidade", "UF", "CEP", "Aberta em", "Contatabilidade", "Distância (km)"];
+    const cab = ["Empresa", "Razão social", "CNPJ", "Tipo", "Situação", "Telefone", "Telefone 2", "Status do telefone", "E-mail", "Sócios", "Endereço", "Bairro", "Cidade", "UF", "CEP", "Aberta em", "Contatabilidade", "Sistema atual", "Como o sistema foi identificado", "Site", "Distância (km)"];
     const linhas = lista.map((r) => {
       const soc = (S.socios.get(r.cnpj_basico) || []).map((s) => `${titulo(s.nome)} (${s.qualificacao || "Sócio"})`).join("; ");
       const d = S.reg.dist.get(r.cnpj);
-      return [nomeEmp(r), titulo(r.razao_social), fmtCnpj(r.cnpj), r.tipo, titulo(r.situacao), r.telefone1, r.telefone2, r.tel_status === "confirmado" ? "Confirmado" : r.tel_status === "errado" ? "Errado" : "Receita", r.email, soc, [r.logradouro, r.numero, r.complemento].filter(Boolean).join(", "), r.bairro, r.municipio, r.uf, r.cep, fmtData(r.data_inicio), r.nota, nomeLista.startsWith("Região") && d != null ? d.toFixed(2).replace(".", ",") : ""].map(q).join(";");
+      return [nomeEmp(r), titulo(r.razao_social), fmtCnpj(r.cnpj), r.tipo, titulo(r.situacao), r.telefone1, r.telefone2, r.tel_status === "confirmado" ? "Confirmado" : r.tel_status === "errado" ? "Errado" : "Receita", r.email, soc, [r.logradouro, r.numero, r.complemento].filter(Boolean).join(", "), r.bairro, r.municipio, r.uf, r.cep, fmtData(r.data_inicio), r.nota, sistemaDe(r).nome || "Não identificado", (() => { const x = sistemaDe(r); return !x.nome ? motivoSemSistema(r) : x.nivel === "provavel" ? `Provável: link no site (${r.sistema_prova})` : x.nivel === "corrigido" ? `Corrigido por ${r.sistema_por}` : `Confirmado por ${r.sistema_por}`; })(), r.site || "", nomeLista.startsWith("Região") && d != null ? d.toFixed(2).replace(".", ",") : ""].map(q).join(";");
     });
     const blob = new Blob(["﻿" + [cab.map(q).join(";"), ...linhas].join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
@@ -870,6 +943,7 @@
       salvarPreferencias();
       await carregarMapeamento();
       localizarPendentes(uf);
+      identificarSistemas(uf);
     } catch (e) {
       if (/^Não encontrei/.test(e.message)) await registrarBusca(uf, cidade, 0).catch(() => {});
       if (lote) { if (e.message === "rede") throw e; return { gravadas: 0, falhou: !/^Não encontrei/.test(e.message) }; }
@@ -903,7 +977,7 @@
       S.erro = "Sem conexão com o servidor. O que já foi mapeado ficou guardado; clique de novo para continuar.";
     } finally {
       S.mapeando = null; S.estado = null; salvarPreferencias();
-      await carregarMapeamento(); localizarPendentes(uf);
+      await carregarMapeamento(); localizarPendentes(uf); identificarSistemas(uf);
     }
   }
 
@@ -954,7 +1028,15 @@
       case "mais": S.show += 60; render(); break;
       case "sel": selecionar(b.dataset.cnpj); break;
       case "fechar-painel": S.sel = null; S.selRow = null; render(); break;
-      case "marcar": marcar(b.dataset.campo, b.dataset.status); break;
+      case "marcar": marcar(b.dataset.campo, b.dataset.status, b.dataset.campo === "Sistema" ? (S.selRow?.sistema || null) : null); break;
+      case "sis-corrigir": S.sisCorrigir = S.sel; render(); break;
+      case "sis-cancelar": S.sisCorrigir = null; render(); break;
+      case "sis-salvar": {
+        const v = $("#sis-certo")?.value; if (!v) { toast("Escolha o sistema."); break; }
+        const r = S.selRow; S.sisCorrigir = null;
+        // se a equipe disse o mesmo que o site, é confirmação; se disse outro, é correção
+        await marcar("Sistema", r && r.sistema && v === r.sistema ? "confirmado" : "errado", v); break;
+      }
       case "desfazer": desfazer(b.dataset.campo); break;
       case "remover": remover(); break;
       case "copiar": copiar(); break;
@@ -982,7 +1064,7 @@
     }
   });
   app.addEventListener("change", (ev) => {
-    if (ev.target.id === "f-uf") { S.uf = ev.target.value; S.cidade = null; S.cidadeId = null; S.cidMenu = false; S.sel = null; S.selRow = null; salvarPreferencias(); carregarMapeamento().then(() => localizarPendentes(S.uf)); }
+    if (ev.target.id === "f-uf") { S.uf = ev.target.value; S.cidade = null; S.cidadeId = null; S.cidMenu = false; S.sel = null; S.selRow = null; salvarPreferencias(); carregarMapeamento().then(() => { localizarPendentes(S.uf); identificarSistemas(S.uf); }); }
   });
   app.addEventListener("input", (ev) => {
     if (ev.target.id === "cid-busca") { S.cidBusca = ev.target.value; const l = $("#cid-lista"); if (l) l.innerHTML = opcoesCidadesHtml(); return; }
@@ -1016,6 +1098,7 @@
     if (!S.perfil.aprovado) return;
     await carregarMapeamento();
     localizarPendentes(S.uf);
+    identificarSistemas(S.uf);
   }
   sb.auth.onAuthStateChange((evento, sessao) => {
     if (evento === "PASSWORD_RECOVERY") { S.recuperando = true; S.user = sessao?.user || null; render(); return; }

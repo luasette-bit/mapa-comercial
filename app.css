@@ -303,3 +303,9 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px max(16px, 2vw) 48px; dis
 .cid-fonte { display: inline-flex; align-items: center; gap: 10px; }
 .cid-fonte .num { font-size: 12px; font-weight: 700; color: var(--tinta); }
 #cid-todas-sub { white-space: pre-line; line-height: 1.5; }
+
+/* sistema da administradora */
+.s-sis { background: #E2F3F6; color: #0B5F6E; }
+.chip-sis[aria-pressed="true"] { border-color: #0B5F6E; background: #0B5F6E; color: #fff; }
+.caixa-cinza a { color: var(--link); font-weight: 600; }
+.prova { white-space: nowrap; }
