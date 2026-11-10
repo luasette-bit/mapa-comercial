@@ -159,10 +159,10 @@
         <span class="linha-flex" style="gap:5px"><span class="selo s-ident">${esc(r.tipo || "")}</span><span class="t12 fraco">${esc(r.bairro ? r.bairro + " · " : "")}${esc(r.municipio || "")}</span></span>
         <span class="linha-flex" style="gap:5px">${tagsEmpresa(r)}</span>
       </span>
-      ${dist == null ? `<span class="t13 num">${esc(fmtCnpj(r.cnpj))}</span>` : ""}
-      <span class="pilha" style="gap:4px;align-items:flex-start"><span class="t13 num ${r.tel_status === "errado" ? "riscado" : ""}">${esc(r.telefone1 || "—")}</span><span class="selo ${tc}">${tl}</span></span>
-      <span class="pilha" style="gap:2px"><span class="t13">${esc(soc[0] ? titulo(soc[0].nome) : "—")}</span><span class="t11 fraco">${esc(soc[0] ? (soc[0].qualificacao || "Sócio") + (soc.length > 1 ? ` · +${soc.length - 1}` : "") : "Sem sócio na Receita")}</span></span>
-      <span class="pilha" style="gap:4px;align-items:flex-start"><span class="selo s-vazio">Não identificado</span><span class="t11 fraco">aguardando</span></span>
+      ${dist == null ? `<span class="t13 num cnpj">${esc(fmtCnpj(r.cnpj))}</span>` : ""}
+      <span class="pilha" style="gap:4px;align-items:flex-start"><span class="t13 num cnpj ${r.tel_status === "errado" ? "riscado" : ""}">${esc(r.telefone1 || "Sem telefone")}</span><span class="selo ${tc}">${tl}</span></span>
+      <span class="pilha" style="gap:2px"><span class="t13 corta2">${esc(soc[0] ? titulo(soc[0].nome) : "Não informado")}</span><span class="t11 fraco">${esc(soc[0] ? (soc[0].qualificacao || "Sócio") + (soc.length > 1 ? ` · +${soc.length - 1}` : "") : "Sem sócio na Receita")}</span></span>
+      <span><span class="selo s-vazio">Não identificado</span></span>
       <span class="pilha"><span class="linha-flex t12" style="justify-content:space-between"><span class="${nc}">${nl}</span><span class="fraco num">${r.nota || 0}/99</span></span><span class="barra" style="height:6px"><i class="${bc}" style="width:${r.nota || 0}%"></i></span></span>
     </button>`;
   }
@@ -196,7 +196,7 @@
     const nav = [["mapeamento", "Mapeamento"], ["regiao", "Região"], ["listas", "Listas exportadas"]];
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
-      <div class="marca"><div class="marca-icone">${ICONE.logo}</div><div><div class="marca-nome">Mapa Comercial</div><div class="marca-sub">PRG Software · Grupo WorkOffice</div></div></div>
+      <button type="button" class="marca marca-topo" data-acao="ir" data-view="mapeamento" aria-label="Mapa Comercial, voltar ao Mapeamento"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
       <nav aria-label="Menu principal">${nav.map(([k, l]) => `<button type="button" data-acao="ir" data-view="${k}" ${S.view === k ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>
       <div class="usuario"><button type="button" data-acao="menu" aria-expanded="${S.menu}"><span>${esc(S.perfil?.nome || "")}</span><span class="avatar">${esc(ini(S.perfil?.nome))}</span></button>
         ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${S.perfil?.papel === "admin" ? "Administradora" : "SDR"}</span><button type="button" data-acao="sair">Sair</button></div>` : ""}
@@ -210,18 +210,18 @@
     const total = lista.length;
     const telConf = lista.filter((r) => r.tel_status === "confirmado").length;
     const base = S.info?.atualizado_em ? `Dados da Receita Federal · última atualização em ${fmtData(S.info.atualizado_em)}` : "Dados da Receita Federal";
-    let html = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Mapeamento de administradoras</h1><p class="fraco" style="margin:0">Empresas ativas que administram condomínios, ordenadas por facilidade de contato.</p></div><span class="s-info">${esc(base)}</span></div>`;
+    let html = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Mapeamento de administradoras</h1><p class="fraco" style="margin:0">Empresas ativas que administram condomínios, ordenadas por facilidade de contato.</p></div><span class="fonte-dados">${esc(base)}</span></div>`;
     if (S.msg) html += `<div class="aviso aviso-ok" role="status"><span>${esc(S.msg)}</span><button type="button" class="mini mini-ok" data-acao="fechar-msg">Fechar</button></div>`;
     if (S.erro) html += `<div class="aviso aviso-erro" role="alert"><span>${esc(S.erro)}</span></div>`;
     if (novas && !S.soNovas) html += `<section class="faixa-novas" aria-label="Empresas novas"><div class="linha-flex" style="gap:12px;flex-wrap:nowrap"><div class="sino">${ICONE.sino}</div><div class="pilha" style="gap:2px"><strong>${novas} ${novas === 1 ? "empresa nova aberta" : "empresas novas abertas"} no último mês</strong><span class="t12" style="color:#5B4A12">Empresa recém-aberta ainda está escolhendo sistema: é o melhor momento para chegar.</span></div></div><button type="button" class="btn btn-escuro" data-acao="so-novas">Ver só as novas</button></section>`;
     html += filtrosHtml();
     if (S.mapeando) html += progressoHtml();
-    html += `<section class="resumo" aria-label="Resumo">
-      ${indicador("Empresas encontradas", fmtN(total), "neste filtro", "var(--tinta)")}
-      ${indicador("Telefone confirmado", fmtN(telConf), "a equipe confirmou", "var(--verde)")}
-      ${indicador("Sistema identificado", "0", "identificação chega na próxima etapa", "var(--azul)")}
-      ${indicador("Usam Superlógica", "0", "identificação chega na próxima etapa", "var(--laranja)")}
-      ${indicador("Novas no último mês", fmtN(novas), "abertas recentemente", "var(--ouro)")}
+    html += `<section class="cartao resumo" aria-label="Resumo">
+      ${indicador("Empresas encontradas", total, "neste filtro")}
+      ${indicador("Telefone confirmado", telConf, "pela equipe")}
+      ${indicador("Sistema identificado", 0, "chega na próxima etapa")}
+      ${indicador("Usam Superlógica", 0, "chega na próxima etapa")}
+      ${indicador("Novas no último mês", novas, "abertas recentemente")}
     </section>
     <div class="abas" role="tablist" aria-label="Forma de ver">
       <button type="button" class="aba" role="tab" data-acao="aba" data-aba="lista" aria-selected="${S.aba === "lista"}">Lista de empresas</button>
@@ -232,7 +232,7 @@
     if (S.aba === "cidades") return html + cidadesHtml();
     return html + `<div class="duas">${listaHtml(lista)}${painelHtml()}</div>`;
   }
-  const indicador = (r, v, s, cor) => `<div class="cartao ind"><span class="rotulo">${r}</span><span class="v" style="color:${cor}">${v}</span><span class="t12 fraco">${s}</span></div>`;
+  const indicador = (r, v, s) => `<div class="ind${v ? "" : " zero"}"><span class="rotulo">${r}</span><span class="v">${fmtN(v)}</span><span class="t12 fraco">${s}</span></div>`;
 
   function filtrosHtml() {
     const cont = (t) => (t === "Todas" ? S.rows.length : S.rows.filter((r) => r.tipo === t).length);
@@ -292,7 +292,7 @@
 
   function painelHtml() {
     const r = S.selRow;
-    if (!r) return `<aside class="cartao painel" data-vazio="true" aria-label="Detalhes da empresa"><span class="fraco">Selecione uma empresa para ver os detalhes.</span></aside>`;
+    if (!r) return `<aside class="cartao painel" data-vazio="true" aria-label="Detalhes da empresa"><div class="painel-vazio"><span class="painel-vazio-icone">${ICONE.busca}</span><b>Nenhuma empresa aberta</b><span class="fraco t13">Clique numa linha da lista para ver sócios, contatos e confirmar os dados.</span></div></aside>`;
     const soc = S.socios.get(r.cnpj_basico) || [];
     const marcas = S.marcas.get(r.cnpj) || {};
     const atual = r.atualizado_em ? ` · atualizado em ${fmtData(r.atualizado_em)}` : "";
@@ -684,7 +684,7 @@
   async function copiar() {
     const r = S.selRow; if (!r) return;
     const soc = (S.socios.get(r.cnpj_basico) || []).map((s) => `${titulo(s.nome)} (${s.qualificacao || "Sócio"})`).join(", ");
-    const txt = [nomeEmp(r), `CNPJ: ${fmtCnpj(r.cnpj)}`, `Telefone: ${[r.telefone1, r.telefone2].filter(Boolean).join(" / ") || "—"}`, `E-mail: ${r.email || "—"}`, `Endereço: ${[r.logradouro, r.numero, r.bairro, r.municipio + "/" + r.uf].filter(Boolean).join(", ")}`, `Sócios: ${soc || "—"}`].join("\n");
+    const txt = [nomeEmp(r), `CNPJ: ${fmtCnpj(r.cnpj)}`, `Telefone: ${[r.telefone1, r.telefone2].filter(Boolean).join(" / ") || "não informado"}`, `E-mail: ${r.email || "não informado"}`, `Endereço: ${[r.logradouro, r.numero, r.bairro, r.municipio + "/" + r.uf].filter(Boolean).join(", ")}`, `Sócios: ${soc || "não informado"}`].join("\n");
     try { await navigator.clipboard.writeText(txt); toast("Dados copiados"); } catch { toast("Não deu para copiar automaticamente."); }
   }
 
