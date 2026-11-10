@@ -307,5 +307,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px max(16px, 2vw) 48px; dis
 /* sistema da administradora */
 .s-sis { background: #E2F3F6; color: #0B5F6E; }
 .chip-sis[aria-pressed="true"] { border-color: #0B5F6E; background: #0B5F6E; color: #fff; }
+/* pista: portal com o nome da empresa, ainda a conferir */
+.s-pista { background: #fff; color: #0B5F6E; border: 1px dashed #5FA9B6; }
+.chip-pista { border-style: dashed; }
+.chip-pista[aria-pressed="true"] { border-style: solid; }
 .caixa-cinza a { color: var(--link); font-weight: 600; }
 .prova { white-space: nowrap; }
+/* nome do sistema pode ser longo (Group Software (Condomínio21)): quebra dentro da coluna */
+.t-linha .s-sis, .t-linha .s-pista { white-space: normal; max-width: 100%; line-height: 1.3; }
