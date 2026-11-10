@@ -47,7 +47,7 @@
 
   const S = {
     user: null, perfil: null, view: "mapeamento", menu: false,
-    uf: lembrar.uf || "SP", cidade: lembrar.cidade || null, cidadeId: lembrar.cidadeId || null, cidMenu: false, cidBusca: "", estado: null, buscadas: new Map(), tipo: lembrar.tipo || "Todas", sistema: "Todos",
+    uf: lembrar.uf || "SP", cidade: lembrar.cidade || null, cidadeId: lembrar.cidadeId || null, cidMenu: false, cidBusca: "", estado: null, buscadas: new Map(), totais: new Map(), contando: null, cidOrdem: "az", tipo: lembrar.tipo || "Todas", sistema: "Todos",
     soAtivas: true, escExp: false, soNovas: false, aba: "lista",
     rows: [], carregando: false, erro: "", cidades: [], socios: new Map(), marcas: new Map(),
     sel: null, selRow: null, grupo: [], show: 60, confirmarRemocao: false, msg: "",
@@ -100,20 +100,46 @@
       if (k) { const a = porId.get(k); porId.set(k, a ? { ...a, qtd: a.qtd + c.qtd, novas: (a.novas || 0) + (c.novas || 0) } : { ...c }); }
       porNome.set(norm(c.municipio), c);
     });
-    const lista = ibge.map((m) => { const c = porId.get(m.id) || porNome.get(norm(m.nome)); return { id: m.id, nome: m.nome, qtd: c ? c.qtd : 0, novas: c ? c.novas || 0 : 0, mapeada: !!c, semEmpresas: !c && S.buscadas.has(norm(m.nome)) }; });
+    const lista = ibge.map((m) => { const c = porId.get(m.id) || porNome.get(norm(m.nome)); const t = S.totais.get(norm(m.nome)); const fonte = t ? t.total : undefined; return { id: m.id, nome: m.nome, qtd: c ? c.qtd : 0, novas: c ? c.novas || 0 : 0, mapeada: !!c, fonte, semEmpresas: !c && (S.buscadas.has(norm(m.nome)) || fonte === 0) }; });
     // cidade mapeada que não veio do IBGE (sem internet, por exemplo) continua aparecendo
     S.cidades.forEach((c) => { if (!lista.some((m) => (c.municipio_ibge && m.id === String(c.municipio_ibge)) || norm(m.nome) === norm(c.municipio))) lista.push({ id: c.municipio_ibge ? String(c.municipio_ibge) : null, nome: c.municipio, qtd: c.qtd, novas: c.novas || 0, mapeada: true }); });
     return lista;
   }
 
+  // Conta quantas empresas do ramo cada cidade tem na fonte (uma vez por estado; a equipe toda aproveita)
+  async function contarCidades(uf) {
+    if (S.contando) return;
+    const ibge = await cidadesIbge(uf);
+    const mes = Date.now() - 30 * 864e5;
+    const faltam = ibge.map((m) => m.nome).filter((n) => { const t = S.totais.get(norm(n)); return !t || new Date(t.contado_em).getTime() < mes; });
+    if (!faltam.length || uf !== S.uf) return;
+    S.contando = { uf, feitas: 0, total: faltam.length };
+    const atualizar = () => { if (!S.cidMenu || S.uf !== uf) return; const l = $("#cid-lista"); if (l) l.innerHTML = opcoesCidadesHtml(); const t = $("#cid-todas-sub"); if (t) t.textContent = textoTodas();
+      const bt = $("#cid-estado"); if (bt && !bt.dataset.certeza) { const n = cidadesDoEstado().filter((c) => !c.mapeada && !c.semEmpresas).length; bt.hidden = !n || !!S.mapeando; bt.querySelector("span").textContent = textoFaltam(n); } };
+    atualizar();
+    try {
+      const fila = chunk(faltam, 40);
+      await Promise.all([0, 1].map(async () => {
+        while (fila.length && S.uf === uf && S.user) {
+          const parte = fila.shift();
+          const r = await chamar(FUNCAO, { acao: "contar", uf, cidades: parte });
+          if (r && r.totais) Object.entries(r.totais).forEach(([nome, total]) => { if (total !== null) S.totais.set(norm(nome), { nome, total, contado_em: new Date().toISOString() }); });
+          S.contando.feitas += parte.length; atualizar();
+        }
+      }));
+    } finally { S.contando = null; atualizar(); }
+  }
+
   async function carregarMapeamento() {
     S.carregando = true; S.erro = ""; render();
     try {
-      const [cid, info, busc] = await Promise.all([
+      const [cid, info, busc, tot] = await Promise.all([
         sb.rpc("cidades_da_uf", { p_uf: S.uf, p_so_ativas: S.soAtivas }),
         sb.rpc("info_base"),
         sb.from("cidades_buscadas").select("nome,municipio_ibge,qtd,buscada_em").eq("uf", S.uf),
+        sb.from("cidades_total").select("nome,total,contado_em").eq("uf", S.uf).limit(1000),
       ]);
+      S.totais = new Map((tot.data || []).map((c) => [norm(c.nome), c]));
       S.buscadas = new Map((busc.data || []).map((c) => [norm(c.nome), c]));
       S.cidades = cid.data || [];
       S.info = info.data || null;
@@ -293,21 +319,38 @@
     const todas = cidadesDoEstado();
     const mapeadas = todas.filter((c) => c.mapeada);
     const faltam = todas.filter((c) => !c.mapeada && !c.semEmpresas).length;
-    const totalEmp = S.cidades.reduce((t, c) => t + c.qtd, 0);
     return `<div class="cid-menu" role="dialog" aria-label="Escolher cidade de ${esc(ufNome(S.uf))}">
       <input id="cid-busca" class="input" type="search" placeholder="Buscar cidade de ${esc(S.uf)}" autocomplete="off" value="${esc(S.cidBusca)}">
-      <button type="button" class="cid-op cid-todas ${!S.cidade ? "atual" : ""}" data-acao="cid-todas"><span class="pilha" style="gap:0"><b>Todas as cidades</b><span class="t12 fraco">${esc(ufNome(S.uf))} inteiro · ${fmtN(totalEmp)} empresas em ${fmtN(mapeadas.length)} ${mapeadas.length === 1 ? "cidade mapeada" : "cidades mapeadas"}</span></span></button>
-      ${faltam && !S.mapeando ? `<button type="button" class="cid-estado" data-acao="mapear-estado">${ICONE.pin} Mapear as ${fmtN(faltam)} cidades que faltam em ${esc(S.uf)}</button>` : ""}
+      <button type="button" class="cid-op cid-todas ${!S.cidade ? "atual" : ""}" data-acao="cid-todas"><span class="pilha" style="gap:0"><b>Todas as cidades</b><span class="t12 fraco" id="cid-todas-sub">${esc(textoTodas())}</span></span></button>
+      <button type="button" class="cid-estado" id="cid-estado" data-acao="mapear-estado" ${faltam && !S.mapeando ? "" : "hidden"}>${ICONE.pin} <span>${textoFaltam(faltam)}</span></button>
+      <div class="cid-ordem" role="group" aria-label="Ordenar cidades"><span class="t12 fraco">Ordenar:</span><button type="button" class="cid-ord" data-acao="cid-ordem" data-v="az" aria-pressed="${S.cidOrdem === "az"}">A a Z</button><button type="button" class="cid-ord" data-acao="cid-ordem" data-v="mais" aria-pressed="${S.cidOrdem === "mais"}">Mais empresas</button></div>
       <div class="cid-lista" id="cid-lista" role="listbox" aria-label="Cidades">${opcoesCidadesHtml(todas)}</div>
     </div>`;
   }
+  const textoFaltam = (n) => `Mapear as ${fmtN(n)} ${n === 1 ? "cidade que falta" : "cidades que faltam"} em ${S.uf}`;
+  function textoTodas() {
+    const todas = cidadesDoEstado();
+    const mapeadas = todas.filter((c) => c.mapeada).length;
+    const totalEmp = S.cidades.reduce((t, c) => t + c.qtd, 0);
+    const fonte = todas.reduce((t, c) => t + (c.fonte || 0), 0);
+    const base = `${ufNome(S.uf)} inteiro · ${fmtN(totalEmp)} no mapeamento (${fmtN(mapeadas)} ${mapeadas === 1 ? "cidade" : "cidades"})`;
+    if (S.contando && S.contando.uf === S.uf) return `${base} · contando as cidades ${fmtN(S.contando.feitas)} de ${fmtN(S.contando.total)}…`;
+    return fonte ? `${base} · ${fmtN(fonte)} empresas do ramo no estado` : base;
+  }
+  const qtdCidade = (c) => (c.mapeada ? c.qtd : c.fonte || 0);
   function opcoesCidadesHtml(todas = cidadesDoEstado()) {
     if (!todas.length) return `<p class="t13 fraco" style="padding:10px 12px;margin:0">Carregando as cidades…</p>`;
     const q = norm(S.cidBusca);
-    const lista = q ? todas.filter((c) => norm(c.nome).includes(q)) : todas;
+    let lista = q ? todas.filter((c) => norm(c.nome).includes(q)) : todas.slice();
+    if (S.cidOrdem === "mais") lista.sort((a, b) => qtdCidade(b) - qtdCidade(a) || a.nome.localeCompare(b.nome));
+    const contando = S.contando && S.contando.uf === S.uf;
     if (!lista.length) return `<p class="t13 fraco" style="padding:10px 12px;margin:0">Nenhuma cidade com esse nome em ${esc(S.uf)}.</p>`;
     return lista.map((c) => `<button type="button" role="option" class="cid-op ${S.cidadeId && S.cidadeId === c.id ? "atual" : ""}" data-acao="cid-escolher" data-id="${esc(c.id || "")}" data-nome="${esc(c.nome)}" data-mapeada="${c.mapeada}">
-      <span>${esc(c.nome)}</span>${c.mapeada ? `<span class="cid-q num">${fmtN(c.qtd)}</span>` : c.semEmpresas ? `<span class="cid-nada">sem empresas</span>` : `<span class="cid-mapear">mapear</span>`}</button>`).join("");
+      <span>${esc(c.nome)}</span>${c.mapeada
+        ? `<span class="cid-q num" title="${fmtN(c.qtd)} empresas no mapeamento">${fmtN(c.qtd)}</span>`
+        : c.semEmpresas ? `<span class="cid-nada">nenhuma</span>`
+        : c.fonte ? `<span class="cid-fonte"><span class="num" title="${fmtN(c.fonte)} empresas do ramo registradas; ao mapear, holdings ficam de fora">${fmtN(c.fonte)}</span><span class="cid-mapear">mapear</span></span>`
+        : `<span class="cid-mapear">${contando ? "contando…" : "mapear"}</span>`}</button>`).join("");
   }
 
   const alternar = (k, label) => `<button type="button" class="alternar" data-acao="alternar" data-k="${k}" aria-pressed="${S[k]}"><span class="cx">${S[k] ? "✓" : ""}</span><span>${label}</span></button>`;
@@ -831,7 +874,8 @@
     if (S.mapeando) return;
     const uf = S.uf;
     await cidadesIbge(uf);
-    const faltam = cidadesDoEstado().filter((c) => !c.mapeada && !c.semEmpresas);
+    // as cidades com mais empresas primeiro
+    const faltam = cidadesDoEstado().filter((c) => !c.mapeada && !c.semEmpresas).sort((x, y) => (y.fonte || 0) - (x.fonte || 0));
     if (!faltam.length) { toast("Todas as cidades deste estado já foram mapeadas."); return; }
     S.cidMenu = false; S.cidade = null; S.cidadeId = null; S.msg = ""; S.erro = "";
     S.estado = { uf, atual: 0, total: faltam.length, empresas: 0, parar: false, falhas: 0 };
@@ -871,7 +915,8 @@
       case "aba": S.aba = b.dataset.aba; render(); break;
       case "cidade": S.cidade = b.dataset.v; S.cidadeId = b.dataset.id || null; S.aba = "lista"; S.show = 60; salvarPreferencias(); carregarMapeamento(); break;
       case "limpar-cidade": S.cidade = null; S.cidadeId = null; salvarPreferencias(); carregarMapeamento(); break;
-      case "cid-menu": S.cidMenu = !S.cidMenu; S.cidBusca = ""; render(); if (S.cidMenu) { cidadesIbge(S.uf).then(() => { if (S.cidMenu) { const l = $("#cid-lista"); if (l) l.innerHTML = opcoesCidadesHtml(); } }); $("#cid-busca")?.focus(); } break;
+      case "cid-menu": S.cidMenu = !S.cidMenu; S.cidBusca = ""; render(); if (S.cidMenu) { cidadesIbge(S.uf).then(() => { if (S.cidMenu) { const l = $("#cid-lista"); if (l) l.innerHTML = opcoesCidadesHtml(); const t = $("#cid-todas-sub"); if (t) t.textContent = textoTodas(); } contarCidades(S.uf); }); $("#cid-busca")?.focus(); } break;
+      case "cid-ordem": S.cidOrdem = b.dataset.v; app.querySelectorAll(".cid-ord").forEach((x) => x.setAttribute("aria-pressed", x.dataset.v === S.cidOrdem)); { const l = $("#cid-lista"); if (l) { l.innerHTML = opcoesCidadesHtml(); l.scrollTop = 0; } } break;
       case "cid-todas": S.cidMenu = false; S.cidade = null; S.cidadeId = null; S.aba = "lista"; S.show = 60; salvarPreferencias(); carregarMapeamento(); break;
       case "cid-escolher": {
         S.cidMenu = false;

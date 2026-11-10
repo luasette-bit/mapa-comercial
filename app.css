@@ -297,3 +297,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px max(16px, 2vw) 48px; dis
 .cid-estado:hover { background: var(--azul-claro); }
 @media (max-width: 640px) { .cid-campo { min-width: 0; width: 100%; } .cid-menu { width: 100%; } }
 .cid-op .t12 { font-weight: 400; }
+.cid-ordem { display: flex; align-items: center; gap: 6px; padding: 2px 2px 0; }
+.cid-ord { height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--borda); background: var(--branco); font-size: 12px; font-weight: 600; color: var(--fraco); }
+.cid-ord[aria-pressed="true"] { border-color: var(--azul); background: var(--azul); color: var(--branco); }
+.cid-fonte { display: inline-flex; align-items: center; gap: 10px; }
+.cid-fonte .num { font-size: 12px; font-weight: 700; color: var(--tinta); }
