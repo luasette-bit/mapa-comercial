@@ -100,9 +100,12 @@
       if (k) { const a = porId.get(k); porId.set(k, a ? { ...a, qtd: a.qtd + c.qtd, novas: (a.novas || 0) + (c.novas || 0) } : { ...c }); }
       porNome.set(norm(c.municipio), c);
     });
-    const lista = ibge.map((m) => { const c = porId.get(m.id) || porNome.get(norm(m.nome)); const t = S.totais.get(norm(m.nome)); const fonte = t ? t.total : undefined; return { id: m.id, nome: m.nome, qtd: c ? c.qtd : 0, novas: c ? c.novas || 0 : 0, mapeada: !!c, fonte, semEmpresas: !c && (S.buscadas.has(norm(m.nome)) || fonte === 0) }; });
+    const lista = ibge.map((m) => { const c = porId.get(m.id) || porNome.get(norm(m.nome)); const t = S.totais.get(norm(m.nome)); const fonte = t ? t.total : undefined;
+      // só conta como mapeada a cidade que alguém buscou de verdade; uma empresa solta que apareceu na busca de outra cidade não basta
+      const bus = S.buscadas.get(norm(m.nome)); const qtd = c ? c.qtd : 0; const mapeada = !!bus && qtd > 0;
+      return { id: m.id, nome: m.nome, qtd, novas: c ? c.novas || 0 : 0, mapeada, fonte, semEmpresas: !mapeada && (!!bus || fonte === 0) }; });
     // cidade mapeada que não veio do IBGE (sem internet, por exemplo) continua aparecendo
-    S.cidades.forEach((c) => { if (!lista.some((m) => (c.municipio_ibge && m.id === String(c.municipio_ibge)) || norm(m.nome) === norm(c.municipio))) lista.push({ id: c.municipio_ibge ? String(c.municipio_ibge) : null, nome: c.municipio, qtd: c.qtd, novas: c.novas || 0, mapeada: true }); });
+    S.cidades.forEach((c) => { if (!S.buscadas.has(norm(c.municipio))) return; if (!lista.some((m) => (c.municipio_ibge && m.id === String(c.municipio_ibge)) || norm(m.nome) === norm(c.municipio))) lista.push({ id: c.municipio_ibge ? String(c.municipio_ibge) : null, nome: c.municipio, qtd: c.qtd, novas: c.novas || 0, mapeada: true }); });
     return lista;
   }
 
@@ -363,14 +366,17 @@
   }
 
   function cidadesHtml() {
-    if (!S.cidades.length) return `<div class="cartao vazio">Nenhuma cidade mapeada em ${esc(ufNome(S.uf))}.</div>`;
-    const max = Math.max(...S.cidades.map((c) => c.qtd));
+    const buscadas = S.cidades.filter((c) => S.buscadas.has(norm(c.municipio)));
+    const soltas = S.cidades.filter((c) => !S.buscadas.has(norm(c.municipio))).reduce((t, c) => t + c.qtd, 0);
+    if (!buscadas.length) return `<div class="cartao vazio">Nenhuma cidade de ${esc(ufNome(S.uf))} foi mapeada ainda. Escolha uma cidade no campo Cidade para mapear.</div>`;
+    const max = Math.max(...buscadas.map((c) => c.qtd));
     return `<section class="cartao pad pilha" style="gap:14px" aria-label="Concentração por cidade">
       <div class="pilha" style="gap:2px"><span style="font-size:16px;font-weight:700">Onde estão as administradoras</span><span class="t13 fraco">Cidades de ${esc(ufNome(S.uf))} já mapeadas. Clique numa cidade para ver a lista dela.</span></div>
-      <div class="grade-cidades">${S.cidades.map((c) => `<button type="button" class="cidade" data-acao="cidade" data-v="${esc(c.municipio)}" data-id="${esc(c.municipio_ibge || "")}">
+      <div class="grade-cidades">${buscadas.map((c) => `<button type="button" class="cidade" data-acao="cidade" data-v="${esc(c.municipio)}" data-id="${esc(c.municipio_ibge || "")}">
         <span class="linha-flex" style="justify-content:space-between;align-items:baseline"><b>${esc(c.municipio)}</b><span class="q num">${fmtN(c.qtd)}</span></span>
         <span class="barra"><i style="width:${(c.qtd / max * 100).toFixed(1)}%"></i></span>
         <span class="t12 fraco">${c.novas ? `${c.novas} ${c.novas === 1 ? "nova" : "novas"} no último mês` : "nenhuma nova no último mês"}</span></button>`).join("")}</div>
+      ${soltas ? `<p class="t12 fraco" style="margin:0">Mais ${fmtN(soltas)} ${soltas === 1 ? "empresa apareceu" : "empresas apareceram"} na busca de uma cidade vizinha, mas ${soltas === 1 ? "tem endereço" : "têm endereço"} em outra cidade. ${soltas === 1 ? "Ela aparece" : "Elas aparecem"} em Todas as cidades; a cidade delas só conta como mapeada depois de ser buscada.</p>` : ""}
     </section>`;
   }
 
@@ -805,7 +811,9 @@
   }
 
   async function registrarBusca(uf, cidade, qtd) {
-    const m = (IBGE.get(uf) || []).find((x) => norm(x.nome) === norm(cidade));
+    const m = (await cidadesIbge(uf)).find((x) => norm(x.nome) === norm(cidade));
+    // guarda quantas empresas daquela cidade estão de fato no mapeamento (pelo código do IBGE)
+    if (m && qtd > 0) { const { count } = await sb.from("mapa").select("cnpj", { count: "exact", head: true }).eq("municipio_ibge", m.id).eq("removido", false); if (count != null) qtd = count; }
     const linha = { uf, nome: m ? m.nome : cidade, municipio_ibge: m ? m.id : null, qtd, buscada_em: new Date().toISOString() };
     S.buscadas.set(norm(linha.nome), linha);
     await sb.from("cidades_buscadas").upsert(linha, { onConflict: "uf,nome" });
@@ -919,6 +927,13 @@
       case "cid-ordem": S.cidOrdem = b.dataset.v; app.querySelectorAll(".cid-ord").forEach((x) => x.setAttribute("aria-pressed", x.dataset.v === S.cidOrdem)); { const l = $("#cid-lista"); if (l) { l.innerHTML = opcoesCidadesHtml(); l.scrollTop = 0; } } break;
       case "cid-todas": S.cidMenu = false; S.cidade = null; S.cidadeId = null; S.aba = "lista"; S.show = 60; salvarPreferencias(); carregarMapeamento(); break;
       case "cid-escolher": {
+        // cidade grande: avisa quanto tempo leva antes de começar
+        const fonte = (S.totais.get(norm(b.dataset.nome)) || {}).total || 0;
+        if (b.dataset.mapeada !== "true" && fonte > 600 && !b.dataset.certeza) {
+          b.dataset.certeza = "1";
+          b.innerHTML = `<span><b>${esc(b.dataset.nome)}</b>: ${fmtN(fonte)} empresas, leva uns ${fmtN(Math.ceil(fonte / 30 * 8 / 60))} min. Clique de novo para mapear.</span>`;
+          break;
+        }
         S.cidMenu = false;
         if (b.dataset.mapeada === "true") { S.cidade = b.dataset.nome; S.cidadeId = b.dataset.id || null; S.aba = "lista"; S.show = 60; salvarPreferencias(); carregarMapeamento(); }
         else mapearCidade(b.dataset.nome);
