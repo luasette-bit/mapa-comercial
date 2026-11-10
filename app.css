@@ -197,3 +197,17 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px max(16px, 2vw) 48px; dis
   .mapa { height: 340px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* cadastro e aprovação */
+.login-rodape { text-align: center; font-size: 13px; color: var(--fraco); border-top: 1px solid var(--linha-clara); padding-top: 14px; margin-top: 4px; }
+.link-forte { background: none; border: none; padding: 0; color: var(--azul); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.passos { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; counter-reset: p; }
+.passos li { counter-increment: p; display: flex; gap: 10px; align-items: center; font-size: 13px; }
+.passos li::before { content: counter(p); width: 24px; height: 24px; border-radius: 50%; background: var(--linha-clara); color: var(--fraco); font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.passos li.feito::before { content: "✓"; background: var(--verde-fundo); color: var(--verde); }
+.contador { display: inline-flex; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; background: var(--amarelo); color: var(--azul); font-size: 12px; font-weight: 700; align-items: center; justify-content: center; margin-left: 4px; }
+.pendentes { border-color: var(--amarelo-borda); }
+.pendentes .lista-cab { background: var(--amarelo-faixa); }
+.pendente { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 16px 18px; border-bottom: 1px solid var(--linha-clara); }
+.pendente:last-child { border-bottom: none; }
+.pendente .btn { height: 40px; font-size: 13px; }

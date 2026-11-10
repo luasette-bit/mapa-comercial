@@ -58,8 +58,13 @@
 
   /* ----------------------------------------------------------------- dados */
   async function carregarPerfil() {
-    const { data } = await sb.from("perfis").select("nome,papel").eq("id", S.user.id).maybeSingle();
-    S.perfil = data || { nome: (S.user.email || "").split("@")[0], papel: "sdr" };
+    const { data } = await sb.from("perfis").select("nome,papel,aprovado").eq("id", S.user.id).maybeSingle();
+    S.perfil = data || { nome: (S.user.email || "").split("@")[0], papel: "sdr", aprovado: false };
+    S.pendentes = 0;
+    if (S.perfil.aprovado && S.perfil.papel === "admin") {
+      const { count } = await sb.from("perfis").select("id", { count: "exact", head: true }).eq("aprovado", false);
+      S.pendentes = count || 0;
+    }
   }
   async function carregarSocios(basicos) {
     const falta = [...new Set(basicos)].filter((b) => !S.socios.has(b));
@@ -165,14 +170,15 @@
   /* --------------------------------------------------------------- telas */
   function render() {
     if (S.recuperando) return renderNovaSenha();
-    if (!S.user) return renderLogin();
+    if (!S.user) return S.cadastro ? renderCadastro() : renderLogin();
+    if (S.perfil && !S.perfil.aprovado) return renderAguardando();
     app.innerHTML = topo() + `<main>${S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : telaEquipe()}</main>`;
     if (S.view === "regiao") desenharMapa();
   }
 
   function topo() {
     const nav = [["mapeamento", "Mapeamento"], ["regiao", "Região"], ["listas", "Listas exportadas"]];
-    if (S.perfil?.papel === "admin") nav.push(["equipe", "Equipe"]);
+    if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <div class="marca"><div class="marca-icone">${ICONE.logo}</div><div><div class="marca-nome">Mapa Comercial</div><div class="marca-sub">PRG Software · Grupo WorkOffice</div></div></div>
       <nav aria-label="Menu principal">${nav.map(([k, l]) => `<button type="button" data-acao="ir" data-view="${k}" ${S.view === k ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>
@@ -500,8 +506,13 @@
     if (S.perfil?.papel !== "admin") return `<div class="cartao vazio">Só administradores podem ver esta tela.</div>`;
     if (!S.equipe) { carregarEquipe(); return `<div class="cartao vazio">Carregando a equipe…</div>`; }
     if (S.equipe.erro) return `<div class="aviso aviso-erro">${esc(S.equipe.erro)}</div>`;
-    return `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Equipe</h1><p class="fraco" style="margin:0">Quem pode entrar no Mapa Comercial. Cada pessoa entra com o próprio e-mail e senha.</p></div></div>
-      <section class="cartao pad pilha" style="gap:12px"><b>Adicionar pessoa</b>
+    const pend = S.equipe.usuarios.filter((u) => !u.aprovado), ok = S.equipe.usuarios.filter((u) => u.aprovado);
+    const cel = (c) => { const d = String(c || "").replace(/\D/g, ""); return d.length >= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, -4)}-${d.slice(-4)}` : ""; };
+    return `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Equipe</h1><p class="fraco" style="margin:0">Quem pode entrar no Mapa Comercial. As pessoas criam a conta na tela de entrada e você aprova aqui.</p></div></div>
+      ${pend.length ? `<section class="cartao pendentes" style="overflow:hidden"><div class="lista-cab"><b>Aguardando sua aprovação · ${pend.length}</b><span class="t12 fraco">Só aprove quem é da equipe.</span></div>
+        ${pend.map((u) => `<div class="pendente"><div class="pilha" style="gap:2px"><b>${esc(u.nome)}</b><span class="t13">${esc(u.email)}${u.celular ? ` · ${esc(cel(u.celular))}` : ""}</span><span class="t12 fraco">pediu acesso em ${esc(fmtData(u.criado_em))}</span></div>
+          <div class="linha-flex"><button type="button" class="btn btn-primario" data-acao="usuario" data-op="aprovar" data-papel="sdr" data-id="${u.id}">Aprovar como SDR</button><button type="button" class="btn btn-sec" data-acao="usuario" data-op="aprovar" data-papel="admin" data-id="${u.id}">Aprovar como administradora</button><button type="button" class="btn btn-perigo" data-acao="usuario" data-op="recusar" data-id="${u.id}">Recusar</button></div></div>`).join("")}</section>` : ""}
+      <section class="cartao pad pilha" style="gap:12px"><b>Adicionar pessoa você mesma</b>
         <form class="form-grade" data-acao="criar-usuario" autocomplete="off">
           <div class="campo"><label for="u-nome">Nome</label><input id="u-nome" class="input" required maxlength="60"></div>
           <div class="campo"><label for="u-email">E-mail</label><input id="u-email" class="input" type="email" required></div>
@@ -511,8 +522,8 @@
         </form>
         <span class="t12 fraco">Passe a senha inicial para a pessoa por fora (WhatsApp, por exemplo). Ela pode trocar depois em "Esqueci a senha".</span>
       </section>
-      <section class="cartao" style="overflow:hidden"><div class="rolagem"><table class="tab-simples"><thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>
-        ${S.equipe.usuarios.map((u) => `<tr><td><b>${esc(u.nome)}</b>${u.ativo ? "" : ' <span class="selo s-errado">Desativado</span>'}</td><td>${esc(u.email)}</td><td>${u.papel === "admin" ? "Administrador" : "SDR"}</td><td class="num">${u.ultimo_acesso ? esc(fmtData(u.ultimo_acesso)) : "nunca entrou"}</td>
+      <section class="cartao" style="overflow:hidden"><div class="rolagem"><table class="tab-simples"><thead><tr><th>Nome</th><th>E-mail</th><th>Celular</th><th>Papel</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>
+        ${ok.map((u) => `<tr><td><b>${esc(u.nome)}</b>${u.ativo ? "" : ' <span class="selo s-errado">Desativado</span>'}</td><td>${esc(u.email)}</td><td class="num">${esc(cel(u.celular))}</td><td>${u.papel === "admin" ? "Administrador" : "SDR"}</td><td class="num">${u.ultimo_acesso ? esc(fmtData(u.ultimo_acesso)) : "nunca entrou"}</td>
           <td><div class="linha-flex">${u.id === S.user.id ? '<span class="t12 fraco">você</span>' : `<button type="button" class="mini" data-acao="usuario" data-op="${u.ativo ? "desativar" : "reativar"}" data-id="${u.id}">${u.ativo ? "Desativar" : "Reativar"}</button><button type="button" class="mini" data-acao="usuario" data-op="papel" data-papel="${u.papel === "admin" ? "sdr" : "admin"}" data-id="${u.id}">${u.papel === "admin" ? "Tornar SDR" : "Tornar administrador"}</button>`}<button type="button" class="mini" data-acao="nova-senha" data-id="${u.id}" data-nome="${esc(u.nome)}">Nova senha</button></div></td></tr>`).join("")}
       </tbody></table></div></section>`;
   }
@@ -532,7 +543,9 @@
       ${erro ? `<p class="erro-txt" role="alert">${esc(erro)}</p>` : ""}${msg ? `<p class="aviso aviso-ok" style="margin:4px 0 0">${esc(msg)}</p>` : ""}
       <button type="submit" class="btn btn-primario">Entrar</button>
       <button type="button" class="mini" style="align-self:center;border:none;text-decoration:underline" id="l-esqueci">Esqueci a senha</button>
+      <div class="login-rodape">Ainda não tem conta? <button type="button" class="link-forte" id="l-criar">Criar conta</button></div>
     </form></div>`;
+    $("#l-criar").onclick = () => { S.cadastro = true; render(); };
     $("#form-login").onsubmit = async (e) => {
       e.preventDefault();
       const b = e.target.querySelector("button[type=submit]"); b.disabled = true; b.textContent = "Entrando…";
@@ -546,6 +559,64 @@
       renderLogin("Se esse e-mail tiver acesso, chega uma mensagem com o link para criar uma senha nova. Se não chegar, peça para a administradora gerar uma senha nova em Equipe.");
     };
   }
+  function renderCadastro(erro = "") {
+    const v = S.cadastroDados || {};
+    app.innerHTML = `<div class="login-fundo"><form class="login" id="form-cadastro" autocomplete="on" novalidate>
+      <div class="marca" style="margin-bottom:14px"><div class="marca-icone">${ICONE.logo}</div><div><div class="marca-nome">Mapa Comercial</div><div class="marca-sub">PRG Software · Grupo WorkOffice</div></div></div>
+      <h1>Crie sua conta</h1>
+      <p class="fraco t13" style="margin:0 0 4px">Leva menos de 1 minuto. Depois a administradora libera o seu acesso.</p>
+      <label for="c-nome">Nome completo</label><input id="c-nome" autocomplete="name" maxlength="60" required value="${esc(v.nome || "")}">
+      <label for="c-email">E-mail</label><input id="c-email" type="email" autocomplete="email" required value="${esc(v.email || "")}">
+      <label for="c-cel">Celular (WhatsApp)</label><input id="c-cel" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="(13) 99999-9999" required value="${esc(v.celular || "")}">
+      <label for="c-senha">Senha</label><input id="c-senha" type="password" autocomplete="new-password" minlength="8" required placeholder="Pelo menos 8 caracteres">
+      ${erro ? `<p class="erro-txt" role="alert">${esc(erro)}</p>` : ""}
+      <button type="submit" class="btn btn-primario">Criar minha conta</button>
+      <div class="login-rodape">Já tem conta? <button type="button" class="link-forte" id="c-entrar">Entrar</button></div>
+    </form></div>`;
+    const cel = $("#c-cel");
+    cel.oninput = () => {
+      const d = cel.value.replace(/\D/g, "").slice(0, 11);
+      cel.value = d.length > 6 ? `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}` : d.length > 2 ? `(${d.slice(0, 2)}) ${d.slice(2)}` : d;
+    };
+    $("#c-entrar").onclick = () => { S.cadastro = false; render(); };
+    $("#form-cadastro").onsubmit = async (e) => {
+      e.preventDefault();
+      const dados = { nome: $("#c-nome").value.trim(), email: $("#c-email").value.trim().toLowerCase(), celular: cel.value, senha: $("#c-senha").value };
+      S.cadastroDados = { nome: dados.nome, email: dados.email, celular: dados.celular };
+      if (dados.nome.length < 2) return renderCadastro("Digite seu nome.");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dados.email)) return renderCadastro("Digite um e-mail válido.");
+      const dig = dados.celular.replace(/\D/g, "");
+      if (dig.length < 10 || dig.length > 11) return renderCadastro("Digite o celular com DDD.");
+      if (dados.senha.length < 8) return renderCadastro("A senha precisa ter pelo menos 8 caracteres.");
+      const b = e.target.querySelector("button[type=submit]"); b.disabled = true; b.textContent = "Criando sua conta…";
+      const r = await chamar("criar-conta", dados);
+      if (r.erro) return renderCadastro(r.erro === "rede" ? "Sem conexão agora. Tente de novo." : r.erro);
+      S.cadastro = false; S.cadastroDados = null;
+      const { error } = await sb.auth.signInWithPassword({ email: dados.email, password: dados.senha });
+      if (error) renderLogin("Conta criada! Entre com seu e-mail e senha.");
+    };
+  }
+
+  function renderAguardando() {
+    const primeiro = esc((S.perfil?.nome || "").split(" ")[0]);
+    app.innerHTML = `<div class="login-fundo"><div class="login" style="gap:14px">
+      <div class="marca"><div class="marca-icone">${ICONE.logo}</div><div><div class="marca-nome">Mapa Comercial</div><div class="marca-sub">PRG Software · Grupo WorkOffice</div></div></div>
+      <div class="sino" style="width:48px;height:48px;border-radius:14px;font-size:22px" aria-hidden="true">⏳</div>
+      <h1>Conta criada, ${primeiro}!</h1>
+      <p style="margin:0">Agora a administradora precisa liberar o seu acesso. Avise a Lua que você já se cadastrou.</p>
+      <ol class="passos"><li class="feito">Cadastro feito com <b>${esc(S.user?.email || "")}</b></li><li>A administradora aprova em <b>Equipe</b></li><li>Você entra e já vê as administradoras mapeadas</li></ol>
+      <button type="button" class="btn btn-primario" id="a-verificar">Já fui aprovado, entrar</button>
+      <button type="button" class="mini" style="align-self:center;border:none;text-decoration:underline" id="a-sair">Sair</button>
+    </div></div>`;
+    $("#a-verificar").onclick = async (e) => {
+      e.target.disabled = true; e.target.textContent = "Verificando…";
+      await carregarPerfil();
+      if (S.perfil.aprovado) { render(); await carregarMapeamento(); localizarPendentes(S.uf); }
+      else { render(); toast("Ainda não foi aprovado. Tente de novo daqui a pouco."); }
+    };
+    $("#a-sair").onclick = () => sb.auth.signOut();
+  }
+
   function renderNovaSenha(erro = "") {
     app.innerHTML = `<div class="login-fundo"><form class="login" id="form-senha"><h1>Criar senha nova</h1>
       <label for="n-senha">Senha nova (mín. 8 caracteres)</label><input id="n-senha" type="password" minlength="8" autocomplete="new-password" required>
@@ -703,9 +774,11 @@
       case "raio": S.reg.raio = +b.dataset.v; carregarRegiao(); break;
       case "r-tipo": S.reg.tipo = b.dataset.v; render(); break;
       case "usuario": {
+        if (b.dataset.op === "recusar" && !b.dataset.certeza) { b.dataset.certeza = "1"; b.textContent = "Clique de novo para recusar"; break; }
         b.disabled = true;
         const data = await chamar("gerenciar-usuarios", { acao: b.dataset.op, id: b.dataset.id, papel: b.dataset.papel });
-        if (data.erro) toast(data.erro === "rede" ? "Não foi possível agora. Tente de novo." : data.erro); else toast("Pronto");
+        if (data.erro) toast(data.erro === "rede" ? "Não foi possível agora. Tente de novo." : data.erro);
+        else { toast(b.dataset.op === "aprovar" ? "Acesso liberado" : b.dataset.op === "recusar" ? "Pedido recusado" : "Pronto"); if (b.dataset.op === "aprovar" || b.dataset.op === "recusar") S.pendentes = Math.max(0, (S.pendentes || 0) - 1); }
         S.equipe = null; render(); break;
       }
       case "nova-senha": {
@@ -747,13 +820,14 @@
     if (!S.user) return render();
     await carregarPerfil();
     render();
+    if (!S.perfil.aprovado) return;
     await carregarMapeamento();
     localizarPendentes(S.uf);
   }
   sb.auth.onAuthStateChange((evento, sessao) => {
     if (evento === "PASSWORD_RECOVERY") { S.recuperando = true; S.user = sessao?.user || null; render(); return; }
     if (evento === "SIGNED_IN" && !S.user && !S.recuperando) { iniciar(); return; }
-    if (evento === "SIGNED_OUT") { S.user = null; S.perfil = null; S.rows = []; S.sel = null; S.selRow = null; S.menu = false; render(); }
+    if (evento === "SIGNED_OUT") { S.user = null; S.perfil = null; S.pendentes = 0; S.equipe = null; S.rows = []; S.sel = null; S.selRow = null; S.menu = false; render(); }
   });
   iniciar();
 })();
