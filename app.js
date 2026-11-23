@@ -270,12 +270,12 @@
     if (S.recuperando) return renderNovaSenha();
     if (!S.user) return S.cadastro ? renderCadastro() : renderLogin();
     if (S.perfil && !S.perfil.aprovado) return renderAguardando();
-    app.innerHTML = topo() + `<main>${S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : telaEquipe()}</main>`;
+    app.innerHTML = topo() + `<main>${S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "ligacoes" ? telaLigacoes() : S.view === "relatorios" ? telaRelatorios() : telaEquipe()}</main>`;
     if (S.view === "regiao") desenharMapa();
   }
 
   function topo() {
-    const nav = [["mapeamento", "Mapeamento"], ["regiao", "Região"], ["listas", "Listas exportadas"]];
+    const nav = [["mapeamento", "Mapeamento"], ["regiao", "Região"], ["ligacoes", "Ligações"], ["relatorios", "Relatórios"], ["listas", "Listas exportadas"]];
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="mapeamento" aria-label="Mapa Comercial, voltar ao Mapeamento"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
@@ -514,7 +514,8 @@
         <span class="t12 fraco">Atividade principal: ${esc(CNAES[r.cnae_principal] || r.cnae_principal || "não informada")}</span>
       </div>
       <div class="acoes-painel">
-        <button type="button" class="btn btn-primario" data-acao="copiar">Copiar dados</button>
+        <button type="button" class="btn btn-primario" data-acao="ficha-empresa">Registrar ligação</button>
+        <button type="button" class="btn btn-sec" data-acao="copiar">Copiar dados</button>
         <button type="button" class="btn btn-perigo" data-acao="remover">${S.confirmarRemocao ? "Confirmar remoção" : "Remover do mapeamento"}</button>
       </div>
     </aside>`;
@@ -721,7 +722,7 @@
     if (S.equipe.erro) return `<div class="aviso aviso-erro">${esc(S.equipe.erro)}</div>`;
     const pend = S.equipe.usuarios.filter((u) => !u.aprovado), ok = S.equipe.usuarios.filter((u) => u.aprovado);
     const cel = (c) => { const d = String(c || "").replace(/\D/g, ""); return d.length >= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, -4)}-${d.slice(-4)}` : ""; };
-    return `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Equipe</h1><p class="fraco" style="margin:0">Quem pode entrar no Mapa Comercial. Cada pessoa cria a própria conta na tela de entrada e já entra. Aqui você troca o papel, gera senha nova ou desativa quem saiu da equipe.</p></div></div>
+    return `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Equipe</h1><p class="fraco" style="margin:0">Quem pode entrar no Mapa Comercial. Cada pessoa cria a própria conta na tela de entrada e só entra depois que uma administradora aprova aqui. Você também troca o papel, gera senha nova ou desativa quem saiu da equipe.</p></div></div>
       ${pend.length ? `<section class="cartao pendentes" style="overflow:hidden"><div class="lista-cab"><b>Aguardando sua aprovação · ${pend.length}</b><span class="t12 fraco">Só aprove quem é da equipe.</span></div>
         ${pend.map((u) => `<div class="pendente"><div class="pilha" style="gap:2px"><b>${esc(u.nome)}</b><span class="t13">${esc(u.email)}${u.celular ? ` · ${esc(cel(u.celular))}` : ""}</span><span class="t12 fraco">pediu acesso em ${esc(fmtData(u.criado_em))}</span></div>
           <div class="linha-flex"><button type="button" class="btn btn-primario" data-acao="usuario" data-op="aprovar" data-papel="sdr" data-id="${u.id}">Aprovar como SDR</button><button type="button" class="btn btn-sec" data-acao="usuario" data-op="aprovar" data-papel="admin" data-id="${u.id}">Aprovar como administradora</button><button type="button" class="btn btn-perigo" data-acao="usuario" data-op="recusar" data-id="${u.id}">Recusar</button></div></div>`).join("")}</section>` : ""}
@@ -1000,6 +1001,531 @@
     }
   }
 
+  /* ------------------------------------------------- ligações e relatórios */
+  // O resultado é o que aconteceu na ligação. Se ela é contato novo ou follow-up o sistema descobre sozinho:
+  // a primeira ligação para a administradora é nova, as seguintes são follow-up.
+  const RESULTADOS = [
+    ["conversou", "Conversei", "s-ident"],
+    ["sem_contato", "Não atendeu / sem contato", "s-vazio"],
+    ["negativa", "Negativa", "s-errado"],
+    ["demo_agendada", "Demo agendada", "s-roxo"],
+    ["demo_realizada", "Demo realizada", "s-conf"],
+    ["contrato", "Contrato fechado", "s-conf"],
+    ["anotacao", "Só anotação", "s-neutro"],
+  ];
+  const RES = Object.fromEntries(RESULTADOS.map(([k, l, c]) => [k, { l, c }]));
+  const LIGACAO = new Set(["conversou", "sem_contato", "negativa", "demo_agendada"]);
+  const ETAPA = { prospeccao: ["Em prospecção", "s-neutro"], demo_agendada: ["Demo agendada", "s-roxo"], demo_realizada: ["Demo realizada", "s-ident"], contrato: ["Contrato fechado", "s-conf"], negativa: ["Negativa", "s-errado"] };
+  const FILTRO_ETAPA = [["todas", "Todas"], ["prospeccao", "Em prospecção"], ["demo_agendada", "Demo agendada"], ["demo_realizada", "Demo realizada"], ["contrato", "Contrato"], ["negativa", "Negativa"]];
+  const CAMPOS = [
+    ["nome", "Administradora"], ["telefones", "Números disponíveis para contato"], ["horario_funcionamento", "Horário de funcionamento"],
+    ["cidade", "Cidade"], ["uf", "UF"], ["sistema", "Sistema usado"], ["qtd_condominios", "Quantos condomínios atende"], ["qtd_unidades", "Quantas unidades"],
+    ["atendente", "Nome de quem atendeu a ligação"], ["email", "E-mail para contato"], ["numero_responsavel", "Número do responsável"],
+    ["melhor_horario", "Melhor horário para falar com o responsável"], ["responsavel", "Nome do responsável"], ["cnpj", "CNPJ"],
+  ];
+  const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  const DIAS = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+  const TZ = "America/Sao_Paulo";
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const hojeISO = () => new Date().toLocaleDateString("sv-SE", { timeZone: TZ });
+  const isoData = (iso) => new Date(iso + "T12:00:00Z");
+  const somaDias = (iso, n) => { const d = isoData(iso); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const segundaDe = (iso) => somaDias(iso, -((isoData(iso).getUTCDay() + 6) % 7));
+  const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  const ddmmaaaa = (iso) => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "";
+  const localSP = (ts) => ts ? new Date(ts).toLocaleString("sv-SE", { timeZone: TZ }).slice(0, 16).replace(" ", "T") : "";
+  const extenso = (iso, hora) => `${iso.slice(8, 10)} de ${MESES[+iso.slice(5, 7) - 1]}${hora ? ` às ${hora}` : ""}`;
+
+  S.lg = { dono: null, carregado: false, carregando: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, busca: "", etapa: "todas", sel: null, novo: false, colar: false, texto: "", preview: null, apagar: null };
+  S.rl = { periodo: "dia", ref: hojeISO(), editObs: false, editAj: false };
+
+  const donoAtual = () => S.lg.dono || S.user.id;
+  const souDono = () => donoAtual() === S.user.id;
+
+  async function tudo(montar) {
+    const out = [];
+    for (let de = 0; ; de += 1000) {
+      const { data, error } = await montar().range(de, de + 999);
+      if (error) throw error;
+      out.push(...(data || []));
+      if (!data || data.length < 1000) return out;
+    }
+  }
+  async function carregarLig() {
+    const L = S.lg; if (L.carregando) return; L.carregando = true;
+    const dono = donoAtual();
+    const q = (t, cols) => () => { let x = sb.from(t).select(cols); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order(t === "acumulado_base" ? "usuario_id" : t === "relatorios" ? "inicio" : "id"); };
+    try {
+      const [fichas, regs, base, rels] = await Promise.all([
+        tudo(q("fichas", "*")), tudo(q("registros", "id,ficha_id,usuario_id,data,tipo,texto,criado_em")),
+        tudo(q("acumulado_base", "*")), tudo(q("relatorios", "*")),
+      ]);
+      Object.assign(L, { fichas, regs, base, rels });
+      if (S.perfil?.papel === "admin" && !L.pessoas) { const { data } = await sb.from("perfis").select("id,nome").eq("aprovado", true).order("nome"); L.pessoas = data || []; }
+      derivar();
+      L.carregado = true;
+    } catch (e) { console.error(e); toast("Não deu para carregar as ligações. Tente de novo."); }
+    finally { L.carregando = false; render(); }
+  }
+  function derivar() {
+    const L = S.lg;
+    L.fichaPorId = new Map(L.fichas.map((f) => [f.id, f]));
+    L.porFicha = new Map();
+    const ord = [...L.regs].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.criado_em < b.criado_em ? -1 : 1));
+    for (const r of ord) { if (!L.porFicha.has(r.ficha_id)) L.porFicha.set(r.ficha_id, []); L.porFicha.get(r.ficha_id).push(r); }
+    for (const [id, lista] of L.porFicha) {
+      let primeira = !L.fichaPorId.get(id)?.contato_anterior;
+      for (const r of lista) { r.nova = false; if (LIGACAO.has(r.tipo)) { r.nova = primeira; primeira = false; } }
+    }
+  }
+  const nomePessoa = (id) => id === S.user.id ? S.perfil?.nome : (S.lg.pessoas || []).find((p) => p.id === id)?.nome || "";
+  const jaLigou = (f) => f.contato_anterior || (S.lg.porFicha.get(f.id) || []).some((r) => LIGACAO.has(r.tipo));
+
+  function metricas(ini, fim) {
+    const rs = S.lg.regs.filter((r) => r.data >= ini && r.data <= fim);
+    const lig = rs.filter((r) => LIGACAO.has(r.tipo));
+    const n = (t) => rs.filter((r) => r.tipo === t).length;
+    return { rs, lig, ligacoes: lig.length, pessoas: new Set(lig.map((r) => r.ficha_id)).size, primeira_ligacao: lig.filter((r) => r.nova).length, follow_up: lig.filter((r) => !r.nova).length,
+      sem_contato: n("sem_contato"), negativa: n("negativa"), demo_agendada: n("demo_agendada"), demo_realizada: n("demo_realizada"), contrato: n("contrato") };
+  }
+  function acumulado(fim) {
+    const L = S.lg; let tentativas = 0, prospectadas = 0;
+    const baseAte = new Map();
+    for (const b of L.base) if (b.ate <= fim) { tentativas += b.tentativas; prospectadas += b.prospectadas; baseAte.set(b.usuario_id, b.ate); }
+    for (const r of L.regs) {
+      if (r.data > fim || !LIGACAO.has(r.tipo)) continue;
+      const ate = baseAte.get(r.usuario_id); if (ate && r.data <= ate) continue;
+      tentativas++; if (r.nova) prospectadas++;
+    }
+    const fichasCom = (t) => [...new Set(L.regs.filter((r) => r.tipo === t && r.data <= fim).map((r) => r.ficha_id))].map((id) => L.fichaPorId.get(id)).filter(Boolean);
+    return { tentativas, prospectadas, demos: fichasCom("demo_realizada"), contratos: fichasCom("contrato") };
+  }
+
+  /* ---- tela Ligações */
+  function seletorPessoa(id) {
+    if (S.perfil?.papel !== "admin" || !S.lg.pessoas) return "";
+    const d = donoAtual();
+    return `<div class="campo" style="min-width:200px"><label for="${id}">De quem</label><select id="${id}" class="input sel-dono"><option value="${S.user.id}">Eu (${esc(S.perfil.nome)})</option>${S.lg.pessoas.filter((p) => p.id !== S.user.id).map((p) => `<option value="${p.id}" ${d === p.id ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}<option value="todos" ${d === "todos" ? "selected" : ""}>Equipe toda</option></select></div>`;
+  }
+  function ultimaDe(f) { const l = S.lg.porFicha.get(f.id); return l && l.length ? l[l.length - 1] : null; }
+  function fichasFiltradas() {
+    const L = S.lg, b = norm(L.busca);
+    return L.fichas.filter((f) => (L.etapa === "todas" || f.etapa === L.etapa) && (!b || norm([f.nome, f.cidade, f.uf, f.sistema, f.responsavel, f.telefones].join(" ")).includes(b)))
+      .sort((x, y) => { const a = ultimaDe(x)?.data || x.criado_em.slice(0, 10), c = ultimaDe(y)?.data || y.criado_em.slice(0, 10); return a < c ? 1 : a > c ? -1 : (x.atualizado_em < y.atualizado_em ? 1 : -1); });
+  }
+  function linhasFichas() {
+    const lista = fichasFiltradas();
+    if (!lista.length) return `<div class="vazio">${S.lg.fichas.length ? "Nenhuma ficha com esse filtro." : "Nenhuma ficha ainda. Clique em <b>Nova ficha</b> ou <b>Colar do meu documento</b>."}</div>`;
+    return lista.map((f) => {
+      const u = ultimaDe(f), lig = (S.lg.porFicha.get(f.id) || []).filter((r) => LIGACAO.has(r.tipo)).length, [el, ec] = ETAPA[f.etapa] || ETAPA.prospeccao;
+      return `<button type="button" class="lg-linha" data-acao="lg-sel" data-id="${f.id}" aria-pressed="${S.lg.sel === f.id}">
+        <span class="pilha" style="gap:1px;min-width:0"><span class="t-nome">${esc(f.nome)}</span><span class="t12 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "Cidade não informada")}${S.lg.dono === "todos" ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span></span>
+        <span class="t13">${f.sistema ? esc(f.sistema) : '<span class="fraco">Sistema ?</span>'}</span>
+        <span><span class="selo ${ec}">${el}</span></span>
+        <span class="t12">${u ? `<b class="num">${ddmm(u.data)}</b> · ${esc(RES[u.tipo]?.l || "")}<br><span class="fraco">${lig} ${lig === 1 ? "ligação" : "ligações"}</span>` : '<span class="fraco">Sem ligação ainda</span>'}</span>
+      </button>`;
+    }).join("");
+  }
+  function telaLigacoes() {
+    const L = S.lg;
+    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Ligações</h1><p class="fraco" style="margin:0">A ficha de cada administradora e tudo o que aconteceu em cada ligação. Tudo entra sozinho nos relatórios do dia, da semana e do mês.</p></div>
+      <div class="linha-flex" style="align-items:flex-end">${seletorPessoa("lg-dono")}${souDono() ? `<button type="button" class="btn btn-sec" data-acao="lg-colar">Colar do meu documento</button><button type="button" class="btn btn-primario" data-acao="lg-nova">+ Nova ficha</button>` : ""}</div></div>`;
+    if (!L.carregado) { if (!L.carregando) carregarLig(); return cab + `<div class="cartao vazio">Carregando as ligações…</div>`; }
+    const hoje = hojeISO(), m = metricas(hoje, hoje);
+    const ind = (v, l, sub = "") => `<div class="ind ${v ? "" : "zero"}"><span class="v">${fmtN(v)}</span><span class="t12 fraco">${l}${sub}</span></div>`;
+    return cab + `
+      <section class="cartao" style="overflow:hidden"><div class="lista-cab"><b>Hoje, ${DIAS[isoData(hoje).getUTCDay()]} ${ddmm(hoje)}</b><button type="button" class="mini" data-acao="lg-rel-dia">Ver relatório do dia →</button></div>
+        <div class="resumo resumo6">${ind(m.ligacoes, "Ligações", m.ligacoes ? ` para ${fmtN(m.pessoas)} administradora${m.pessoas === 1 ? "" : "s"}` : "")}${ind(m.primeira_ligacao, "Contatos novos")}${ind(m.follow_up, "Follow-ups")}${ind(m.sem_contato, "Sem contato")}${ind(m.negativa, "Negativas")}${ind(m.demo_agendada, "Demos agendadas")}</div></section>
+      ${L.colar ? telaColar() : ""}
+      <section class="cartao filtros"><div class="linha-filtros">
+        <div class="campo" style="flex:1 1 260px"><label for="lg-busca">Procurar</label><input id="lg-busca" class="input" value="${esc(L.busca)}" placeholder="Nome, cidade, sistema, responsável…" autocomplete="off"></div>
+        <div class="campo"><span class="rotulo">Etapa</span><div class="chips">${FILTRO_ETAPA.map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(k === "todas" ? L.fichas.length : L.fichas.filter((f) => f.etapa === k).length)}</b></button>`).join("")}</div></div>
+      </div></section>
+      <div class="duas">
+        <section class="cartao lista"><div class="lista-cab"><b>Fichas</b><span class="t12 fraco">a mais recente primeiro</span></div>
+          <div class="rolagem"><div class="lg-tabela"><div class="lg-cab"><span>Administradora</span><span>Sistema</span><span>Etapa</span><span>Último registro</span></div><div id="lg-lista">${linhasFichas()}</div></div></div></section>
+        ${painelFicha()}
+      </div>`;
+  }
+
+  function campoFicha(k, label, f, ro) {
+    const v = f?.[k] ?? "", dis = ro ? "disabled" : "";
+    if (k === "uf") return `<div class="campo"><label for="fx-uf">${label}</label><select id="fx-uf" name="uf" class="input" ${dis}><option value=""></option>${UFS.map(([u]) => `<option ${v === u ? "selected" : ""}>${u}</option>`).join("")}</select></div>`;
+    if (k === "sistema") return `<div class="campo"><label for="fx-sistema">${label}</label><input id="fx-sistema" name="sistema" class="input" list="lg-sistemas" value="${esc(v)}" ${dis}></div>`;
+    const tipo = k.startsWith("qtd_") ? 'type="number" min="0"' : k === "email" ? 'type="email"' : "";
+    return `<div class="campo ${["nome", "telefones", "melhor_horario"].includes(k) ? "campo-largo" : ""}"><label for="fx-${k}">${label}</label><input id="fx-${k}" name="${k}" class="input" ${tipo} value="${esc(v)}" ${k === "nome" ? "required maxlength=\"200\"" : ""} ${dis}></div>`;
+  }
+  function formFicha(f, ro) {
+    return `<form class="lg-form" data-acao="lg-ficha" autocomplete="off">
+      ${CAMPOS.map(([k, l]) => campoFicha(k, l, f, ro)).join("")}
+      <div class="campo"><label for="fx-demo">Demonstração (data e hora)</label><input id="fx-demo" name="demo_em" type="datetime-local" class="input" value="${esc(localSP(f?.demo_em))}" ${ro ? "disabled" : ""}></div>
+      <div class="campo"><label for="fx-formato">Formato da demonstração</label><select id="fx-formato" name="demo_formato" class="input" ${ro ? "disabled" : ""}><option value="virtual">Virtual</option><option value="presencial" ${f?.demo_formato === "presencial" ? "selected" : ""}>Presencial</option></select></div>
+      <div class="campo"><label for="fx-contrato">Contrato fechado em</label><input id="fx-contrato" name="contrato_em" type="date" class="input" value="${esc(f?.contrato_em || "")}" ${ro ? "disabled" : ""}></div>
+      <label class="lg-check campo-largo"><input type="checkbox" name="contato_anterior" ${f?.contato_anterior ? "checked" : ""} ${ro ? "disabled" : ""}> <span>Já tinha contato com esta administradora antes do sistema <span class="fraco">(todas as ligações contam como follow-up)</span></span></label>
+      ${ro ? "" : `<div class="linha-flex campo-largo"><button type="submit" class="btn btn-primario">${f ? "Salvar dados" : "Criar ficha"}</button>${f ? `<button type="button" class="btn btn-perigo" data-acao="lg-apagar-ficha" data-id="${f.id}">${S.lg.apagar === f.id ? "Clique de novo para apagar" : "Apagar ficha"}</button>` : `<button type="button" class="btn btn-sec" data-acao="lg-fechar">Cancelar</button>`}</div>`}
+      <datalist id="lg-sistemas">${SOFTWARES.map((s) => `<option value="${esc(s)}">`).join("")}<option value="Sem sistema"></datalist>
+    </form>`;
+  }
+  function painelFicha() {
+    const L = S.lg;
+    if (L.novo) return `<aside class="cartao painel painel-lg" aria-label="Nova ficha"><button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button><h2>Nova ficha</h2><span class="t13 fraco">Preencha o que já souber. O resto você completa depois das ligações.</span>${formFicha(null, false)}</aside>`;
+    const f = L.sel && L.fichaPorId.get(L.sel);
+    if (!f) return `<aside class="cartao painel painel-lg" data-vazio="true"><div class="painel-vazio"><span class="painel-vazio-icone">${ICONE.busca}</span><b>Nenhuma ficha aberta</b><span class="fraco t13">Clique numa administradora da lista para registrar uma ligação ou ver o histórico.</span></div></aside>`;
+    const ro = f.usuario_id !== S.user.id;
+    const regs = [...(L.porFicha.get(f.id) || [])].reverse();
+    const [el, ec] = ETAPA[f.etapa] || ETAPA.prospeccao;
+    const proxima = jaLigou(f) ? `Esta ligação vai contar como <b>follow-up</b>.` : `Primeira ligação: vai contar como <b>contato novo</b>.`;
+    return `<aside class="cartao painel painel-lg" aria-label="Ficha da administradora">
+      <button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>
+      <div class="pilha"><span class="t11 fraco" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span>
+        <h2>${esc(f.nome)}</h2><span class="t13 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}${f.telefones ? ` · ${esc(f.telefones)}` : ""}</span>
+        <span class="linha-flex" style="gap:6px"><span class="selo ${ec}">${el}</span>${f.sistema ? `<span class="selo s-sis">${esc(f.sistema)}</span>` : ""}${f.demo_em ? `<span class="selo s-roxo">Demo ${esc(new Date(f.demo_em).toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" }))}</span>` : ""}</span></div>
+      ${ro ? "" : `<form class="caixa-cinza" data-acao="lg-registro" autocomplete="off">
+        <b>Registrar ligação</b>
+        <div class="linha-flex" style="align-items:flex-end"><div class="campo" style="min-width:150px"><label for="rg-data">Dia</label><input id="rg-data" name="data" type="date" class="input" value="${hojeISO()}" max="${hojeISO()}" required></div></div>
+        <span class="rotulo">O que aconteceu</span>
+        <div class="chips">${RESULTADOS.map(([k, l], i) => `<label class="chip-radio"><input type="radio" name="tipo" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+        <div id="rg-demo" class="linha-flex" hidden><div class="campo"><label for="rg-demo-em">Dia e hora da demonstração</label><input id="rg-demo-em" name="demo_em" type="datetime-local" class="input"></div><div class="campo"><label for="rg-formato">Formato</label><select id="rg-formato" name="demo_formato" class="input"><option value="virtual">Virtual</option><option value="presencial">Presencial</option></select></div></div>
+        <div class="campo"><label for="rg-texto">Anotação</label><textarea id="rg-texto" name="texto" class="input lg-texto" rows="3" placeholder="Com quem falou, o que disse, próximo passo…"></textarea></div>
+        <span class="t12 fraco">${proxima}</span>
+        <button type="submit" class="btn btn-primario">Salvar ligação</button>
+      </form>`}
+      <div class="pilha" style="gap:8px"><span style="font-size:12px;font-weight:700">Histórico · ${regs.length} ${regs.length === 1 ? "registro" : "registros"}</span>
+        ${regs.length ? regs.map((r) => `<div class="lg-reg"><div class="linha-flex" style="justify-content:space-between"><span class="linha-flex" style="gap:6px"><b class="num t13">${ddmmaaaa(r.data)}</b><span class="selo ${RES[r.tipo]?.c || "s-neutro"}">${esc(RES[r.tipo]?.l || r.tipo)}</span>${LIGACAO.has(r.tipo) ? `<span class="selo ${r.nova ? "s-novo" : "s-neutro"}">${r.nova ? "Contato novo" : "Follow-up"}</span>` : ""}</span>${ro ? "" : `<button type="button" class="mini lg-x" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar" : "Apagar"}</button>`}</div>${r.texto ? `<span class="t13 lg-txt">${esc(r.texto)}</span>` : ""}</div>`).join("") : '<span class="t13 fraco">Nenhuma ligação registrada ainda.</span>'}
+      </div>
+      <details class="lg-dados" ${regs.length ? "" : "open"}><summary>Dados da administradora</summary>${formFicha(f, ro)}</details>
+    </aside>`;
+  }
+
+  /* ---- colar do documento: entende o modelo que a Lua usa todo dia */
+  function chaveCampo(rot) {
+    const k = norm(rot).replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
+    if (/numeros? disponiveis|^telefones?$|^contatos?$/.test(k)) return "telefones";
+    if (/horario de funcionamento/.test(k)) return "horario_funcionamento";
+    if (/^cidade/.test(k)) return "cidade";
+    if (/sistema/.test(k)) return "sistema";
+    if (/quantos condominios|^atende$|condominios atende/.test(k)) return "qtd";
+    if (/quem atendeu/.test(k)) return "atendente";
+    if (/e ?mail/.test(k)) return "email";
+    if (/melhor horario/.test(k)) return "melhor_horario";
+    if (/^numero|telefone do responsavel|whats/.test(k)) return "numero_responsavel";
+    if (/responsavel|^socio/.test(k)) return "responsavel";
+    if (/informacoes adicionais|^observa|^anotac/.test(k)) return "info";
+    if (/^cnpj$/.test(k)) return "cnpj";
+    return null;
+  }
+  function aplicarCampo(d, k, v) {
+    v = v.replace(/\[([^\]]+)\]\((?:mailto:)?[^)]*\)/g, "$1").trim();
+    if (!v || /^[-—–.]+$/.test(v)) return;
+    if (k === "cidade") { const m = v.match(/^(.+?)\s*[-–/]\s*([A-Za-z]{2})\.?$/); if (m) { d.cidade = m[1].trim(); d.uf = m[2].toUpperCase(); } else d.cidade = v; return; }
+    if (k === "qtd") { const n = v.match(/\d[\d.]*/g) || []; if (n[0]) d.qtd_condominios = +n[0].replace(/\./g, ""); if (n[1]) d.qtd_unidades = +n[1].replace(/\./g, ""); return; }
+    if (k === "email") { const m = v.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/); d.email = m ? m[0] : v; return; }
+    if (k === "cnpj") { d.cnpj = v.replace(/\D/g, "") || null; return; }
+    d[k] = v.replace(/\.$/, "").trim();
+  }
+  function adivinhar(t) {
+    const x = norm(t);
+    if (/contrato (fechado|assinado)|fechou (o )?contrato|fechamos/.test(x)) return "contrato";
+    const alvo = "(demonstrac\\w*|demo|apresentacao|reuniao)";
+    if (new RegExp(`${alvo} (\\S+ ){0,3}(foi )?(realizad|feita|concluid)|(realizei|realizamos|fiz|fizemos|apresentei) (a |uma )?${alvo}`).test(x)) return "demo_realizada";
+    if (new RegExp(`${alvo} (\\S+ ){0,3}(agendad|marcad|confirmad)|(agendei|agendamos|marquei|marcamos) (a |uma )?${alvo}`).test(x)) return "demo_agendada";
+    if (/(nao (tem|ha|possui) interesse|sem interesse|nao (quer|deseja)|recus|negativ|nao e o momento|satisfeit)/.test(x)) return "negativa";
+    if (/(nao atend|ninguem atend|caixa postal|sem contato|nao consegui (falar|contato)|ocupad|chamou ate cair|numero (inexistente|errado|invalido)|fora de area|nao completa)/.test(x)) return "sem_contato";
+    return "conversou";
+  }
+  function lerTexto(txt) {
+    const hoje = hojeISO(), ano = +hoje.slice(0, 4), out = [];
+    let f = null, ultimo = null;
+    const nova = (nome) => { f = { dados: { nome: nome.replace(/[*_#]/g, "").trim() }, regs: [] }; out.push(f); ultimo = null; };
+    for (let l of txt.replace(/\r/g, "").split("\n")) {
+      l = l.replace(/^[\s*•·>-]+/, "").replace(/\*\*/g, "").trim();
+      if (!l) continue;
+      let m = l.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s*[:\-–—]\s*(.+)$/);
+      if (m) {
+        if (!f) nova("Sem nome");
+        const a = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : ano;
+        let iso = `${a}-${pad2(m[2])}-${pad2(m[1])}`;
+        if (!m[3] && iso > hoje) iso = `${a - 1}-${pad2(m[2])}-${pad2(m[1])}`;
+        ultimo = { data: iso, texto: m[4].trim(), tipo: adivinhar(m[4]) }; f.regs.push(ultimo); continue;
+      }
+      m = l.match(/^(\d{1,3})\s*[.)-]\s+(.{2,})$/);
+      if (m) { nova(m[2]); continue; }
+      m = l.match(/^([^:]{2,60}):\s*(.*)$/);
+      const k = m && chaveCampo(m[1]);
+      if (k) {
+        if (!f) nova("Sem nome");
+        if (k === "info") { if (m[2].trim()) { const sub = lerTexto(`x\n${m[2]}`)[0]; if (sub?.regs.length) { f.regs.push(...sub.regs); ultimo = sub.regs[sub.regs.length - 1]; } else { ultimo = { data: hoje, texto: m[2].trim(), tipo: "anotacao" }; f.regs.push(ultimo); } } }
+        else { aplicarCampo(f.dados, k, m[2]); ultimo = null; }
+        continue;
+      }
+      if (ultimo) { ultimo.texto += " " + l; ultimo.tipo = adivinhar(ultimo.texto); continue; }
+      if (!f || (Object.keys(f.dados).length > 1 || f.regs.length)) nova(l);
+    }
+    return out.filter((x) => x.regs.length || Object.keys(x.dados).length > 1);
+  }
+  const fichaIgual = (d) => S.lg.fichas.find((f) => f.usuario_id === S.user.id && ((d.cnpj && f.cnpj === d.cnpj) || norm(f.nome) === norm(d.nome)));
+  function telaColar() {
+    const L = S.lg;
+    if (!L.preview) return `<section class="cartao pad pilha" style="gap:12px">
+      <div class="linha-flex" style="justify-content:space-between"><b>Colar do meu documento</b><button type="button" class="mini" data-acao="lg-colar-fechar">Fechar ✕</button></div>
+      <span class="t13 fraco">Cole o texto do seu documento do dia, do jeito que você escreve (pode ser várias administradoras, uma embaixo da outra: "1. Nome", "Cidade: …", "31/03: Ligação realizada…"). O sistema separa os campos e cada linha com data vira uma ligação. Antes de salvar você confere tudo.</span>
+      <textarea id="lg-texto-colar" class="input lg-colar" rows="12" placeholder="1. Excelência - Condomínios&#10;Números disponíveis para contato: (41) 3352-0235&#10;Cidade: Curitiba - PR&#10;Sistema usado: Superlógica&#10;Nome de quem atendeu a ligação: Jelsa&#10;Informações adicionais:&#10;31/03: Ligação realizada. Fui atendida pela Jelsa…">${esc(L.texto)}</textarea>
+      <div class="linha-flex"><button type="button" class="btn btn-primario" data-acao="lg-ler">Ler o texto</button></div></section>`;
+    const tot = L.preview.reduce((s, p) => s + p.regs.length, 0);
+    return `<section class="cartao pad pilha" style="gap:14px">
+      <div class="linha-flex" style="justify-content:space-between"><b>Confira antes de salvar · ${L.preview.length} ${L.preview.length === 1 ? "administradora" : "administradoras"}, ${tot} ${tot === 1 ? "registro" : "registros"}</b><span class="linha-flex"><button type="button" class="mini" data-acao="lg-voltar-texto">← Voltar ao texto</button><button type="button" class="mini" data-acao="lg-colar-fechar">Cancelar</button></span></div>
+      <span class="t13 fraco">Confira o resultado de cada ligação (o sistema chuta pelo texto). Se a administradora já tem ficha, os dados novos entram nela e as ligações repetidas não são duplicadas.</span>
+      ${L.preview.map((p, i) => { const ja = fichaIgual(p.dados); const campos = CAMPOS.filter(([k]) => k !== "nome" && p.dados[k] != null && p.dados[k] !== "").map(([k, l]) => `<span><span class="fraco">${l}:</span> ${esc(p.dados[k])}</span>`).join("");
+        return `<div class="lg-prev"><div class="linha-flex" style="justify-content:space-between"><b>${esc(p.dados.nome)}</b><span class="selo ${ja ? "s-ident" : "s-novo"}">${ja ? "Já tem ficha: vai juntar" : "Ficha nova"}</span></div>
+          ${campos ? `<div class="lg-campos t12">${campos}</div>` : ""}
+          ${p.regs.length ? `<div class="pilha" style="gap:6px">${p.regs.map((r, j) => `<div class="lg-prev-reg"><span class="num t13"><b>${ddmmaaaa(r.data)}</b></span><select class="input lg-prev-tipo" data-pi="${i}" data-ri="${j}">${RESULTADOS.map(([k, l]) => `<option value="${k}" ${r.tipo === k ? "selected" : ""}>${l}</option>`).join("")}</select><span class="t13">${esc(r.texto)}</span></div>`).join("")}</div>` : '<span class="t12 fraco">Sem ligações com data neste trecho.</span>'}</div>`; }).join("")}
+      <div class="linha-flex"><button type="button" class="btn btn-primario" data-acao="lg-colar-salvar">Salvar tudo</button></div></section>`;
+  }
+  async function salvarColado(btn) {
+    const L = S.lg; btn.disabled = true;
+    try {
+      for (const p of L.preview) {
+        const d = { ...p.dados }; let f = fichaIgual(d);
+        if (f) {
+          const mudou = {}; for (const [k, v] of Object.entries(d)) if (k !== "nome" && v != null && v !== "" && f[k] !== v) mudou[k] = v;
+          if (Object.keys(mudou).length) { const { error } = await sb.from("fichas").update(mudou).eq("id", f.id); if (error) throw error; }
+        } else {
+          const { data, error } = await sb.from("fichas").insert({ ...d, usuario_id: S.user.id }).select().single(); if (error) throw error; f = data; L.fichas.push(f); derivar();
+        }
+        const tem = (L.porFicha.get(f.id) || []).map((r) => r.data + "|" + norm(r.texto));
+        const novos = p.regs.filter((r) => !tem.includes(r.data + "|" + norm(r.texto))).sort((a, b) => (a.data < b.data ? -1 : 1)).map((r) => ({ ficha_id: f.id, usuario_id: S.user.id, data: r.data, tipo: r.tipo, texto: r.texto }));
+        if (novos.length) { const { error } = await sb.from("registros").insert(novos); if (error) throw error; }
+        L.sel = f.id;
+      }
+      toast("Tudo salvo."); L.colar = false; L.preview = null; L.texto = "";
+    } catch (e) { console.error(e); toast("Parte não foi salva. Confira e tente de novo."); }
+    L.carregado = false; carregarLig();
+  }
+
+  async function salvarFicha(form) {
+    const L = S.lg, fd = new FormData(form), d = {};
+    for (const [k] of CAMPOS) { const v = String(fd.get(k) ?? "").trim(); d[k] = k.startsWith("qtd_") ? (v === "" ? null : Math.max(0, parseInt(v, 10) || 0)) : (v || null); }
+    if (d.cnpj) d.cnpj = d.cnpj.replace(/\D/g, "") || null;
+    const demo = String(fd.get("demo_em") || ""); d.demo_em = demo ? demo + ":00-03:00" : null;
+    d.demo_formato = fd.get("demo_formato") || "virtual"; d.contrato_em = fd.get("contrato_em") || null; d.contato_anterior = fd.get("contato_anterior") === "on";
+    if (!d.nome) { toast("Informe o nome da administradora."); return; }
+    const btn = form.querySelector('button[type="submit"]'); btn.disabled = true;
+    const { data, error } = L.novo ? await sb.from("fichas").insert({ ...d, usuario_id: S.user.id }).select().single() : await sb.from("fichas").update(d).eq("id", L.sel).select().single();
+    if (error) { console.error(error); toast("Não foi possível salvar. Tente de novo."); btn.disabled = false; return; }
+    if (L.novo) L.fichas.push(data); else L.fichas[L.fichas.findIndex((f) => f.id === data.id)] = data;
+    L.novo = false; L.sel = data.id; derivar(); toast("Ficha salva."); render();
+  }
+  async function salvarRegistro(form) {
+    const L = S.lg, f = L.fichaPorId.get(L.sel), fd = new FormData(form);
+    const tipo = fd.get("tipo"), data = fd.get("data") || hojeISO(), texto = String(fd.get("texto") || "").trim() || null;
+    if (tipo === "anotacao" && !texto) { toast("Escreva a anotação."); return; }
+    const btn = form.querySelector('button[type="submit"]'); btn.disabled = true;
+    const { data: r, error } = await sb.from("registros").insert({ ficha_id: f.id, usuario_id: S.user.id, data, tipo, texto }).select().single();
+    if (error) { console.error(error); toast("Não foi possível salvar a ligação. Tente de novo."); btn.disabled = false; return; }
+    L.regs.push(r);
+    // a etapa muda sozinha no banco; aqui só acompanha e guarda a data da demonstração
+    const extra = {};
+    if (tipo === "demo_agendada" && fd.get("demo_em")) { extra.demo_em = fd.get("demo_em") + ":00-03:00"; extra.demo_formato = fd.get("demo_formato") || "virtual"; }
+    if (tipo === "demo_realizada" && !f.demo_em) extra.demo_em = data + "T12:00:00-03:00";
+    if (Object.keys(extra).length) await sb.from("fichas").update(extra).eq("id", f.id);
+    const { data: nf } = await sb.from("fichas").select("*").eq("id", f.id).single();
+    if (nf) L.fichas[L.fichas.findIndex((x) => x.id === nf.id)] = nf;
+    derivar();
+    const nova = L.regs.find((x) => x.id === r.id);
+    toast(LIGACAO.has(tipo) ? `Ligação salva como ${nova?.nova ? "contato novo" : "follow-up"}.` : "Registro salvo.");
+    render();
+  }
+  async function abrirFichaDaEmpresa(r) {
+    const L = S.lg;
+    if (L.dono && L.dono !== S.user.id) { L.dono = null; L.carregado = false; }
+    if (!L.carregado) await carregarLig();
+    let f = L.fichas.find((x) => x.usuario_id === S.user.id && x.cnpj === r.cnpj);
+    if (!f) {
+      const s = sistemaDe(r);
+      const { data, error } = await sb.from("fichas").insert({ usuario_id: S.user.id, cnpj: r.cnpj, nome: nomeEmp(r), telefones: [r.telefone1, r.telefone2].filter(Boolean).join(" / ") || null, email: r.email || null, cidade: r.municipio ? titulo(r.municipio) : null, uf: r.uf || null, sistema: s.nome || null }).select().single();
+      if (error) { console.error(error); toast("Não deu para criar a ficha. Tente de novo."); return; }
+      L.fichas.push(data); derivar(); f = data;
+    }
+    S.view = "ligacoes"; S.sel = null; S.selRow = null; L.sel = f.id; L.novo = false; render(); window.scrollTo(0, 0);
+  }
+
+  /* ---- Relatórios: dia, semana e mês */
+  function periodoDe(p, ref) {
+    if (p === "dia") return { ini: ref, fim: ref, rotulo: ddmmaaaa(ref), sub: DIAS[isoData(ref).getUTCDay()], nome: "Relatório Diário", curto: "do Dia" };
+    if (p === "semana") { const ini = segundaDe(ref); return { ini, fim: somaDias(ini, 6), rotulo: `${ddmm(ini)} – ${ddmm(somaDias(ini, 4))}`, sub: "", nome: "Relatório Semanal", curto: "da Semana" }; }
+    const ini = ref.slice(0, 8) + "01", d = isoData(ini); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0);
+    const mes = MESES[+ini.slice(5, 7) - 1];
+    return { ini, fim: d.toISOString().slice(0, 10), rotulo: `${mes[0].toUpperCase() + mes.slice(1)} de ${ini.slice(0, 4)}`, sub: "", nome: "Relatório Mensal", curto: "do Mês" };
+  }
+  const relDe = (p, ini) => S.lg.rels.find((r) => r.usuario_id === donoAtual() && r.periodo === p && r.inicio === ini);
+  function horaDe(r, f) {
+    const m = (r.texto || "").match(/às (\d{1,2}[:h]\d{2})/); if (m) return m[1].replace("h", ":");
+    if (f.demo_em && localSP(f.demo_em).slice(0, 10) === r.data) return localSP(f.demo_em).slice(11, 16);
+    return "";
+  }
+  function cartaoDemo(f, linha, extra = "") {
+    const qtd = f.qtd_condominios != null ? `${fmtN(f.qtd_condominios)} condomínios${f.qtd_unidades ? ` | ${fmtN(f.qtd_unidades)} unidades` : ""}` : "—";
+    return `<div class="rel-card"><b class="rel-card-nome">${esc(f.nome)}</b><b class="t12">${linha}</b>
+      <span>Sistema usado: ${esc(f.sistema || "—")}</span><span>Quantos condomínios atende: ${esc(qtd)}</span><span>Nome do responsável: ${esc(f.responsavel || "—")}</span><span>Cidade: ${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "—")}</span>${extra}</div>`;
+  }
+  function barrasSvg(itens) {
+    const max = Math.max(1, ...itens.map((i) => i[1])), W = 520, H = 250, bw = 74, gap = (W - 40 - bw * itens.length) / (itens.length - 1 || 1);
+    return `<svg viewBox="0 0 ${W} ${H + 46}" class="rel-grafico" role="img" aria-label="Acumulado">${itens.map(([l, v], i) => { const h = Math.max(2, Math.round((v / max) * (H - 30))), x = 20 + i * (bw + gap), y = H - h;
+      return `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="4" fill="${i < 2 ? "#16306F" : "#2C63DB"}"/><text x="${x + bw / 2}" y="${y - 8}" text-anchor="middle" font-size="16" font-weight="700" fill="#0A1847">${fmtN(v)}</text><text x="${x + bw / 2}" y="${H + 20}" text-anchor="middle" font-size="12" fill="#5B6475">${esc(l)}</text>`; }).join("")}<line x1="10" x2="${W - 10}" y1="${H}" y2="${H}" stroke="#CBD3E1"/></svg>`;
+  }
+  function telaRelatorios() {
+    const L = S.lg, R = S.rl;
+    const ctrl = `<div class="cabeca rel-controles"><div class="pilha" style="gap:4px"><h1>Relatórios</h1><p class="fraco" style="margin:0">Montados sozinhos com as ligações registradas. Escreva as observações e baixe em PDF para mandar.</p></div>
+      <div class="linha-flex" style="align-items:flex-end">${seletorPessoa("rl-dono")}</div></div>`;
+    if (!L.carregado) { if (!L.carregando) carregarLig(); return ctrl + `<div class="cartao vazio">Carregando…</div>`; }
+    const P = periodoDe(R.periodo, R.ref), m = metricas(P.ini, P.fim), rel = relDe(R.periodo, P.ini), aj = rel?.ajustes || {}, edita = souDono();
+    const val = (k) => (aj[k] ?? m[k]);
+    const ajustado = Object.keys(aj).length > 0;
+    const barra = `<section class="cartao filtros rel-controles"><div class="linha-filtros" style="align-items:center;justify-content:space-between">
+      <div class="abas" role="tablist">${[["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]].map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="rl-periodo" data-v="${k}" aria-selected="${R.periodo === k}">${l}</button>`).join("")}</div>
+      <div class="linha-flex"><button type="button" class="mini" data-acao="rl-ant" aria-label="Período anterior">←</button><b class="num" style="min-width:150px;text-align:center">${P.rotulo}</b><button type="button" class="mini" data-acao="rl-prox" aria-label="Próximo período">→</button><button type="button" class="mini" data-acao="rl-hoje">Hoje</button></div>
+      <button type="button" class="btn btn-primario" data-acao="rl-pdf">Baixar PDF</button></div></section>`;
+
+    const quem = donoAtual() === "todos" ? "Equipe comercial" : nomePessoa(donoAtual());
+    const capa = `<section class="rel-pg rel-capa"><span class="rel-sobre">${P.nome}</span><span class="rel-grande">${P.rotulo}</span>${P.sub ? `<span class="rel-sub">${P.sub[0].toUpperCase() + P.sub.slice(1)}</span>` : ""}
+      <p class="fraco">Resumo das atividades de prospecção, follow-ups e oportunidades em andamento no período.</p><span class="t13"><b>${esc(quem || "")}</b> · PRG Software · Grupo WorkOffice</span></section>`;
+
+    const obs = (rel?.observacoes || []).filter((o) => o.titulo || o.texto);
+    let obsHtml;
+    if (R.editObs && edita) {
+      const lista = [0, 1, 2].map((i) => obs[i] || { titulo: "", texto: "" });
+      obsHtml = `<form data-acao="rl-obs" class="pilha" style="gap:12px">${lista.map((o, i) => `<div class="rel-obs-ed"><input class="input" name="t${i}" value="${esc(o.titulo)}" placeholder="Título (ex.: Prospecção e agendamento)" maxlength="80"><textarea class="input lg-texto" name="x${i}" rows="4" placeholder="O que foi feito, foco, próximos passos…">${esc(o.texto)}</textarea></div>`).join("")}
+        <div class="linha-flex"><button type="submit" class="btn btn-primario">Salvar observações</button><button type="button" class="btn btn-sec" data-acao="rl-obs-cancelar">Cancelar</button></div></form>`;
+    } else obsHtml = obs.length ? `<div class="rel-obs">${obs.map((o) => `<div class="rel-obs-card"><b>${esc(o.titulo)}</b><span>${esc(o.texto)}</span></div>`).join("")}</div>`
+      : `<div class="vazio rel-tela" style="padding:20px">Nenhuma observação escrita para este período.</div>`;
+    const secObs = `<section class="rel-pg ${obs.length || R.editObs ? "" : "rel-sem-print"}"><div class="linha-flex" style="justify-content:space-between"><h2 class="rel-h">Observações ${P.curto}</h2>${edita && !R.editObs && donoAtual() !== "todos" ? `<button type="button" class="mini rel-tela" data-acao="rl-obs-editar">${obs.length ? "Editar" : "Escrever observações"}</button>` : ""}</div>${obsHtml}</section>`;
+
+    const nums = [["follow_up", "Follow-ups"], ["primeira_ligacao", "Novas administradoras contatadas"], ["demo_realizada", "Demonstrações realizadas"], ["demo_agendada", "Demonstrações agendadas"], ["sem_contato", "Sem contato"], ["negativa", "Negativas"]];
+    const numsHtml = R.editAj && edita ? `<form data-acao="rl-aj" class="pilha" style="gap:12px"><span class="t13 fraco">Use só se algum número precisar de correção (por exemplo, ligações que não foram registradas). Deixe em branco para o sistema contar sozinho.</span>
+        <div class="form-grade">${nums.map(([k, l]) => `<div class="campo"><label for="aj-${k}">${l} <span class="fraco">(contou ${m[k]})</span></label><input id="aj-${k}" name="${k}" type="number" min="0" class="input" value="${aj[k] ?? ""}"></div>`).join("")}</div>
+        <div class="linha-flex"><button type="submit" class="btn btn-primario">Salvar números</button><button type="button" class="btn btn-sec" data-acao="rl-aj-cancelar">Cancelar</button></div></form>`
+      : `<div class="rel-nums">${nums.map(([k, l]) => `<div><span class="rel-num">${fmtN(val(k))}</span><span class="rel-num-l">${l}</span></div>`).join("")}</div>`;
+    const secNums = `<section class="rel-pg"><div class="linha-flex" style="justify-content:space-between"><h2 class="rel-h">Resultados ${P.curto}</h2>${edita && !R.editAj && donoAtual() !== "todos" ? `<button type="button" class="mini rel-tela" data-acao="rl-aj-editar">${ajustado ? "Corrigir números" : "Corrigir números à mão"}</button>` : ""}</div>
+      <p class="rel-lead"><b>${fmtN(ajustado ? (+val("follow_up") + +val("primeira_ligacao")) : m.ligacoes)}</b> ligações${ajustado ? "" : ` para <b>${fmtN(m.pessoas)}</b> ${m.pessoas === 1 ? "administradora" : "administradoras"} diferentes`}${ajustado ? ' <span class="selo s-nao rel-tela">números corrigidos à mão</span>' : ""}</p>${numsHtml}
+      ${R.periodo !== "dia" && m.ligacoes ? graficoPorDia(P, m) : ""}</section>`;
+
+    const listaLig = (rs) => rs.length ? `<table class="tab-simples rel-tab"><thead><tr>${R.periodo === "dia" ? "" : "<th>Dia</th>"}<th>Administradora</th><th>Cidade</th><th>Ligação</th><th>Resultado</th><th>Anotação</th>${donoAtual() === "todos" ? "<th>Quem</th>" : ""}</tr></thead><tbody>${rs.map((r) => { const f = L.fichaPorId.get(r.ficha_id) || {}; return `<tr>${R.periodo === "dia" ? "" : `<td class="num">${ddmm(r.data)}</td>`}<td><b>${esc(f.nome || "")}</b></td><td>${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}</td><td>${LIGACAO.has(r.tipo) ? (r.nova ? "Contato novo" : "Follow-up") : "—"}</td><td><span class="selo ${RES[r.tipo]?.c}">${esc(RES[r.tipo]?.l || r.tipo)}</span></td><td class="rel-anot">${esc(r.texto || "")}</td>${donoAtual() === "todos" ? `<td>${esc(nomePessoa(r.usuario_id))}</td>` : ""}</tr>`; }).join("")}</tbody></table>` : `<div class="vazio" style="padding:20px">Nenhuma ligação registrada ${R.periodo === "dia" ? "neste dia" : "neste período"}.</div>`;
+    const ordenados = [...m.rs].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.criado_em < b.criado_em ? -1 : 1));
+    const secLista = R.periodo === "dia" ? `<section class="rel-pg"><h2 class="rel-h">Ligações do dia</h2><div class="rolagem">${listaLig(ordenados)}</div></section>`
+      : `<section class="rel-pg rel-sem-print"><details class="rel-tela"><summary><b>Ver todos os registros ${P.curto} (${m.rs.length})</b></summary><div class="rolagem" style="margin-top:10px">${listaLig(ordenados)}</div></details></section>`;
+
+    const ag = m.rs.filter((r) => r.tipo === "demo_agendada"), re = m.rs.filter((r) => r.tipo === "demo_realizada");
+    const cardsAg = ag.map((r) => { const f = L.fichaPorId.get(r.ficha_id); if (!f) return ""; const dt = f.demo_em ? localSP(f.demo_em) : ""; return cartaoDemo(f, dt ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} agendada: ${extenso(dt.slice(0, 10), dt.slice(11, 16))}` : `Demonstração agendada em ${ddmm(r.data)} (data da demo não informada)`); }).join("");
+    const cardsRe = re.map((r) => { const f = L.fichaPorId.get(r.ficha_id); return f ? cartaoDemo(f, `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} realizada: ${extenso(r.data, horaDe(r, f))}`) : ""; }).join("");
+    const secDestaque = `<section class="rel-pg"><span class="selo s-ident" style="align-self:flex-start">${R.periodo === "dia" ? "DIA" : R.periodo === "semana" ? "SEMANA" : "MÊS"} EM DESTAQUE</span>
+      <h2 class="rel-h">Demonstrações agendadas</h2>${cardsAg ? `<div class="rel-cards">${cardsAg}</div>` : '<p class="fraco">Nenhuma demonstração agendada no período.</p>'}
+      <h2 class="rel-h" style="margin-top:18px">Demonstrações realizadas</h2>${cardsRe ? `<div class="rel-cards">${cardsRe}</div>` : '<p class="fraco">Nenhuma demonstração realizada no período.</p>'}</section>`;
+
+    let resto = "";
+    if (R.periodo !== "dia") {
+      const A = acumulado(P.fim);
+      const ufs = [...new Set(L.fichas.filter((f) => f.uf && (L.porFicha.get(f.id) || []).some((r) => r.data <= P.fim)).map((f) => f.uf))].sort();
+      const sis = {}; A.demos.forEach((f) => { if (f.sistema && !/sem sistema/i.test(f.sistema)) sis[f.sistema] = (sis[f.sistema] || 0) + 1; });
+      const top = Object.entries(sis).sort((a, b) => b[1] - a[1]).slice(0, 3).map((x) => x[0]);
+      const listaUf = ufs.length > 1 ? ufs.slice(0, -1).join(", ") + " e " + ufs[ufs.length - 1] : ufs[0] || "";
+      const fimTxt = R.periodo === "semana" ? somaDias(P.ini, 4) : P.fim;
+      const ordDemo = (fs) => fs.map((f) => { const r = (L.porFicha.get(f.id) || []).find((x) => x.tipo === "demo_realizada" && x.data <= P.fim); return { f, r }; }).sort((a, b) => (a.r.data < b.r.data ? -1 : 1));
+      resto = `<section class="rel-pg"><h2 class="rel-h">Acumulado até ${ddmm(fimTxt)}</h2><div class="rel-acum">${barrasSvg([["Tentativas", A.tentativas], ["Administradoras", A.prospectadas], ["Demonstrações", A.demos.length], ["Contratos", A.contratos.length]])}
+        <div class="pilha" style="gap:12px"><b class="rel-sub2">Destaques do período</b><p style="margin:0">Com <b>${fmtN(A.tentativas)} tentativas de contato</b> e <b>${fmtN(A.prospectadas)} administradoras prospectadas</b>, o período acumulado resultou em <b>${fmtN(A.demos.length)} demonstrações realizadas</b> e <b>${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "contrato fechado" : "contratos fechados"}</b>.${listaUf ? ` Os atendimentos abrangeram administradoras em <b>${esc(listaUf)}</b>, com diferentes sistemas de gestão em uso.` : ""}</p>
+        ${top.length ? `<div class="rel-info">As demonstrações contemplaram administradoras com rotinas e plataformas variadas, incluindo ${esc(top.join(", "))} e outros sistemas de administração.</div>` : ""}</div></div></section>
+        <section class="rel-pg"><div class="rel-painel-cab"><h2 class="rel-h">Painel de Demonstrações Realizadas</h2><b class="t13">TOTAL: ${fmtN(A.demos.length)} ${A.demos.length === 1 ? "Demonstração" : "Demonstrações"}</b></div>
+          ${A.demos.length ? `<div class="rel-cards">${ordDemo(A.demos).map(({ f, r }) => cartaoDemo(f, `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} realizada: ${extenso(r.data, horaDe(r, f))}`)).join("")}</div>` : '<p class="fraco">Nenhuma demonstração ainda.</p>'}</section>
+        <section class="rel-pg"><div class="rel-painel-cab"><h2 class="rel-h">Painel de Contratos Fechados</h2><b class="t13">TOTAL: ${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "Contrato" : "Contratos"}</b></div>
+          ${A.contratos.length ? `<div class="rel-cards">${A.contratos.map((f) => { const d = (L.porFicha.get(f.id) || []).find((x) => x.tipo === "demo_realizada"); return cartaoDemo(f, d ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} realizada: ${extenso(d.data, horaDe(d, f))}` : "", `<b class="t12">Contrato fechado dia ${ddmmaaaa(f.contrato_em || (L.porFicha.get(f.id) || []).find((x) => x.tipo === "contrato")?.data || "")}</b>`); }).join("")}</div>` : '<p class="fraco">Nenhum contrato fechado ainda.</p>'}</section>`;
+    }
+    return ctrl + barra + `<div class="relatorio">${capa}${secObs}${secNums}${secLista}${secDestaque}${resto}</div>`;
+  }
+  function graficoPorDia(P, m) {
+    let pontos = [];
+    if (S.rl.periodo === "semana") pontos = [0, 1, 2, 3, 4, 5, 6].map((i) => somaDias(P.ini, i)).filter((d, i) => i < 5 || m.lig.some((r) => r.data === d)).map((d) => [DIAS[isoData(d).getUTCDay()].slice(0, 3) + " " + ddmm(d), m.lig.filter((r) => r.data === d).length]);
+    else { for (let d = segundaDe(P.ini); d <= P.fim; d = somaDias(d, 7)) { const a = d < P.ini ? P.ini : d, b = somaDias(d, 6) > P.fim ? P.fim : somaDias(d, 6); pontos.push([`${ddmm(a)}–${ddmm(b)}`, m.lig.filter((r) => r.data >= a && r.data <= b).length]); } }
+    const max = Math.max(1, ...pontos.map((p) => p[1]));
+    return `<div class="pilha" style="gap:8px;margin-top:6px"><b class="t13">Ligações por ${S.rl.periodo === "semana" ? "dia" : "semana"}</b><div class="rel-dias">${pontos.map(([l, v]) => `<div class="rel-dia"><span class="num t12"><b>${v}</b></span><span class="rel-dia-b"><i style="height:${Math.round((v / max) * 100)}%"></i></span><span class="t11 fraco">${l}</span></div>`).join("")}</div></div>`;
+  }
+  async function salvarRel(campos) {
+    const L = S.lg, R = S.rl, P = periodoDe(R.periodo, R.ref), atual = relDe(R.periodo, P.ini);
+    const linha = { usuario_id: S.user.id, periodo: R.periodo, inicio: P.ini, observacoes: atual?.observacoes || [], ajustes: atual?.ajustes || {}, ...campos, atualizado_em: new Date().toISOString() };
+    const { data, error } = await sb.from("relatorios").upsert(linha).select().single();
+    if (error) { console.error(error); toast("Não foi possível salvar. Tente de novo."); return false; }
+    L.rels = L.rels.filter((r) => !(r.usuario_id === data.usuario_id && r.periodo === data.periodo && r.inicio === data.inicio)).concat(data);
+    return true;
+  }
+  function baixarPdf() {
+    const P = periodoDe(S.rl.periodo, S.rl.ref), antes = document.title;
+    document.title = `${P.nome} - ${P.rotulo.replace(/\//g, "-")}${donoAtual() === "todos" ? " - Equipe" : ` - ${nomePessoa(donoAtual()) || ""}`}`;
+    document.body.classList.add("imprimindo");
+    const volta = () => { document.title = antes; document.body.classList.remove("imprimindo"); window.removeEventListener("afterprint", volta); };
+    window.addEventListener("afterprint", volta);
+    setTimeout(() => window.print(), 50);
+  }
+
+  app.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM") return;
+    const a = b.dataset.acao, L = S.lg, R = S.rl;
+    if (!a.startsWith("lg-") && !a.startsWith("rl-") && a !== "ficha-empresa") { if (!a.startsWith("lg-apagar")) L.apagar = null; return; }
+    if (a !== "lg-apagar-reg" && a !== "lg-apagar-ficha") L.apagar = null;
+    switch (a) {
+      case "ficha-empresa": if (S.selRow) { b.disabled = true; await abrirFichaDaEmpresa(S.selRow); } break;
+      case "lg-sel": L.sel = b.dataset.id; L.novo = false; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
+      case "lg-fechar": L.sel = null; L.novo = false; render(); break;
+      case "lg-nova": L.novo = true; L.sel = null; render(); $("#fx-nome")?.focus(); break;
+      case "lg-etapa": L.etapa = b.dataset.v; render(); break;
+      case "lg-colar": L.colar = true; L.preview = null; render(); $("#lg-texto-colar")?.focus(); break;
+      case "lg-colar-fechar": L.colar = false; L.preview = null; render(); break;
+      case "lg-voltar-texto": L.preview = null; render(); break;
+      case "lg-ler": { L.texto = $("#lg-texto-colar")?.value || ""; const p = lerTexto(L.texto); if (!p.length) { toast("Não encontrei administradoras nesse texto."); break; } L.preview = p; render(); break; }
+      case "lg-colar-salvar": await salvarColado(b); break;
+      case "lg-rel-dia": S.view = "relatorios"; R.periodo = "dia"; R.ref = hojeISO(); render(); break;
+      case "lg-apagar-reg": case "lg-apagar-ficha": {
+        if (L.apagar !== b.dataset.id) { L.apagar = b.dataset.id; b.textContent = a === "lg-apagar-reg" ? "Confirmar" : "Clique de novo para apagar"; break; }
+        const t = a === "lg-apagar-reg" ? "registros" : "fichas";
+        const { error } = await sb.from(t).delete().eq("id", b.dataset.id);
+        if (error) { toast("Não foi possível apagar."); break; }
+        if (t === "fichas") { L.fichas = L.fichas.filter((f) => f.id !== b.dataset.id); L.regs = L.regs.filter((r) => r.ficha_id !== b.dataset.id); L.sel = null; }
+        else L.regs = L.regs.filter((r) => r.id !== b.dataset.id);
+        L.apagar = null; derivar(); toast("Apagado."); render(); break;
+      }
+      case "rl-periodo": R.periodo = b.dataset.v; R.editObs = R.editAj = false; render(); break;
+      case "rl-ant": case "rl-prox": {
+        const s = a === "rl-ant" ? -1 : 1;
+        if (R.periodo === "dia") { let d = somaDias(R.ref, s); while ([0, 6].includes(isoData(d).getUTCDay()) && !L.regs.some((r) => r.data === d)) d = somaDias(d, s); R.ref = d; }
+        else if (R.periodo === "semana") R.ref = somaDias(segundaDe(R.ref), 7 * s);
+        else { const d = isoData(R.ref.slice(0, 8) + "01"); d.setUTCMonth(d.getUTCMonth() + s); R.ref = d.toISOString().slice(0, 10); }
+        R.editObs = R.editAj = false; render(); break;
+      }
+      case "rl-hoje": R.ref = hojeISO(); render(); break;
+      case "rl-pdf": baixarPdf(); break;
+      case "rl-obs-editar": R.editObs = true; render(); break;
+      case "rl-obs-cancelar": R.editObs = false; render(); break;
+      case "rl-aj-editar": R.editAj = true; render(); break;
+      case "rl-aj-cancelar": R.editAj = false; render(); break;
+      default: break;
+    }
+  });
+  app.addEventListener("submit", async (ev) => {
+    const f = ev.target, a = f.dataset.acao;
+    if (!a || !(a.startsWith("lg-") || a.startsWith("rl-"))) return;
+    ev.preventDefault();
+    if (a === "lg-ficha") salvarFicha(f);
+    if (a === "lg-registro") salvarRegistro(f);
+    if (a === "rl-obs") { const fd = new FormData(f); const obs = [0, 1, 2].map((i) => ({ titulo: String(fd.get("t" + i) || "").trim(), texto: String(fd.get("x" + i) || "").trim() })).filter((o) => o.titulo || o.texto); if (await salvarRel({ observacoes: obs })) { S.rl.editObs = false; toast("Observações salvas."); render(); } }
+    if (a === "rl-aj") { const fd = new FormData(f), aj = {}; for (const [k, v] of fd) if (String(v).trim() !== "") aj[k] = Math.max(0, parseInt(v, 10) || 0); if (await salvarRel({ ajustes: aj })) { S.rl.editAj = false; toast(Object.keys(aj).length ? "Números corrigidos." : "Números voltaram a ser contados pelo sistema."); render(); } }
+  });
+  app.addEventListener("input", (ev) => {
+    if (ev.target.id === "lg-busca") { S.lg.busca = ev.target.value; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); }
+  });
+  app.addEventListener("change", (ev) => {
+    const t = ev.target;
+    if (t.classList.contains("sel-dono")) { S.lg.dono = t.value === S.user.id ? null : t.value; S.lg.carregado = false; S.lg.sel = null; S.lg.novo = false; S.lg.colar = false; S.rl.editObs = S.rl.editAj = false; render(); return; }
+    if (t.name === "tipo" && t.closest('[data-acao="lg-registro"]')) { const d = $("#rg-demo"); if (d) d.hidden = t.value !== "demo_agendada"; return; }
+    if (t.classList.contains("lg-prev-tipo")) { S.lg.preview[+t.dataset.pi].regs[+t.dataset.ri].tipo = t.value; }
+  });
+
   /* ------------------------------------------------------------ eventos */
   document.addEventListener("click", (ev) => { if (S.cidMenu && !ev.target.closest(".cid-campo")) { S.cidMenu = false; render(); } });
   app.addEventListener("click", async (ev) => {
@@ -1123,7 +1649,7 @@
   sb.auth.onAuthStateChange((evento, sessao) => {
     if (evento === "PASSWORD_RECOVERY") { S.recuperando = true; S.user = sessao?.user || null; render(); return; }
     if (evento === "SIGNED_IN" && !S.user && !S.recuperando) { iniciar(); return; }
-    if (evento === "SIGNED_OUT") { S.user = null; S.perfil = null; S.pendentes = 0; S.equipe = null; S.rows = []; S.sel = null; S.selRow = null; S.menu = false; render(); }
+    if (evento === "SIGNED_OUT") { S.user = null; S.perfil = null; S.pendentes = 0; S.equipe = null; S.lg = { ...S.lg, dono: null, carregado: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, sel: null, novo: false, colar: false, preview: null }; S.rows = []; S.sel = null; S.selRow = null; S.menu = false; render(); }
   });
   iniciar();
 })();
