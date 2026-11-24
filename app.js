@@ -284,6 +284,7 @@
   function render() {
     const g = guardarForm(), rolagem = app.querySelector(".gaveta .painel")?.scrollTop || 0; renderTela(); devolverForm(g);
     const gv = app.querySelector(".gaveta .painel"); if (gv && rolagem) gv.scrollTop = rolagem;
+    if (window.Gaveta && app.querySelector(".upw-sec-files")) window.Gaveta.ligar(app);
     document.body.classList.toggle("com-gaveta", !!gv);
   }
   const gaveta = (html, fechar) => `<div class="gaveta-fundo" data-acao="${fechar}"></div><div class="gaveta gaveta-grande" role="dialog" aria-modal="true">${html}</div>`;
@@ -1441,12 +1442,117 @@
       <div class="linha-flex"><button type="submit" name="modo" value="ligacao" class="btn btn-primario">${existe ? "Salvar contato" : op.cnpj ? "Salvar contato" : "Criar e salvar contato"}</button><button type="submit" name="modo" value="dados" class="btn btn-sec">${existe ? "Salvar só os dados" : op.cnpj ? "Só guardar a ficha" : "Só criar a ficha"}</button></div>
     </form>`;
   }
+
+  /* ---- ficha da administradora: pilha de contatos (visual de gaveta.js) */
+  const CURTO = { nao_atende: "Sem contato", caixa_postal: "Sem contato", numero_invalido: "Sem contato", conversou: "Conversa", material_enviado: "Material", pediu_retorno: "Retorno", sem_abertura: "Conversa", negativa: "Sem interesse", demo_agendada: "Demo", demo_realizada: "Demo feita", contrato: "Contrato", anotacao: "Anotação" };
+  const SELO_RES = { sem_contato: "Sem contato", negativa: "Sem interesse", demo_agendada: "Demo agendada", demo_realizada: "Demo realizada", contrato: "Contrato fechado", anotacao: "Anotação" };
+  function visualReg(r) {
+    const ds = r.detalhes?.length ? r.detalhes : r.detalhe ? [r.detalhe] : [r.tipo];
+    const envio = r.envio?.length || ds.includes("material_enviado");
+    let cor = "azul", cat = "conversa", curto = CURTO[ds[0]] || "Contato", selo = SELO_RES[r.tipo] || (envio ? "Material enviado" : ds.includes("pediu_retorno") ? "Pediu retorno" : "Conversa");
+    if (r.tipo === "sem_contato") { cor = "vermelho"; cat = "sem"; curto = "Sem contato"; }
+    else if (r.tipo === "negativa") { cor = "vermelho"; curto = "Sem interesse"; }
+    else if (["demo_agendada", "demo_realizada"].includes(r.tipo)) { cor = "roxo"; cat = "demo"; curto = r.tipo === "demo_realizada" ? "Demo feita" : "Demo"; }
+    else if (r.tipo === "contrato") { cor = "verde"; cat = "demo"; curto = "Contrato"; }
+    else if (envio) { cor = "amarelo"; curto = "Material"; }
+    else if (r.tipo === "conversou") curto = ds.includes("pediu_retorno") ? "Retorno" : "Conversa";
+    return { cor, cat, curto, selo };
+  }
+  function tituloReg(r) {
+    const t = String(r.texto || "").replace(/\s+/g, " ").trim();
+    if (!t) return rotuloRes(r);
+    const frase = t.split(/(?<=[.!?])\s/)[0];
+    return frase.length > 78 ? frase.slice(0, 76).replace(/\s+\S*$/, "") + "…" : frase.replace(/[.]$/, "");
+  }
+  const diasEntre = (a, b) => Math.round((isoData(b) - isoData(a)) / 864e5);
+  function fichaGaveta(f, ro) {
+    const L = S.lg, hj = hojeISO();
+    const regs = [...(L.porFicha.get(f.id) || [])].reverse();
+    const lig = regs.filter((r) => LIGACAO.has(r.tipo));
+    const visiveis = L.gvTodos === f.id ? regs : regs.slice(0, 8);
+    const aberto = regs.some((r) => r.id === L.gvAberto) && visiveis.some((r) => r.id === L.gvAberto) ? L.gvAberto : visiveis[0]?.id;
+    const nomes = String(f.nome).trim().split(/\s+/);
+    const tit = nomes.length > 1 ? `${esc(nomes.slice(0, Math.ceil(nomes.length / 2)).join(" "))} <em>${esc(nomes.slice(Math.ceil(nomes.length / 2)).join(" "))}</em>` : `<em>${esc(f.nome)}</em>`;
+    const passo = { mapeamento: 0, indisponivel: 0, contato: 1, follow_semestral: 1, sem_interesse: 1, demonstracao: 2, contrato: 3 }[f.funil || "mapeamento"];
+    const passos = ["Mapeamento", "Contato", "Demonstração", "Contrato"].map((l, i) => `<span class="mc-passo ${i < passo || (i === 3 && passo === 3) ? "feito" : i === passo ? "agora" : ""}"><i></i>${i === 1 && f.funil === "sem_interesse" ? "Sem interesse" : i === 1 && f.funil === "follow_semestral" ? "Follow-up semestral" : l}</span>`).join("");
+    const demoFut = f.demo_em && f.etapa === "demo_agendada" && diaDe(f.demo_em) >= hj ? f.demo_em : null;
+    const primeiro = regs.length ? regs[regs.length - 1].data : null, ultimo = regs[0]?.data;
+    const terceiro = demoFut ? [diasEntre(hj, diaDe(demoFut)), diasEntre(hj, diaDe(demoFut)) === 1 ? "dia para a demo" : "dias para a demo"]
+      : f.retorno_em && diaDe(f.retorno_em) >= hj ? [diasEntre(hj, diaDe(f.retorno_em)), diasEntre(hj, diaDe(f.retorno_em)) === 1 ? "dia para o retorno" : "dias para o retorno"]
+      : ultimo ? [diasEntre(ultimo, hj), diasEntre(ultimo, hj) === 1 ? "dia sem contato" : "dias sem contato"] : [0, "dias sem contato"];
+    const conversa = primeiro ? diasEntre(primeiro, hj) : 0;
+    const ic = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${d}</svg>`;
+    const I = { cidade: ic('<path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>'), pessoa: ic('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'), tel: ic('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>'), email: ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'), fone: ic('<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/>'), relogio: ic('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), wpp: ic('<path d="M21 12a9 9 0 0 1-13.5 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/>'), nota: ic('<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/>'), predio: ic('<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>') };
+    const telLink = (t) => { const n = String(t).replace(/\D/g, ""); return n.length >= 10 ? `<a href="tel:+55${n.slice(-11)}">${esc(t)}</a>` : esc(t); };
+    const wppN = String(f.whatsapp || "").replace(/\D/g, "");
+    const dados = [
+      ["cidade", "Cidade", [f.cidade, f.uf].filter(Boolean).join(" - ")],
+      ["pessoa", "Responsável", f.responsavel],
+      ["tel", "Telefones", f.telefones ? String(f.telefones).split(/\s*[|/,]\s*/).map(telLink).join(" · ") : "", true],
+      ["wpp", "WhatsApp", f.whatsapp ? (wppN.length >= 10 ? `<a target="_blank" rel="noopener" href="https://wa.me/55${wppN.slice(-11)}">${esc(f.whatsapp)}</a>` : esc(f.whatsapp)) : "", true],
+      ["email", "E-mail", f.email ? `<a href="mailto:${esc(f.email)}">${esc(f.email)}</a>` : "", true, true],
+      ["fone", "Atendente", f.atendente],
+      ["relogio", "Melhor horário", f.melhor_horario],
+      ["relogio", "Funcionamento", f.horario_funcionamento],
+      ["tel", "Número do responsável", f.numero_responsavel ? telLink(f.numero_responsavel) : "", true],
+      ["predio", "Unidades", f.qtd_unidades ? fmtN(f.qtd_unidades) : ""],
+      ["nota", "Informações adicionais", f.observacoes, false, true],
+    ].filter((d) => d[2]).map(([i, l, v, html, largo]) => `<div class="mc-dado ${largo ? "mc-largo-sempre" : ""}"><span>${I[i]}${l}</span><b>${html ? v : esc(v)}</b></div>`).join("");
+    const proximo = demoFut ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} ${quandoTxt(demoFut).toLowerCase().replace(" · ", " às ")}.`
+      : f.retorno_em ? `${diaDe(f.retorno_em) < hj ? "Retorno atrasado: era" : "Ligar de novo"} ${quandoTxt(f.retorno_em).toLowerCase().replace(" · ", " às ")}${f.retorno_nota ? `. ${f.retorno_nota}` : ""}.`
+      : f.funil === "contrato" ? "Contrato fechado. Agora é com o time de implantação." : "Nenhum próximo passo marcado ainda.";
+    const pastas = visiveis.map((r) => {
+      const v = visualReg(r), h = horaReg(r), q = `${ddmm(r.data)}${h ? ` às ${h}` : ""}`;
+      const ds = r.detalhes?.length ? r.detalhes : r.detalhe ? [r.detalhe] : [];
+      const chips = [CANAL[r.canal || "ligacao"], ...ds.map((k) => NOME_BOTAO[k] || k), ...(r.envio || []).map((k) => `Apresentação por ${ENVIO[k] || k}`)];
+      const meta = [LIGACAO.has(r.tipo) ? (r.nova ? "Contato novo" : "Follow-up") : "Registro", L.dono === "todos" ? nomePessoa(r.usuario_id) : ""].filter(Boolean).join(" · ");
+      return `<li class="upw-sec-files__item" data-cat="${v.cat}" data-cor="${v.cor}" data-id="${r.id}" data-num="${regs.length - regs.indexOf(r)}" data-quando="${esc(q)}" data-carimbo="${esc(v.selo)}" ${r.id === aberto ? "data-aberto" : ""}><div class="upw-sec-files__folder">
+        <h3><button type="button" class="upw-sec-files__q"><span class="upw-sec-files__tab">${ddmm(r.data)} · ${esc(v.curto)}</span><span class="upw-sec-files__qt">${esc(tituloReg(r))}</span></button></h3>
+        <div class="upw-sec-files__a"><div class="upw-sec-files__in"><div class="upw-sec-files__paper">
+          <div class="mc-chips">${chips.map((c) => `<span class="mc-chip">${esc(c)}</span>`).join("")}</div>
+          <span class="mc-meta">${esc(meta)}</span>
+          ${r.texto ? `<p>${esc(r.texto).replace(/\n/g, "<br>")}</p>` : `<p style="color:#5B6475">Sem anotação.</p>`}
+          ${ro ? "" : `<div class="mc-rodape"><span></span><button type="button" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar" : "Apagar"}</button></div>`}
+        </div></div></div>
+      </div></li>`;
+    }).join("");
+    const filtros = [["todas", "Todos", ""], ["conversa", "Conversas", "azul"], ["sem", "Sem contato", "vermelho"], ["demo", "Demos", "roxo"]].map(([k, l, c]) => `<button type="button" class="upw-sec-files__f" data-filter="${k}" ${c ? `data-cor="${c}"` : ""} aria-pressed="${k === "todas"}">${l}</button>`).join("");
+    const visto = L.gvVisto === f.id; L.gvVisto = f.id;
+    return `<section class="upw-sec-files ${visto ? "is-in" : ""}" ${visto ? "data-visto" : ""} aria-label="Ficha de ${esc(f.nome)}"><div class="mc-aurora" aria-hidden="true"><i></i><i></i><i></i></div><div class="mc-estrelas" aria-hidden="true"></div>
+      <div class="upw-sec-files__wrap">
+        <div class="upw-sec-files__head">
+          <p class="upw-sec-files__eyebrow">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</p>
+          <h2 class="upw-sec-files__title">${tit}</h2>
+          <div class="mc-selos"><span class="mc-selo etapa">${esc(FUNIL_NOME[f.funil] || "Mapeamento")}</span>${f.sistema ? `<span class="mc-selo">${esc(f.sistema)}</span>` : ""}${f.qtd_condominios ? `<span class="mc-selo">${fmtN(f.qtd_condominios)} condomínios</span>` : ""}${fezDemo(f) && f.funil !== "demonstracao" ? '<span class="mc-selo">Fez demonstração</span>' : ""}</div>
+          <div class="mc-jornada" style="--mc-passo: ${passo}" aria-label="Etapa atual: ${esc(FUNIL_NOME[f.funil] || "Mapeamento")}">${passos}</div>
+          <div class="mc-numeros">
+            <div class="mc-numero"><b data-conta="${lig.length}">${visto ? lig.length : 0}</b><span>${lig.length === 1 ? "contato" : "contatos"}</span></div>
+            <div class="mc-numero"><b data-conta="${conversa}">${visto ? conversa : 0}</b><span>${conversa === 1 ? "dia de conversa" : "dias de conversa"}</span></div>
+            <div class="mc-numero"><b data-conta="${terceiro[0]}">${visto ? terceiro[0] : 0}</b><span>${terceiro[1]}</span></div>
+          </div>
+          <div class="mc-dados">${dados}</div>
+          ${ro ? "" : `<label class="mc-etapa">Mover para a etapa <select class="sel-funil" data-id="${f.id}">${FUNIL.map(([k, l]) => `<option value="${k}" ${f.funil === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>`}
+        </div>
+        <div class="upw-sec-files__drawer">
+          ${regs.length ? `<div class="upw-sec-files__filters" role="group" aria-label="Filtrar contatos">${filtros}</div>
+          <div class="upw-sec-files__box">${regs.length > visiveis.length ? `<button type="button" class="mc-antigos" data-acao="lg-gv-todos" data-id="${f.id}">Ver os ${fmtN(regs.length - visiveis.length)} contatos mais antigos</button>` : ""}<ol class="upw-sec-files__list">${pastas}</ol></div>
+          <div class="upw-sec-files__front"><p class="upw-sec-files__label"><span class="upw-sec-files__lt">Histórico completo</span> <span class="upw-sec-files__lc"></span></p><span class="upw-sec-files__handle" aria-hidden="true"></span></div>`
+          : `<div class="mc-vazio-gaveta">Nenhum contato registrado ainda.<br>Quando você registrar, cada contato vira um cartão aqui.</div>`}
+        </div>
+        <div class="upw-sec-files__help">
+          <p class="upw-sec-files__help-k">Próximo passo</p>
+          <p class="upw-sec-files__help-t">${esc(proximo)}</p>
+          ${ro ? "" : `<div class="mc-acoes"><button type="button" class="mc-cta" data-acao="lg-registrar">Registrar novo contato <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button><button type="button" class="mc-sec" data-acao="lg-registrar" data-v="dados">Editar dados</button></div>`}
+        </div>
+      </div></section>`;
+  }
   function painelFicha() {
     const L = S.lg;
     if (L.novo) return `<aside class="cartao painel painel-lg" aria-label="Nova administradora"><button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button><div class="pilha"><h2>Nova administradora</h2><span class="t13 fraco">Preencha o que souber. Se já estiver ligando, registre o contato no mesmo lugar.</span></div>${formLigacao(null)}</aside>`;
     const f = L.sel && L.fichaPorId.get(L.sel);
     if (!f) return `<aside class="cartao painel painel-lg" data-vazio="true"><div class="painel-vazio"><span class="painel-vazio-icone">${ICONE.busca}</span><b>Nenhuma administradora aberta</b><span class="fraco t13">Clique numa administradora da lista para ver a ficha, o histórico e registrar um contato.</span></div></aside>`;
     const ro = f.usuario_id !== S.user.id;
+    if (L.registrar !== f.id) return `<aside class="cartao painel painel-lg ficha-escura" aria-label="Ficha da administradora"><button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>${fichaGaveta(f, ro)}</aside>`;
     const regs = [...(L.porFicha.get(f.id) || [])].reverse();
     const el = FUNIL_NOME[f.funil] || "Mapeamento", ec = FUNIL_COR[f.funil] || "s-neutro";
     const tels = String(f.telefones || "").split(/[|,/]| e /).map((t) => t.trim()).filter((t) => t.replace(/\D/g, "").length >= 10);
@@ -1454,6 +1560,7 @@
     const links = (wpp.length >= 10 ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${wpp.slice(-11)}">WhatsApp ${esc(f.whatsapp)}</a>` : "") + tels.slice(0, 3).map((t) => { const n = t.replace(/\D/g, ""); return `<a class="mini" href="tel:+55${n}">Ligar ${esc(t.replace(/\s*(wpp|whats.*|google)\s*$/i, ""))}</a>${/^\d{2}9/.test(n) ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${n}">WhatsApp</a>` : ""}`; }).join("");
     return `<aside class="cartao painel painel-lg" aria-label="Ficha da administradora">
       <button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>
+      <button type="button" class="mini mc-voltar" data-acao="lg-voltar-ficha">← Voltar à ficha</button>
       <div class="pilha"><span class="t11 fraco" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span>
         <h2>${esc(f.nome)}</h2><span class="t13 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}${f.horario_funcionamento ? ` · ${esc(f.horario_funcionamento)}` : ""}</span>
         <span class="linha-flex" style="gap:6px">${ro ? `<span class="selo ${ec}">${el}</span>` : ""}${f.sistema ? `<span class="selo s-sis">${esc(f.sistema)}</span>` : ""}${f.demo_em ? `<span class="selo s-roxo">Demo ${esc(new Date(f.demo_em).toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" }))}</span>` : ""}${f.retorno_em ? celulaRetorno(f) : ""}</span>
@@ -1523,7 +1630,7 @@
       }
       const { data: nf } = await sb.from("fichas").select("*").eq("id", id).single();
       if (nf) L.fichas[L.fichas.findIndex((x) => x.id === nf.id)] = nf;
-      if (!mapa) { L.novo = false; L.sel = id; }
+      if (!mapa) { L.novo = false; L.sel = id; L.registrar = null; if (novo) L.gvAberto = novo.id; }
       derivar(); form.dataset.sujo = "";
       const salvo = novo && L.regs.find((x) => x.id === novo.id);
       toast(salvo ? (LIGACAO.has(salvo.tipo) ? `Salvo como ${salvo.nova ? "contato novo" : "follow-up"}${nf?.retorno_em ? ` · ligar de novo ${quandoTxt(nf.retorno_em).toLowerCase()}` : ""}.` : "Registro salvo.") : f ? "Dados salvos." : "Ficha criada.");
@@ -1563,7 +1670,7 @@
   async function abrirFicha(id) {
     const L = S.lg;
     if (L.dono && L.dono !== S.user.id) { L.dono = null; L.carregado = false; }
-    S.view = "adms"; S.sel = null; S.selRow = null; L.sel = id; L.novo = false; L.busca = ""; L.etapa = "todas";
+    S.view = "adms"; S.sel = null; S.selRow = null; L.sel = id; L.novo = false; L.busca = ""; L.etapa = "todas"; L.registrar = null; L.gvAberto = null; L.gvTodos = null;
     if (!L.carregado) await carregarLig(); else render();
     window.scrollTo(0, 0);
   }
@@ -1848,6 +1955,9 @@
     switch (a) {
       case "ficha-empresa": if (S.selRow) { b.disabled = true; await abrirFichaDaEmpresa(S.selRow); } break;
       case "lg-abrir": await abrirFicha(b.dataset.id); break;
+      case "lg-registrar": L.registrar = L.sel; L.dadosAberto = b.dataset.v === "dados" || L.dadosAberto; render(); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); if (b.dataset.v === "dados") $("#fx-nome")?.focus(); else document.querySelector('.gaveta [name="res"]')?.focus(); break;
+      case "lg-voltar-ficha": L.registrar = null; render(); break;
+      case "lg-gv-todos": L.gvTodos = b.dataset.id; render(); break;
       case "in-continuar": {
         S.view = "mapeamento"; render(); window.scrollTo(0, 0);
         const prox = filtrados(S.rows).find((r) => !contatadaHoje(r.cnpj) && !fichaDoCnpj(r.cnpj)) || filtrados(S.rows).find((r) => !contatadaHoje(r.cnpj));
@@ -1866,8 +1976,8 @@
       }
       case "lg-modo": L.modo = b.dataset.v; try { localStorage.setItem("mapa-adm-modo", L.modo); } catch { /* sem armazenamento */ } render(); break;
       case "qd-mais": L.porColuna[b.dataset.v] = (L.porColuna[b.dataset.v] || 60) + 60; render(); break;
-      case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } L.sel = b.dataset.id; L.novo = false; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
-      case "lg-fechar": L.sel = null; L.novo = false; render(); break;
+      case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } L.sel = b.dataset.id; L.novo = false; L.registrar = null; L.gvAberto = null; L.gvTodos = null; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
+      case "lg-fechar": L.sel = null; L.novo = false; L.registrar = null; render(); break;
       case "lg-nova": L.novo = true; L.sel = null; L.dadosAberto = true; render(); $("#fx-nome")?.focus(); break;
       case "lg-etapa": L.etapa = b.dataset.v; L.mostrar = 100; render(); break;
       case "lg-mais": L.mostrar += 100; { const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); } break;
@@ -1939,6 +2049,7 @@
       if (t.checked && t.value === "pediu_retorno" && !$("#rt-data")?.value) $("#rt-data")?.focus();
     }
   });
+  app.addEventListener("gaveta-abriu", (ev) => { S.lg.gvAberto = ev.detail; });
   app.addEventListener("toggle", (ev) => { if (ev.target.classList?.contains("lg-bloco-dados")) S.lg.dadosAberto = ev.target.open; }, true);
   // arrastar um cartão para outra etapa do quadro
   app.addEventListener("dragstart", (ev) => { const c = ev.target.closest?.("[data-qd]"); if (!c) return; S.lg.arrastando = c.dataset.id; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", c.dataset.id); c.classList.add("ag-movendo"); });
