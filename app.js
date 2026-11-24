@@ -47,7 +47,7 @@
   function salvarPreferencias() { try { localStorage.setItem("mapa-comercial", JSON.stringify({ uf: S.uf, cidade: S.cidade, cidadeId: S.cidadeId, tipo: S.tipo })); } catch { /* sem armazenamento */ } }
 
   const S = {
-    user: null, perfil: null, view: "mapeamento", menu: false,
+    user: null, perfil: null, view: "inicio", menu: false,
     uf: lembrar.uf || "SP", cidade: lembrar.cidade || null, cidadeId: lembrar.cidadeId || null, cidMenu: false, cidBusca: "", estado: null, buscadas: new Map(), totais: new Map(), contando: null, cidOrdem: "az", tipo: lembrar.tipo || "Todas", sistema: "Todos",
     soAtivas: true, escExp: false, soNovas: false, escBase: false, aba: "lista",
     rows: [], carregando: false, erro: "", cidades: [], socios: new Map(), marcas: new Map(),
@@ -292,16 +292,16 @@
     if (S.recuperando) return renderNovaSenha();
     if (!S.user) return S.cadastro ? renderCadastro() : renderLogin();
     if (S.perfil && !S.perfil.aprovado) return renderAguardando();
-    app.innerHTML = topo() + `<main>${faixaAgenda()}${S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : telaEquipe()}</main>`;
+    app.innerHTML = topo() + `<main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? "" : faixaAgenda()}${S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : telaEquipe()}</main>`;
     if (S.view === "regiao") desenharMapa();
   }
 
   function topo() {
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
-    const nav = [["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["listas", "Listas exportadas"]];
+    const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["listas", "Listas exportadas"]];
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
-      <button type="button" class="marca marca-topo" data-acao="ir" data-view="mapeamento" aria-label="Mapa Comercial, voltar ao Mapeamento"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
+      <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
       <nav aria-label="Menu principal">${nav.map(([k, l]) => `<button type="button" data-acao="ir" data-view="${k}" ${k === "agenda" ? 'id="nav-agenda"' : ""} ${S.view === k ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>
       <div class="usuario"><button type="button" data-acao="menu" aria-expanded="${S.menu}"><span>${esc(S.perfil?.nome || "")}</span><span class="avatar">${esc(ini(S.perfil?.nome))}</span></button>
         ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${S.perfil?.papel === "admin" ? "Administradora" : "SDR"}</span><button type="button" data-acao="sair">Sair</button></div>` : ""}
@@ -1237,6 +1237,99 @@
       ${L.sel || L.novo ? gaveta(painelFicha(), "lg-fechar") : ""}`;
   }
 
+  /* ---- Início: saudação, o dia e o funil, sem excesso de informação */
+  const FRASES = {
+    manha: [
+      "O café tá pronto e as administradoras de {cidade} também. Vamos prospectar?",
+      "Dia novo, lista nova. Quem vai ser a primeira demo da semana?",
+      "Toda demonstração começa com um \"alô\". Bora pro primeiro?",
+      "Bom dia para quem vai encontrar a próxima administradora que fecha com a PRG.",
+      "{retornos}",
+      "Manhã é a melhor hora para pegar o responsável no escritório. Partiu?",
+    ],
+    tarde: [
+      "Metade do dia feita. A próxima ligação pode ser a próxima demonstração.",
+      "{retornos}",
+      "Tarde boa para ligar: o pessoal já voltou do almoço. Vamos?",
+      "{contatos}",
+      "Cada \"não atende\" de hoje vira um retorno marcado amanhã. Segue o jogo.",
+      "Uma ligação de cada vez. A próxima pode ser a que fecha.",
+    ],
+    noite: [
+      "Dia encerrado. Bora deixar os retornos de amanhã marcados e descansar?",
+      "{contatos}",
+      "Hora de fechar o dia. O relatório já está prontinho para o Matheus.",
+      "Amanhã tem mais administradora esperando sua ligação. Descansa!",
+    ],
+  };
+  function fraseDoDia(periodo, ctx) {
+    const lista = FRASES[periodo], hj = hojeISO();
+    const dia = Math.round((isoData(hj) - isoData(hj.slice(0, 4) + "-01-01")) / 864e5);
+    for (let i = 0; i < lista.length; i++) {
+      let f = lista[(dia + i) % lista.length];
+      if (f === "{retornos}") { if (!ctx.retornos) continue; f = `Você tem ${ctx.retornos} ${ctx.retornos === 1 ? "retorno marcado" : "retornos marcados"} para hoje. Bora fazer acontecer?`; }
+      if (f === "{contatos}") { if (!ctx.contatos) continue; f = periodo === "noite" ? `Hoje foram ${ctx.contatos} ${ctx.contatos === 1 ? "contato" : "contatos"}. Amanhã tem mais.` : `Já são ${ctx.contatos} ${ctx.contatos === 1 ? "contato" : "contatos"} hoje. Mais um?`; }
+      if (f.includes("{cidade}")) { if (!ctx.cidade) continue; f = f.replace("{cidade}", ctx.cidade); }
+      return f;
+    }
+    return lista[0].replace("{cidade}", "toda parte");
+  }
+  function telaInicio() {
+    const L = S.lg, A = S.ag, hj = hojeISO(), agora = new Date();
+    const hora = +agora.toLocaleString("en-US", { timeZone: TZ, hour: "numeric", hour12: false }) % 24;
+    const periodo = hora < 12 ? "manha" : hora < 18 ? "tarde" : "noite";
+    const saud = { manha: "Bom dia", tarde: "Boa tarde", noite: "Boa noite" }[periodo];
+    const nome = String(S.perfil?.nome || "").trim().split(/\s+/)[0] || "";
+    const pronto = L.carregado && !L.dono;
+    if (L.dono && L.dono !== S.user.id) { L.dono = null; L.carregado = false; }
+    if (!L.carregado && !L.carregando) carregarLig();
+    const m = pronto ? metricas(hj, hj) : null;
+    const its = A.carregado ? itensAgenda() : [];
+    const atr = its.filter((i) => i.tipo === "retorno" && i.dia < hj), hojeRet = its.filter((i) => i.tipo === "retorno" && i.dia === hj), hojeDemo = its.filter((i) => i.tipo === "demo" && i.dia === hj);
+    const frase = fraseDoDia(periodo, { cidade: S.cidade || "", retornos: hojeRet.length, contatos: m?.ligacoes || 0 });
+    const dataTxt = `${DIAS[isoData(hj).getUTCDay()]}, ${+hj.slice(8)} de ${MESES[+hj.slice(5, 7) - 1]}`;
+    const aLigar = S.cidade && S.rows.length && pronto ? filtrados(S.rows).filter((r) => !fichaDoCnpj(r.cnpj)).length : null;
+    const lista = [...atr, ...hojeRet, ...hojeDemo].sort((a, b) => (a.dia + a.hora < b.dia + b.hora ? -1 : 1)).slice(0, 4);
+    const proximos = lista.length ? lista : its.filter((i) => i.dia > hj).slice(0, 3);
+    const itemAg = (i) => { const a = i.tipo === "retorno" && i.dia < hj; return `<button type="button" class="in-ag ${a ? "in-ag-atr" : i.tipo === "demo" ? "in-ag-demo" : ""}" data-acao="ag-abrir" data-id="${i.f.id}"><b class="num">${a || i.dia !== hj ? ddmm(i.dia) : i.hora}</b><span class="pilha" style="gap:0;min-width:0"><b class="t13 corta1">${esc(i.f.nome)}</b><span class="t12 fraco corta1">${i.tipo === "demo" ? `Demonstração ${i.f.demo_formato === "presencial" ? "presencial" : "virtual"}` : esc(i.f.retorno_nota || "Ligar de novo")}</span></span></button>`; };
+    // ligações por hora (8h às 19h)
+    const horas = []; for (let h = 8; h <= 19; h++) horas.push([h, 0]);
+    if (m) for (const r of m.lig) { const hh = +localSP(r.criado_em).slice(11, 13); const x = horas.find((y) => y[0] === hh); if (x && localSP(r.criado_em).slice(0, 10) === hj) x[1]++; }
+    const maxH = Math.max(1, ...horas.map((x) => x[1])), horaAgora = hora;
+    const minhas = pronto ? L.fichas.filter((f) => f.usuario_id === S.user.id) : [];
+    const porEtapa = FUNIL.map(([k, l]) => [k, l, minhas.filter((f) => (f.funil || "mapeamento") === k).length]);
+    const maxE = Math.max(1, ...porEtapa.map((x) => x[2]));
+    const corE = { mapeamento: "#9AAAC6", indisponivel: "#9AAAC6", contato: "#2C63DB", follow_semestral: "#FDB601", sem_interesse: "#E3B4AE", demonstracao: "#5B2A86", contrato: "#1E7A46" };
+    const Ac = pronto ? acumulado(hj) : null;
+    const ind = (v, l, cls) => `<span class="in-num ${cls}"><b class="num">${v}</b><span>${l}</span></span>`;
+    return `<section class="in-hero"><div class="in-grade" aria-hidden="true"></div><div class="in-aro" aria-hidden="true"></div><div class="in-aro2" aria-hidden="true"></div>
+      <div class="in-hero-dentro">
+        <div class="pilha in-ola"><span class="in-data">${esc(dataTxt)}</span><h1>${saud}${nome ? `, ${esc(nome)}` : ""}.</h1><p>${esc(frase)}</p></div>
+        <div class="pilha in-cta">
+          ${S.cidade ? `<button type="button" class="in-btn" data-acao="in-continuar">Continuar em ${esc(S.cidade)}/${esc(S.uf)} <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            <span class="in-cta-sub">${aLigar != null ? `${fmtN(aLigar)} ${aLigar === 1 ? "empresa ainda não contatada" : "empresas ainda não contatadas"}` : "abre a próxima empresa da lista"}</span>
+            <button type="button" class="in-btn2" data-acao="ir" data-view="mapeamento">Escolher outra cidade</button>`
+          : `<button type="button" class="in-btn" data-acao="ir" data-view="mapeamento">Começar a prospectar <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>`}
+        </div>
+      </div></section>
+    <div class="in-cartoes">
+      <section class="in-cartao"><div class="in-cab"><h2>Sua agenda de hoje</h2><button type="button" class="in-link" data-acao="ir" data-view="agenda">Ver agenda →</button></div>
+        <div class="in-nums">${ind(hojeRet.length, hojeRet.length === 1 ? "retorno" : "retornos", "in-azul")}${ind(atr.length, atr.length === 1 ? "atrasado" : "atrasados", "in-verm")}${ind(hojeDemo.length, hojeDemo.length === 1 ? "demo" : "demos", "in-roxo")}</div>
+        ${proximos.length ? `${lista.length ? "" : '<span class="t12 fraco">Nada para hoje. Os próximos:</span>'}<div class="pilha" style="gap:8px">${proximos.map(itemAg).join("")}</div>` : '<span class="t13 fraco">Nenhum retorno marcado. Quando marcar "Ligar de novo" numa ficha, ele aparece aqui.</span>'}
+      </section>
+      <section class="in-cartao"><div class="in-cab"><h2>Seu dia até agora</h2><button type="button" class="in-link" data-acao="lg-rel-dia">Relatório do dia →</button></div>
+        ${m ? `<div class="in-grande"><b class="num">${fmtN(m.ligacoes)}</b><span>${m.ligacoes === 1 ? "contato" : "contatos"}${m.pessoas ? ` com ${fmtN(m.pessoas)} ${m.pessoas === 1 ? "administradora" : "administradoras"}` : " hoje"}</span></div>
+        <div class="in-mini">${[["Contatos novos", m.primeira_ligacao], ["Follow-ups", m.follow_up], ["Sem contato", m.sem_contato], ["Demos agendadas", m.demo_agendada]].map(([l, v]) => `<span><span class="fraco">${l}</span><b class="num">${fmtN(v)}</b></span>`).join("")}</div>
+        <div class="pilha" style="gap:6px"><span class="t12 fraco">Contatos por hora</span><div class="in-barras" aria-hidden="true">${horas.map(([h, v]) => `<i style="height:${v ? Math.max(10, Math.round((v / maxH) * 100)) : 6}%" class="${h === horaAgora ? "agora" : v ? "tem" : ""}" title="${h}h: ${v}"></i>`).join("")}</div><span class="in-eixo"><span>8h</span><span>12h</span><span>16h</span><span>19h</span></span></div>`
+        : '<span class="t13 fraco">Carregando…</span>'}
+      </section>
+      <section class="in-cartao"><div class="in-cab"><h2>Suas administradoras</h2><button type="button" class="in-link" data-acao="ir" data-view="adms">Ver quadro →</button></div>
+        ${pronto ? `<div class="pilha" style="gap:9px">${porEtapa.map(([k, l, v]) => `<span class="in-etapa"><span class="fraco">${l}</span><span class="in-trilho"><i style="width:${v ? Math.max(3, Math.round((v / maxE) * 100)) : 0}%;background:${corE[k]}"></i></span><b class="num">${fmtN(v)}</b></span>`).join("")}</div>
+        <div class="in-acum"><b>${fmtN(Ac.demos.length)} ${Ac.demos.length === 1 ? "demonstração" : "demonstrações"}</b> e <b>${fmtN(Ac.contratos.length)} ${Ac.contratos.length === 1 ? "contrato" : "contratos"}</b> no acumulado. ${periodo === "noite" ? "Amanhã tem mais." : "Falta pouco para a próxima."}</div>` : '<span class="t13 fraco">Carregando…</span>'}
+      </section>
+    </div>`;
+  }
+
   /* ---- quadro: uma coluna por etapa */
   const ICONE_TEL = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
   const ICONE_RELOGIO = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
@@ -1746,11 +1839,17 @@
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM") return;
     const a = b.dataset.acao, L = S.lg, R = S.rl, A = S.ag;
-    if (!a.startsWith("lg-") && !a.startsWith("rl-") && !a.startsWith("ag-") && !a.startsWith("av-") && !a.startsWith("qd-") && a !== "ficha-empresa") { if (!a.startsWith("lg-apagar")) L.apagar = null; return; }
+    if (!a.startsWith("lg-") && !a.startsWith("rl-") && !a.startsWith("ag-") && !a.startsWith("av-") && !a.startsWith("qd-") && !a.startsWith("in-") && a !== "ficha-empresa") { if (!a.startsWith("lg-apagar")) L.apagar = null; return; }
     if (a !== "lg-apagar-reg" && a !== "lg-apagar-ficha") L.apagar = null;
     switch (a) {
       case "ficha-empresa": if (S.selRow) { b.disabled = true; await abrirFichaDaEmpresa(S.selRow); } break;
       case "lg-abrir": await abrirFicha(b.dataset.id); break;
+      case "in-continuar": {
+        S.view = "mapeamento"; render(); window.scrollTo(0, 0);
+        const prox = filtrados(S.rows).find((r) => !contatadaHoje(r.cnpj) && !fichaDoCnpj(r.cnpj)) || filtrados(S.rows).find((r) => !contatadaHoje(r.cnpj));
+        if (prox) await selecionar(prox.cnpj);
+        break;
+      }
       case "lg-abrir-wpp": {
         const n = String($("#fx-whatsapp")?.value || $("#fx-numero_responsavel")?.value || "").replace(/\D/g, "");
         if (n.length < 10) { toast("Preencha o WhatsApp na ficha."); $("#fx-whatsapp")?.focus(); break; }
