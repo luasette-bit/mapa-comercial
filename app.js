@@ -1468,7 +1468,7 @@
   function fichaGaveta(f, ro) {
     const L = S.lg, hj = hojeISO();
     const regs = [...(L.porFicha.get(f.id) || [])].reverse();
-    const lig = regs.filter((r) => LIGACAO.has(r.tipo));
+    const lig = regs.filter((r) => r.tipo !== "anotacao");
     const visiveis = L.gvTodos === f.id ? regs : regs.slice(0, 8);
     const aberto = regs.some((r) => r.id === L.gvAberto) && visiveis.some((r) => r.id === L.gvAberto) ? L.gvAberto : visiveis[0]?.id;
     const nomes = String(f.nome).trim().split(/\s+/);
@@ -1505,7 +1505,7 @@
       const v = visualReg(r), h = horaReg(r), q = `${ddmm(r.data)}${h ? ` às ${h}` : ""}`;
       const ds = r.detalhes?.length ? r.detalhes : r.detalhe ? [r.detalhe] : [];
       const chips = [CANAL[r.canal || "ligacao"], ...ds.map((k) => NOME_BOTAO[k] || k), ...(r.envio || []).map((k) => `Apresentação por ${ENVIO[k] || k}`)];
-      const meta = [LIGACAO.has(r.tipo) ? (r.nova ? "Contato novo" : "Follow-up") : "Registro", L.dono === "todos" ? nomePessoa(r.usuario_id) : ""].filter(Boolean).join(" · ");
+      const meta = [LIGACAO.has(r.tipo) ? (r.nova ? "Contato novo" : "Follow-up") : { demo_realizada: "Demonstração", contrato: "Contrato", anotacao: "Anotação" }[r.tipo] || "Registro", L.dono === "todos" ? nomePessoa(r.usuario_id) : ""].filter(Boolean).join(" · ");
       return `<li class="upw-sec-files__item" data-cat="${v.cat}" data-cor="${v.cor}" data-id="${r.id}" data-num="${regs.length - regs.indexOf(r)}" data-quando="${esc(q)}" data-carimbo="${esc(v.selo)}" ${r.id === aberto ? "data-aberto" : ""}><div class="upw-sec-files__folder">
         <h3><button type="button" class="upw-sec-files__q"><span class="upw-sec-files__tab">${ddmm(r.data)} · ${esc(v.curto)}</span><span class="upw-sec-files__qt">${esc(tituloReg(r))}</span></button></h3>
         <div class="upw-sec-files__a"><div class="upw-sec-files__in"><div class="upw-sec-files__paper">
