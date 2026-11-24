@@ -70,6 +70,12 @@
       S.pendentes = count || 0;
     }
   }
+  let buscandoPessoas = null;
+  function garantirPessoas() {
+    if (S.perfil?.papel !== "admin" || S.lg.pessoas) return Promise.resolve();
+    if (!buscandoPessoas) buscandoPessoas = sb.from("perfis").select("id,nome").eq("aprovado", true).order("nome").then(({ data }) => { S.lg.pessoas = data || []; }).finally(() => { buscandoPessoas = null; });
+    return buscandoPessoas;
+  }
   async function carregarSocios(basicos) {
     const falta = [...new Set(basicos)].filter((b) => !S.socios.has(b));
     for (const parte of chunk(falta, 150)) {
@@ -308,7 +314,7 @@
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
       <nav aria-label="Menu principal">${nav.map(([k, l]) => `<button type="button" data-acao="ir" data-view="${k}" ${k === "agenda" ? 'id="nav-agenda"' : ""} ${S.view === k ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>
       <div class="usuario"><button type="button" data-acao="menu" aria-expanded="${S.menu}"><span>${esc(S.perfil?.nome || "")}</span><span class="avatar">${esc(ini(S.perfil?.nome))}</span></button>
-        ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${S.perfil?.papel === "admin" ? "Administradora" : "SDR"}</span><button type="button" data-acao="sair">Sair</button></div>` : ""}
+        ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${S.perfil?.papel === "admin" ? "Administradora" : "SDR"}</span><button type="button" data-acao="atualizar">Atualizar dados</button><button type="button" data-acao="sair">Sair</button></div>` : ""}
       </div>
     </header>`;
   }
@@ -741,11 +747,12 @@
       <section class="cartao" style="overflow:hidden"><div class="lista-cab"><b>Atividade da equipe</b><span class="t12 fraco">últimas 60 ações</span></div><div class="rolagem">${atividade.length ? `<table class="tab-simples"><thead><tr><th>Data</th><th>Quem</th><th>O que fez</th></tr></thead><tbody>${atividade.map((x) => `<tr><td class="num">${esc(dataHoraBR(x.criado_em))}</td><td>${esc(x.usuario_nome || "")}</td><td>${esc(NOME_ACAO[x.acao] || x.acao)} ${x.campo ? `<b>${esc(x.campo.toLowerCase())}</b> de ` : ""}${esc(x.empresa || "")}${x.quantidade ? ` (${fmtN(x.quantidade)} empresas)` : ""}</td></tr>`).join("")}</tbody></table>` : `<div class="vazio">Nada por aqui ainda.</div>`}</div></section>`;
   }
   async function carregarListas() {
+    if (S.buscandoListas) return; S.buscandoListas = true;
     const [a, b] = await Promise.all([
       sb.from("historico").select("criado_em,usuario_nome,empresa,quantidade").eq("acao", "exportou").order("criado_em", { ascending: false }).limit(100),
       sb.from("historico").select("criado_em,usuario_nome,acao,campo,empresa,quantidade").neq("acao", "exportou").order("criado_em", { ascending: false }).limit(60),
     ]);
-    S.listas = { exportacoes: a.data || [], atividade: b.data || [] };
+    S.listas = { exportacoes: a.data || [], atividade: b.data || [] }; S.buscandoListas = false;
     render();
   }
 
@@ -775,7 +782,8 @@
       </tbody></table></div></section>`;
   }
   async function carregarEquipe() {
-    const data = await chamar("gerenciar-usuarios", { acao: "listar" });
+    if (S.buscandoEquipe) return; S.buscandoEquipe = true;
+    const data = await chamar("gerenciar-usuarios", { acao: "listar" }).finally(() => { S.buscandoEquipe = false; });
     S.equipe = data.erro || !data.usuarios ? { erro: data.erro && data.erro !== "rede" ? data.erro : "Não foi possível carregar a equipe." } : { usuarios: data.usuarios };
     render();
   }
@@ -1102,6 +1110,7 @@
       if (!data || data.length < 1000) return out;
     }
   }
+  const COLS_REG = "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,envio,canal,criado_em";
   const COLS_FICHA = "id,usuario_id,cnpj,nome,telefones,whatsapp,horario_funcionamento,cidade,uf,sistema,qtd_condominios,qtd_unidades,atendente,email,numero_responsavel,melhor_horario,responsavel,etapa,funil,demo_em,demo_formato,contrato_em,criado_em,atualizado_em,contato_anterior,retorno_em,retorno_nota,observacoes";
   // busca as anotações de uma ficha (as importadas do Agendor não vêm na abertura do sistema)
   async function garantirTextos(fichaId) {
@@ -1132,17 +1141,18 @@
     const q = (t, cols) => () => { let x = sb.from(t).select(cols); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order(t === "acumulado_base" ? "usuario_id" : t === "relatorios" ? "inicio" : "id"); };
     try {
       const [fichas, regs, base, rels] = await Promise.all([
-        tudo(q("fichas", COLS_FICHA)), tudo(q("registros", "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,envio,canal,criado_em")),
-        tudo(q("acumulado_base", "*")), tudo(q("relatorios", "*")),
+        tudo(q("fichas", COLS_FICHA)),
         // o texto vem junto só dos contatos registrados no sistema; o das anotações importadas é buscado ao abrir a ficha
-        tudo(() => { let x = sb.from("registros").select("id,texto").neq("tipo", "anotacao"); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order("id"); }),
-      ]).then(([fichas, regs, base, rels, textos]) => { const t = new Map(textos.map((r) => [r.id, r.texto])); for (const r of regs) if (t.has(r.id)) r.texto = t.get(r.id); L.textosFicha = new Set(); return [fichas, regs, base, rels]; });
+        tudo(() => { let x = sb.from("registros").select(COLS_REG + ",texto").neq("tipo", "anotacao"); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order("id"); }),
+        tudo(q("acumulado_base", "*")), tudo(q("relatorios", "*")),
+        tudo(() => { let x = sb.from("registros").select(COLS_REG).eq("tipo", "anotacao"); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order("id"); }),
+      ]).then(([fichas, regs, base, rels, anot]) => { L.textosFicha = new Set(); return [fichas, regs.concat(anot), base, rels]; });
       Object.assign(L, { fichas, regs, base, rels });
-      if (S.perfil?.papel === "admin" && !L.pessoas) { const { data } = await sb.from("perfis").select("id,nome").eq("aprovado", true).order("nome"); L.pessoas = data || []; }
+      await garantirPessoas();
       derivar();
-      L.carregado = true;
+      L.carregado = true; S.carregadoEm = Date.now();
     } catch (e) { console.error(e); toast("Não deu para carregar as ligações. Tente de novo."); }
-    finally { L.carregando = false; render(); }
+    finally { L.carregando = false; if (L.carregado && !L.dono) carregarAgenda(); render(); }
   }
   function derivar() {
     const L = S.lg; S.dv = (S.dv || 0) + 1;
@@ -1374,6 +1384,15 @@
       <div class="quadro vd-quadro">${colunas}</div>
       ${V.perder ? modalPerda() : ""}`;
   }
+  // atualiza só o quadro, o resumo e os contadores de Vendas, sem refazer a tela (a busca e a rolagem ficam onde estão)
+  function atualizarVendas() {
+    const q = app.querySelector(".vd-quadro");
+    if (S.view !== "vendas" || !q || S.lg.sel || S.vd.perder || app.querySelector(".vd-modal")) return render();
+    const t = document.createElement("template"); t.innerHTML = telaVendas();
+    const x = q.scrollLeft;
+    for (const sel of [".vd-resumo", ".vd-quadro", '.filtros .chips', '.filtros .abas']) { const a = app.querySelector(sel), b = t.content.querySelector(sel); if (a && b) a.replaceWith(b); }
+    app.querySelector(".vd-quadro").scrollLeft = x;
+  }
   function modalPerda() {
     const n = S.vd.negocios.find((x) => x.id === S.vd.perder);
     return `<div class="gaveta-fundo" data-acao="vd-perda-cancelar"></div>
@@ -1401,7 +1420,7 @@
         sb.from("produtos").select("id,nome").then(dados),
         tudo(() => sb.from("negocios").select(COLS_NEG).order("id")),
       ]);
-      if (S.perfil?.papel === "admin" && !S.lg.pessoas) { const { data } = await sb.from("perfis").select("id,nome").eq("aprovado", true).order("nome"); S.lg.pessoas = data || []; }
+      await garantirPessoas();
       V.funis = funis; V.etapas = etapas.map((e) => ({ id: e.id, funil: e.funil_id, nome: e.nome, ordem: e.ordem, alerta: e.dias_alerta, resultado: e.resultado }));
       V.produtoPorId = new Map(produtos.map((p) => [p.id, p]));
       V.negocios = negs.map(mapNeg);
@@ -1438,10 +1457,15 @@
     return { nome: n.status === "perdido" && e.resultado !== "perdido" ? `${e.nome} · perdido` : e.nome, cor, ordem: e.ordem, negocio: n };
   }
   const agoraISO = () => new Date().toISOString();
+  // depois de mudar um negócio: em Vendas troca só o quadro; com a ficha aberta, só o painel dela
+  function redesenharNegocios() {
+    if (S.view === "vendas" && !S.lg.sel) return atualizarVendas();
+    render();
+  }
   async function gravarNegocio(n, mud, local, aviso) {
-    const antes = { ...n }; Object.assign(n, local); derivarVendas(); render();
+    const antes = { ...n }; Object.assign(n, local); derivarVendas(); redesenharNegocios();
     const { error } = await sb.from("negocios").update(mud).eq("id", n.id);
-    if (error) { console.error(error); Object.assign(n, antes); derivarVendas(); toast("Não foi possível salvar. Tente de novo."); render(); return false; }
+    if (error) { console.error(error); Object.assign(n, antes); derivarVendas(); toast("Não foi possível salvar. Tente de novo."); redesenharNegocios(); return false; }
     if (aviso) toast(aviso); return true;
   }
   async function moverNegocio(id, etapaId) {
@@ -1676,7 +1700,8 @@
     const L = S.lg, hj = hojeISO(); garantirTextos(f.id);
     const regs = [...(L.porFicha.get(f.id) || [])].reverse();
     const lig = regs.filter((r) => r.tipo !== "anotacao");
-    const visiveis = L.gvTodos === f.id ? regs : regs.slice(0, 8);
+    // histórico longo: os 20 mais recentes, e mais 20 a cada clique
+    const visiveis = regs.slice(0, L.gvTodos === f.id ? L.gvMostrar || 20 : 20);
     const aberto = regs.some((r) => r.id === L.gvAberto) && visiveis.some((r) => r.id === L.gvAberto) ? L.gvAberto : visiveis[0]?.id;
     const nomes = String(f.nome).trim().split(/\s+/);
     const tit = nomes.length > 1 ? `${esc(nomes.slice(0, Math.ceil(nomes.length / 2)).join(" "))} <em>${esc(nomes.slice(Math.ceil(nomes.length / 2)).join(" "))}</em>` : `<em>${esc(f.nome)}</em>`;
@@ -1712,12 +1737,12 @@
     const pastas = visiveis.map((r) => {
       const v = visualReg(r), h = horaReg(r), q = `${ddmm(r.data)}${h ? ` às ${h}` : ""}`;
       const ds = r.detalhes?.length ? r.detalhes : r.detalhe ? [r.detalhe] : [];
-      const chips = [CANAL[r.canal || "ligacao"], ...ds.map((k) => NOME_BOTAO[k] || k), ...(r.envio || []).map((k) => `Apresentação por ${ENVIO[k] || k}`)];
+      const chips = [r.canal ? CANAL[r.canal] : r.tipo === "anotacao" ? "" : CANAL.ligacao, ...ds.map((k) => NOME_BOTAO[k] || k), ...(r.envio || []).map((k) => `Apresentação por ${ENVIO[k] || k}`)];
       const meta = [LIGACAO.has(r.tipo) ? (r.nova ? "Contato novo" : "Follow-up") : { demo_realizada: "Demonstração", contrato: "Contrato", anotacao: "Anotação" }[r.tipo] || "Registro", L.dono === "todos" ? nomePessoa(r.usuario_id) : ""].filter(Boolean).join(" · ");
       return `<li class="upw-sec-files__item" data-cat="${v.cat}" data-cor="${v.cor}" data-id="${r.id}" data-num="${regs.length - regs.indexOf(r)}" data-quando="${esc(q)}" data-carimbo="${esc(v.selo)}" ${r.id === aberto ? "data-aberto" : ""}><div class="upw-sec-files__folder">
         <h3><button type="button" class="upw-sec-files__q"><span class="upw-sec-files__tab">${ddmm(r.data)} · ${esc(v.curto)}</span><span class="upw-sec-files__qt">${r.texto === undefined ? `<span class="mc-esq-tit" data-texto="${r.id}"></span>` : esc(tituloReg(r))}</span></button></h3>
         <div class="upw-sec-files__a"><div class="upw-sec-files__in"><div class="upw-sec-files__paper">
-          <div class="mc-chips">${chips.map((c) => `<span class="mc-chip">${esc(c)}</span>`).join("")}</div>
+          <div class="mc-chips">${chips.filter(Boolean).map((c) => `<span class="mc-chip">${esc(c)}</span>`).join("")}</div>
           <span class="mc-meta">${esc(meta)}</span>
           ${r.texto === undefined ? TEXTO_CARREGANDO(r.id) : textoReg(r)}
           ${ro ? "" : `<div class="mc-rodape"><span></span><button type="button" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar" : "Apagar"}</button></div>`}
@@ -1742,10 +1767,11 @@
           </div>
           <div class="mc-dados">${dados}</div>
           ${ro || !S.vd.carregado ? "" : `<label class="mc-etapa">Etapa no funil SCC ${seletorEtapa(f, "")}</label>`}
+          ${painelFx(f, ro)}
         </div>
         <div class="upw-sec-files__drawer">
           ${regs.length ? `<div class="upw-sec-files__filters" role="group" aria-label="Filtrar contatos">${filtros}</div>
-          <div class="upw-sec-files__box">${regs.length > visiveis.length ? `<button type="button" class="mc-antigos" data-acao="lg-gv-todos" data-id="${f.id}">Ver os ${fmtN(regs.length - visiveis.length)} contatos mais antigos</button>` : ""}<ol class="upw-sec-files__list">${pastas}</ol></div>
+          <div class="upw-sec-files__box">${regs.length > visiveis.length ? `<button type="button" class="mc-antigos" data-acao="lg-gv-todos" data-id="${f.id}">Ver mais ${fmtN(Math.min(20, regs.length - visiveis.length))} contatos antigos (faltam ${fmtN(regs.length - visiveis.length)})</button>` : ""}<ol class="upw-sec-files__list">${pastas}</ol></div>
           <div class="upw-sec-files__front"><p class="upw-sec-files__label"><span class="upw-sec-files__lt">Histórico completo</span> <span class="upw-sec-files__lc"></span></p><span class="upw-sec-files__handle" aria-hidden="true"></span></div>`
           : `<div class="mc-vazio-gaveta">Nenhum contato registrado ainda.<br>Quando você registrar, cada contato vira um cartão aqui.</div>`}
         </div>
@@ -1838,7 +1864,7 @@
         const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data, tipo: res[2], detalhe: escolhidos.length === 1 ? res[3] : null, detalhes: escolhidos.map((b) => b[0]), envio: envio.length ? envio : null, canal: fd.get("canal") || "ligacao", texto }).select().single(); if (error) throw error;
         L.regs.push(r); novo = r;
       }
-      const { data: nf } = await sb.from("fichas").select("*").eq("id", id).single();
+      const { data: nf } = await sb.from("fichas").select(COLS_FICHA).eq("id", id).single();
       if (nf) L.fichas[L.fichas.findIndex((x) => x.id === nf.id)] = nf;
       if (!mapa) { L.novo = false; L.sel = id; L.registrar = null; if (novo) L.gvAberto = novo.id; }
       derivar(); form.dataset.sujo = "";
@@ -1901,11 +1927,20 @@
 
   /* ---- Agenda: retornos marcados e demonstrações agendadas, com aviso na hora */
   S.ag = { fichas: [], carregado: false, cnpjs: new Set(), modo: "mes", ref: hojeISO(), dia: hojeISO(), arrastando: null };
-  async function carregarAgenda() {
+  let buscandoAgenda = null;
+  async function carregarAgenda(doBanco) {
     if (!S.user || !S.perfil?.aprovado) return;
-    const { data, error } = await sb.from("fichas").select("id,nome,cidade,uf,cnpj,telefones,responsavel,etapa,retorno_em,retorno_nota,demo_em,demo_formato").eq("usuario_id", S.user.id).limit(20000);
-    if (error) { console.error(error); return; }
-    S.ag.fichas = data || []; S.ag.carregado = true; S.ag.cnpjs = new Set(S.ag.fichas.map((f) => f.cnpj).filter(Boolean));
+    const L = S.lg, minhas = L.carregado && !L.dono;
+    if (minhas && !doBanco) S.ag.fichas = L.fichas.filter((f) => f.usuario_id === S.user.id);
+    else if (!doBanco && L.carregando && !L.dono) return; // as fichas já estão vindo; carregarLig chama a agenda no fim
+    else {
+      if (buscandoAgenda) return buscandoAgenda;
+      buscandoAgenda = sb.from("fichas").select("id,usuario_id,nome,cidade,uf,cnpj,telefones,responsavel,etapa,retorno_em,retorno_nota,demo_em,demo_formato").eq("usuario_id", S.user.id).limit(20000);
+      const { data, error } = await buscandoAgenda.finally(() => { buscandoAgenda = null; });
+      if (error) { console.error(error); return; }
+      S.ag.fichas = data || [];
+    }
+    S.ag.carregado = true; S.ag.cnpjs = new Set(S.ag.fichas.map((f) => f.cnpj).filter(Boolean));
     if (S.view === "agenda") render(); else atualizarContador();
     verificarAvisos();
   }
@@ -2040,7 +2075,17 @@
     atualizarContador();
   }
   setInterval(verificarAvisos, 30e3);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.user && S.perfil?.aprovado) carregarAgenda(); });
+  // voltando para a aba depois de 10 minutos: busca de novo (pode ter mudado em outro computador)
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.user && S.perfil?.aprovado && Date.now() - (S.carregadoEm || 0) > 6e5) atualizarDados(true); });
+  // esquece o que estava guardado e busca tudo de novo (botão "Atualizar dados" no menu)
+  function atualizarDados(silencioso) {
+    if (S.lg.carregando || S.vd.carregando) return;
+    Object.assign(S.lg, { carregado: false, textosFicha: new Set() });
+    Object.assign(S.vd, { carregado: false });
+    S.fx.cache.clear(); S.listas = null; S.equipe = null; S.carregadoEm = Date.now();
+    carregarLig(); carregarVendas();
+    if (!silencioso) toast("Atualizando os dados…");
+  }
   if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.abrir && S.user) abrirFicha(e.data.abrir); });
 
   /* ---- Relatórios: dia, semana e mês */
@@ -2166,9 +2211,9 @@
     switch (a) {
       case "ficha-empresa": if (S.selRow) { b.disabled = true; await abrirFichaDaEmpresa(S.selRow); } break;
       case "lg-abrir": await abrirFicha(b.dataset.id); break;
-      case "vd-funil": S.vd.funil = +b.dataset.v; S.vd.porColuna = {}; render(); break;
-      case "vd-status": S.vd.status = b.dataset.v; render(); break;
-      case "vd-mais": S.vd.porColuna[b.dataset.v] = (S.vd.porColuna[b.dataset.v] || 40) + 40; render(); break;
+      case "vd-funil": S.vd.funil = +b.dataset.v; S.vd.porColuna = {}; atualizarVendas(); break;
+      case "vd-status": S.vd.status = b.dataset.v; atualizarVendas(); break;
+      case "vd-mais": S.vd.porColuna[b.dataset.v] = (S.vd.porColuna[b.dataset.v] || 40) + 40; atualizarVendas(); break;
       case "vd-abrir": { if (S.vd.arrastou) break; const n = S.vd.negocios.find((x) => x.id === b.dataset.id); if (n) await abrirFicha(n.ficha, n.dono); break; }
       case "vd-ganho": await ganharNegocio(b.dataset.id); break;
       case "vd-perdido": S.vd.perder = b.dataset.id; render(); break;
@@ -2176,7 +2221,7 @@
       case "vd-reabrir": await reabrirNegocio(b.dataset.id); break;
       case "lg-registrar": L.registrar = L.sel; L.dadosAberto = b.dataset.v === "dados" || L.dadosAberto; render(); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); if (b.dataset.v === "dados") $("#fx-nome")?.focus(); else document.querySelector('.gaveta [name="res"]')?.focus(); break;
       case "lg-voltar-ficha": L.registrar = null; render(); break;
-      case "lg-gv-todos": L.gvTodos = b.dataset.id; render(); break;
+      case "lg-gv-todos": L.gvMostrar = L.gvTodos === b.dataset.id ? (L.gvMostrar || 20) + 20 : 40; L.gvTodos = b.dataset.id; render(); break;
       case "in-continuar": {
         S.view = "mapeamento"; render(); window.scrollTo(0, 0);
         const prox = filtrados(S.rows).find((r) => !contatadaHoje(r.cnpj) && !fichaDoCnpj(r.cnpj)) || filtrados(S.rows).find((r) => !contatadaHoje(r.cnpj));
@@ -2255,14 +2300,14 @@
   });
   app.addEventListener("input", (ev) => {
     const fm = ev.target.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1";
-    if (ev.target.id === "vd-busca") { const v = ev.target.value; clearTimeout(S.vd.espera); S.vd.espera = setTimeout(() => { const a = $("#vd-busca"); if (!a) return; S.vd.busca = a.value; const pos = a.selectionStart, foco = document.activeElement === a; render(); const i = $("#vd-busca"); if (i && foco) { i.focus(); i.setSelectionRange(pos, pos); } }, 200); void v; return; }
+    if (ev.target.id === "vd-busca") { const v = ev.target.value; clearTimeout(S.vd.espera); S.vd.espera = setTimeout(() => { const a = $("#vd-busca"); if (!a) return; S.vd.busca = a.value; atualizarVendas(); }, 200); void v; return; }
     if (ev.target.id === "lg-busca") { clearTimeout(S.lg.espera); S.lg.espera = setTimeout(() => { const a = $("#lg-busca"); if (!a) return; S.lg.busca = a.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); }, 200); }
   });
   app.addEventListener("change", (ev) => {
     const t = ev.target;
     if (t.classList.contains("sel-dono")) { S.lg.dono = t.value === S.user.id ? null : t.value; S.lg.carregado = false; S.lg.sel = null; S.lg.novo = false; S.rl.editObs = S.rl.editAj = false; render(); return; }
     if (t.classList.contains("sel-etapa")) { if (t.value) moverEtapaFicha(t.dataset.id, +t.value); return; }
-    if (t.id === "vd-resp") { S.vd.resp = t.value; render(); return; }
+    if (t.id === "vd-resp") { S.vd.resp = t.value; atualizarVendas(); return; }
     { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
     if (t.name === "res" && t.closest('[data-acao="lg-salvar"]')) {
       const d = $("#rg-demo"); if (d) d.hidden = !t.form.querySelector('[name="res"][value="demo_agendada"]:checked');
@@ -2286,6 +2331,223 @@
   app.addEventListener("dragover", (ev) => { const d = ev.target.closest?.(".ag-dia"); if (!d || !S.ag.arrastando) return; ev.preventDefault(); app.querySelectorAll(".ag-alvo").forEach((x) => x !== d && x.classList.remove("ag-alvo")); d.classList.add("ag-alvo"); });
   app.addEventListener("drop", (ev) => { const d = ev.target.closest?.(".ag-dia"); if (!d || !S.ag.arrastando) return; ev.preventDefault(); const id = S.ag.arrastando; S.ag.arrastando = null; S.ag.arrastou = true; setTimeout(() => (S.ag.arrastou = false), 300); remarcar(id, d.dataset.dia); });
 
+
+  /* ---- Ficha: tarefas, negócios e contatos (carregados só quando a ficha abre) */
+  S.fx = { cache: new Map(), aba: null, form: null, verFeitas: false, salvando: false, novoFunil: null };
+  const TIPO_TAREFA = [["ligacao", "Ligação"], ["whatsapp", "WhatsApp"], ["email", "E-mail"], ["reuniao", "Reunião"], ["visita", "Visita"], ["proposta", "Proposta"], ["tarefa", "Tarefa"]];
+  const NOME_TAREFA = Object.fromEntries(TIPO_TAREFA);
+  const COLS_TAREFA = "id,ficha_id,negocio_id,usuario_id,tipo,texto,prazo,dia_todo,concluida,concluida_em";
+  const COLS_CONTATO = "id,ficha_id,usuario_id,nome,cargo,email,telefone,celular,whatsapp,observacoes";
+  // busca tarefas e contatos de uma ficha (filtrando por ficha_id) e guarda; não busca de novo enquanto nada mudar
+  function garantirFx(fichaId) {
+    const C = S.fx.cache; if (C.has(fichaId)) return C.get(fichaId);
+    const reg = { estado: "carregando", tarefas: [], contatos: [] }; C.set(fichaId, reg);
+    if (!S.vd.carregado && !S.vd.carregando) carregarVendas();
+    Promise.all([
+      sb.from("tarefas").select(COLS_TAREFA).eq("ficha_id", fichaId).order("prazo", { ascending: true, nullsFirst: false }).then(dados),
+      sb.from("contatos").select(COLS_CONTATO).eq("ficha_id", fichaId).order("nome").then(dados),
+    ]).then(([t, c]) => { reg.tarefas = t; reg.contatos = c; reg.estado = "ok"; }, (e) => { console.error(e); reg.estado = "erro"; C.delete(fichaId); })
+      .finally(() => atualizarPainelFx(fichaId));
+    return reg;
+  }
+  const tsTarefa = (t) => (t.prazo ? Date.parse(t.prazo) : Infinity);
+  const tarefaAtrasada = (t) => !t.concluida && t.prazo && (t.dia_todo ? diaDe(t.prazo) < hojeISO() : Date.parse(t.prazo) < Date.now());
+  function quandoTarefa(t) {
+    if (!t.prazo) return "Sem prazo";
+    const q = quandoTxt(t.prazo); return t.dia_todo ? q.split(" · ")[0] : q;
+  }
+  const telA = (n, rot) => { const d = String(n || "").replace(/\D/g, ""); return d.length >= 10 ? `<a href="tel:+${d.length > 11 ? d : "55" + d}">${esc(rot || n)}</a>` : esc(n); };
+  const wppA = (n) => { const d = String(n || "").replace(/\D/g, ""); return d.length >= 10 ? `<a target="_blank" rel="noopener" href="https://wa.me/${d.length > 11 ? d : "55" + d}">WhatsApp</a>` : ""; };
+  const ICO_FX = {
+    ok: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    mais: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  };
+  function abaInicial(fichaId, reg) {
+    const pend = reg.tarefas.filter((t) => !t.concluida).length;
+    if (pend) return "tarefas";
+    return S.vd.negocios.some((n) => n.ficha === fichaId) ? "negocios" : "tarefas";
+  }
+  function painelFx(f, ro) {
+    const X = S.fx, reg = garantirFx(f.id);
+    if (X.fichaAba !== f.id) { X.fichaAba = f.id; X.aba = null; X.form = null; X.verFeitas = false; }
+    const negs = S.vd.negocios.filter((n) => n.ficha === f.id).sort((a, b) => (a.status === "em_andamento" ? 0 : 1) - (b.status === "em_andamento" ? 0 : 1) || b.t - a.t);
+    const pend = reg.tarefas.filter((t) => !t.concluida), atr = pend.filter(tarefaAtrasada).length;
+    const aba = X.aba || (reg.estado === "ok" ? abaInicial(f.id, reg) : "tarefas");
+    const abas = [["tarefas", "Tarefas", pend.length, atr], ["negocios", "Negócios", negs.length], ["contatos", "Contatos", reg.contatos.length]]
+      .map(([k, l, n, a]) => `<button type="button" role="tab" class="fx-aba" data-acao="fx-aba" data-v="${k}" aria-selected="${aba === k}">${l}${reg.estado === "ok" || k === "negocios" ? `<b>${n}</b>` : ""}${a ? `<i title="${a} ${a === 1 ? "atrasada" : "atrasadas"}">${a}</i>` : ""}</button>`).join("");
+    let corpo;
+    if (reg.estado === "carregando" && aba !== "negocios") corpo = `<p class="fx-vazio">Carregando…</p>`;
+    else if (aba === "tarefas") corpo = blocoTarefas(f, reg, ro);
+    else if (aba === "negocios") corpo = blocoNegocios(f, negs, ro);
+    else corpo = blocoContatos(f, reg, ro);
+    return `<div class="fx-painel" id="fx-${f.id}" data-ficha="${f.id}"><div class="fx-abas" role="tablist" aria-label="Tarefas, negócios e contatos">${abas}</div><div class="fx-corpo" role="tabpanel">${corpo}</div></div>`;
+  }
+  function blocoTarefas(f, reg, ro) {
+    const X = S.fx, pend = reg.tarefas.filter((t) => !t.concluida).sort((a, b) => tsTarefa(a) - tsTarefa(b));
+    const feitas = reg.tarefas.filter((t) => t.concluida).sort((a, b) => (b.concluida_em || "").localeCompare(a.concluida_em || ""));
+    const item = (t) => {
+      const at = tarefaAtrasada(t);
+      return `<li class="fx-tarefa ${at ? "fx-atrasada" : ""} ${t.concluida ? "fx-feita" : ""}" data-id="${t.id}">
+        ${ro || t.concluida ? `<span class="fx-check ${t.concluida ? "on" : ""}" aria-hidden="true">${t.concluida ? ICO_FX.ok : ""}</span>` : `<button type="button" class="fx-check" data-acao="fx-concluir" data-id="${t.id}" aria-label="Concluir: ${esc(t.texto || NOME_TAREFA[t.tipo] || "tarefa")}" title="Concluir">${ICO_FX.ok}</button>`}
+        <div class="fx-t"><span class="fx-t-cab"><span class="fx-tipo">${esc(NOME_TAREFA[t.tipo] || t.tipo)}</span><span class="fx-quando">${at ? "Atrasada · " : ""}${esc(t.concluida ? `Feita ${t.concluida_em ? quandoTxt(t.concluida_em).split(" · ")[0].toLowerCase() : ""}` : quandoTarefa(t))}</span></span>
+          ${t.texto ? `<span class="fx-texto">${esc(t.texto).replace(/\n/g, "<br>")}</span>` : ""}</div></li>`;
+    };
+    const form = X.form === "tarefa" ? `<form class="fx-form" data-acao="fx-salvar-tarefa" data-ficha="${f.id}">
+        <div class="fx-tipos" role="radiogroup" aria-label="Tipo">${TIPO_TAREFA.map(([k, l], i) => `<label><input type="radio" name="tipo" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+        <div class="fx-linha"><label class="fx-campo">Dia<input type="date" name="dia" required value="${diasUteis(1)}" min="${hojeISO()}"></label><label class="fx-campo">Hora<input type="time" name="hora" value="09:00"></label></div>
+        <label class="fx-campo">O que fazer<textarea name="texto" rows="3" placeholder="Ex.: ligar para a Meire e pedir o retorno sobre a proposta"></textarea></label>
+        <div class="fx-botoes"><button type="submit" class="fx-salvar">Salvar tarefa</button><button type="button" class="fx-cancelar" data-acao="fx-form" data-v="">Cancelar</button></div></form>` : "";
+    return `${ro ? "" : X.form === "tarefa" ? form : `<button type="button" class="fx-novo" data-acao="fx-form" data-v="tarefa">${ICO_FX.mais}Nova tarefa</button>`}
+      ${pend.length ? `<ul class="fx-lista">${pend.map(item).join("")}</ul>` : `<p class="fx-vazio">Nenhuma tarefa pendente.</p>`}
+      ${feitas.length ? `<button type="button" class="fx-mais" data-acao="fx-feitas">${X.verFeitas ? "Esconder" : "Ver"} concluídas (${feitas.length})</button>${X.verFeitas ? `<ul class="fx-lista">${feitas.slice(0, 20).map(item).join("")}</ul>` : ""}` : ""}`;
+  }
+  function blocoNegocios(f, negs, ro) {
+    const V = S.vd, X = S.fx;
+    if (!V.carregado) return `<p class="fx-vazio">Carregando…</p>`;
+    const sig = (id) => V.funis.find((x) => x.id === id);
+    const card = (n) => {
+      const e = V.etapaPorId.get(n.etapa), fu = sig(n.funil), prods = (n.produtos || []).map((p) => V.produtoPorId.get(p)?.nome).filter(Boolean);
+      const st = n.status === "ganho" ? '<span class="fx-st ganho">Ganho</span>' : n.status === "perdido" ? `<span class="fx-st perdido">Perdido${n.motivo ? ` · ${esc(n.motivo)}` : ""}</span>` : `<span class="fx-st">Em andamento · ${diasDesde(n.t)}d</span>`;
+      return `<li class="fx-neg"><div class="fx-neg-cab"><b>${esc(n.titulo || n.empresa)}</b>${n.valor ? `<span class="fx-valor">${moeda(n.valor)}</span>` : ""}</div>
+        <span class="fx-etapa">${esc(fu ? curtoFunil(fu) : "Funil")} · ${esc(e?.nome || "Sem etapa")}</span>
+        <div class="fx-neg-pe">${st}${prods.map((p) => `<span class="fx-prod">${esc(p)}</span>`).join("")}<button type="button" class="fx-link" data-acao="fx-ver-funil" data-id="${n.id}">Ver no funil →</button></div></li>`;
+    };
+    let form = "";
+    if (X.form === "negocio") {
+      const funil = X.novoFunil || V.scc || V.funis[0]?.id, etapas = V.etapas.filter((e) => e.funil === funil && e.resultado === "aberta");
+      const prods = [...V.produtoPorId.values()].sort((a, b) => COLL.compare(a.nome, b.nome));
+      form = `<form class="fx-form" data-acao="fx-salvar-negocio" data-ficha="${f.id}">
+        <div class="fx-linha"><label class="fx-campo">Funil<select name="funil" class="fx-sel-funil">${V.funis.map((x) => `<option value="${x.id}" ${x.id === funil ? "selected" : ""}>${esc(curtoFunil(x))}</option>`).join("")}</select></label>
+          <label class="fx-campo">Etapa<select name="etapa">${etapas.map((e) => `<option value="${e.id}">${esc(e.nome)}</option>`).join("")}</select></label></div>
+        <div class="fx-linha"><label class="fx-campo">Título<input name="titulo" maxlength="200" placeholder="Ex.: SCC Online" value=""></label><label class="fx-campo fx-curto">Valor (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label></div>
+        <fieldset class="fx-campo"><legend>Produtos</legend><div class="fx-prods">${prods.map((p) => `<label><input type="checkbox" name="produto" value="${p.id}"><span>${esc(p.nome)}</span></label>`).join("")}</div></fieldset>
+        <div class="fx-botoes"><button type="submit" class="fx-salvar">Criar negócio</button><button type="button" class="fx-cancelar" data-acao="fx-form" data-v="">Cancelar</button></div></form>`;
+    }
+    return `${ro ? "" : form || `<button type="button" class="fx-novo" data-acao="fx-form" data-v="negocio">${ICO_FX.mais}Novo negócio</button>`}
+      ${negs.length ? `<ul class="fx-lista">${negs.map(card).join("")}</ul>` : `<p class="fx-vazio">Nenhum negócio nesta administradora.</p>`}`;
+  }
+  function formContato(f, c) {
+    return `<form class="fx-form" data-acao="fx-salvar-contato" data-ficha="${f.id}" data-id="${c?.id || ""}">
+      <div class="fx-linha"><label class="fx-campo">Nome<input name="nome" required maxlength="120" value="${esc(c?.nome || "")}"></label><label class="fx-campo">Cargo<input name="cargo" maxlength="80" placeholder="Ex.: Síndica, gerente" value="${esc(c?.cargo || "")}"></label></div>
+      <div class="fx-linha"><label class="fx-campo">Telefone<input name="telefone" inputmode="tel" value="${esc(c?.telefone || c?.celular || "")}"></label><label class="fx-campo">WhatsApp<input name="whatsapp" inputmode="tel" value="${esc(c?.whatsapp || "")}"></label></div>
+      <label class="fx-campo">E-mail<input name="email" type="email" value="${esc(c?.email || "")}"></label>
+      <label class="fx-campo">Observações<textarea name="observacoes" rows="2">${esc(c?.observacoes || "")}</textarea></label>
+      <div class="fx-botoes"><button type="submit" class="fx-salvar">${c ? "Salvar" : "Adicionar contato"}</button><button type="button" class="fx-cancelar" data-acao="fx-form" data-v="">Cancelar</button></div></form>`;
+  }
+  function blocoContatos(f, reg, ro) {
+    const X = S.fx;
+    const card = (c) => {
+      if (X.form === "contato:" + c.id) return `<li>${formContato(f, c)}</li>`;
+      const tel = c.telefone || c.celular, ini = c.nome.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
+      const links = [tel ? telA(tel) : "", wppA(c.whatsapp || (String(tel || "").replace(/\D/g, "").length >= 11 ? tel : "")), c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ""].filter(Boolean);
+      return `<li class="fx-contato"><span class="fx-ini" aria-hidden="true">${esc(ini)}</span><div class="fx-c"><span class="fx-c-cab"><b>${esc(c.nome)}</b>${c.cargo ? `<span>${esc(c.cargo)}</span>` : ""}</span>
+        ${links.length ? `<span class="fx-links">${links.join("")}</span>` : ""}${c.observacoes ? `<span class="fx-texto">${esc(c.observacoes)}</span>` : ""}</div>
+        ${ro ? "" : `<button type="button" class="fx-editar" data-acao="fx-form" data-v="contato:${c.id}">Editar</button>`}</li>`;
+    };
+    return `${ro ? "" : X.form === "contato" ? formContato(f, null) : `<button type="button" class="fx-novo" data-acao="fx-form" data-v="contato">${ICO_FX.mais}Adicionar contato</button>`}
+      ${reg.contatos.length ? `<ul class="fx-lista">${reg.contatos.map(card).join("")}</ul>` : `<p class="fx-vazio">Nenhuma pessoa cadastrada ainda.</p>`}`;
+  }
+  // troca só o painel, sem refazer a tela inteira
+  function atualizarPainelFx(fichaId) {
+    const el = document.getElementById("fx-" + fichaId); if (!el) return;
+    const f = S.lg.fichaPorId?.get(fichaId); if (!f) return;
+    el.outerHTML = painelFx(f, f.usuario_id !== S.user.id);
+  }
+  const fichaLocal = (id) => S.lg.fichaPorId?.get(id);
+  // o retorno da ficha acompanha a tarefa pendente mais próxima (é assim que veio do Agendor)
+  async function ajustarRetorno(fichaId, mud) {
+    const { error } = await sb.from("fichas").update(mud).eq("id", fichaId);
+    if (error) { console.error(error); return; }
+    const f = fichaLocal(fichaId); if (f) Object.assign(f, mud);
+    const fa = S.ag.fichas?.find((x) => x.id === fichaId); if (fa) Object.assign(fa, mud);
+    S.dv++; atualizarCabecaFicha(fichaId);
+  }
+  // "Próximo passo" e o número de dias mudam com o retorno: refaz só esse pedaço
+  function atualizarCabecaFicha(fichaId) {
+    const f = fichaLocal(fichaId), el = document.querySelector(".upw-sec-files__help-t"); if (!f || !el) return;
+    const hj = hojeISO();
+    el.textContent = f.retorno_em ? `${diaDe(f.retorno_em) < hj ? "Retorno atrasado: era" : "Ligar de novo"} ${quandoTxt(f.retorno_em).toLowerCase().replace(" · ", " às ")}${f.retorno_nota ? `. ${f.retorno_nota}` : ""}.` : "Nenhum próximo passo marcado ainda.";
+  }
+  async function concluirTarefa(id, li) {
+    const fichaId = li?.closest(".fx-painel")?.dataset.ficha, reg = S.fx.cache.get(fichaId), t = reg?.tarefas.find((x) => x.id === id);
+    if (!t || t.concluida) return;
+    const agora = agoraISO();
+    t.concluida = true; t.concluida_em = agora;
+    li.classList.add("fx-saindo");
+    const { error } = await sb.from("tarefas").update({ concluida: true, concluida_em: agora }).eq("id", id);
+    if (error) { console.error(error); t.concluida = false; t.concluida_em = null; li.classList.remove("fx-saindo"); toast("Não foi possível concluir. Tente de novo."); return; }
+    setTimeout(() => atualizarPainelFx(fichaId), 260);
+    const f = fichaLocal(fichaId);
+    // o retorno só muda se ele era esta tarefa (ou estava vazio); um retorno marcado por fora fica como está
+    if (f && (!f.retorno_em || Date.parse(f.retorno_em) === Date.parse(t.prazo))) {
+      const prox = reg.tarefas.filter((x) => !x.concluida && x.prazo).sort((a, b) => tsTarefa(a) - tsTarefa(b))[0];
+      await ajustarRetorno(fichaId, prox ? { retorno_em: prox.prazo, retorno_nota: (prox.texto || NOME_TAREFA[prox.tipo] || "").slice(0, 500) } : { retorno_em: null, retorno_nota: null });
+      toast(prox ? `Tarefa concluída. Próximo retorno: ${quandoTarefa(prox).toLowerCase()}.` : "Tarefa concluída. Não há mais tarefas pendentes.");
+    } else toast("Tarefa concluída.");
+    carregarAgenda();
+  }
+  async function salvarTarefa(form) {
+    const fichaId = form.dataset.ficha, fd = new FormData(form), dia = String(fd.get("dia") || ""), hora = String(fd.get("hora") || "");
+    if (!dia) { toast("Escolha o dia."); return; }
+    const novo = { ficha_id: fichaId, usuario_id: S.user.id, tipo: String(fd.get("tipo") || "tarefa"), texto: String(fd.get("texto") || "").trim() || null, prazo: tsSP(dia, hora || "09:00"), dia_todo: !hora, concluida: false };
+    const { data, error } = await sb.from("tarefas").insert(novo).select(COLS_TAREFA).single();
+    if (error) { console.error(error); toast("Não foi possível salvar a tarefa. Tente de novo."); return; }
+    const reg = S.fx.cache.get(fichaId); reg?.tarefas.push(data);
+    S.fx.form = null; atualizarPainelFx(fichaId); toast("Tarefa salva.");
+    const f = fichaLocal(fichaId);
+    if (f && (!f.retorno_em || Date.parse(data.prazo) < Date.parse(f.retorno_em))) await ajustarRetorno(fichaId, { retorno_em: data.prazo, retorno_nota: (data.texto || NOME_TAREFA[data.tipo]).slice(0, 500) });
+    carregarAgenda();
+  }
+  async function salvarNegocio(form) {
+    const V = S.vd, fichaId = form.dataset.ficha, f = fichaLocal(fichaId), fd = new FormData(form);
+    const funil = +fd.get("funil"), etapa = +fd.get("etapa"), prods = fd.getAll("produto").map(Number);
+    const valor = String(fd.get("valor") || "").replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, "");
+    const titulo = String(fd.get("titulo") || "").trim() || prods.map((p) => V.produtoPorId.get(p)?.nome).filter(Boolean).join(" + ") || f?.nome || "Negócio";
+    if (!etapa) { toast("Escolha a etapa."); return; }
+    const { data, error } = await sb.from("negocios").insert({ ficha_id: fichaId, usuario_id: S.user.id, titulo: titulo.slice(0, 200), funil_id: funil, etapa_id: etapa, etapa_desde: agoraISO(), status: "em_andamento", valor: valor ? Number(valor) : null, origem: "prospeccao", inicio_em: hojeISO() }).select(COLS_NEG).single();
+    if (error) { console.error(error); toast("Não foi possível criar o negócio. Tente de novo."); return; }
+    if (prods.length) { const { error: e2 } = await sb.from("negocio_produtos").insert(prods.map((p) => ({ negocio_id: data.id, produto_id: p }))); if (!e2) data.negocio_produtos = prods.map((p) => ({ produto_id: p })); }
+    V.negocios.push(mapNeg(data)); derivarVendas();
+    S.fx.form = null; S.fx.novoFunil = null; atualizarPainelFx(fichaId); toast(`Negócio criado em ${V.etapaPorId.get(etapa)?.nome}.`);
+  }
+  async function salvarContato(form) {
+    const fichaId = form.dataset.ficha, id = form.dataset.id, fd = new FormData(form);
+    const d = Object.fromEntries(["nome", "cargo", "telefone", "whatsapp", "email", "observacoes"].map((k) => [k, String(fd.get(k) || "").trim() || null]));
+    if (!d.nome) { toast("Escreva o nome."); return; }
+    const reg = S.fx.cache.get(fichaId);
+    const q = id ? sb.from("contatos").update(d).eq("id", id).select(COLS_CONTATO).single() : sb.from("contatos").insert({ ...d, ficha_id: fichaId, usuario_id: S.user.id }).select(COLS_CONTATO).single();
+    const { data, error } = await q;
+    if (error) { console.error(error); toast("Não foi possível salvar o contato. Tente de novo."); return; }
+    if (reg) { const i = reg.contatos.findIndex((c) => c.id === data.id); if (i >= 0) reg.contatos[i] = data; else reg.contatos.push(data); reg.contatos.sort((a, b) => COLL.compare(a.nome, b.nome)); }
+    S.fx.form = null; atualizarPainelFx(fichaId); toast(id ? "Contato atualizado." : "Contato adicionado.");
+  }
+  app.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-acao^='fx-']"); if (!b) return;
+    const X = S.fx, painel = b.closest(".fx-painel"), fichaId = painel?.dataset.ficha;
+    switch (b.dataset.acao) {
+      case "fx-aba": X.aba = b.dataset.v; X.form = null; atualizarPainelFx(fichaId); break;
+      case "fx-form": X.form = b.dataset.v || null; X.novoFunil = null; atualizarPainelFx(fichaId); if (X.form) document.querySelector(`#fx-${fichaId} .fx-form input:not([type=radio]):not([type=checkbox]), #fx-${fichaId} .fx-form select`)?.focus(); break;
+      case "fx-feitas": X.verFeitas = !X.verFeitas; atualizarPainelFx(fichaId); break;
+      case "fx-concluir": b.disabled = true; await concluirTarefa(b.dataset.id, b.closest("li")); break;
+      case "fx-ver-funil": { const n = S.vd.negocios.find((x) => x.id === b.dataset.id); if (!n) break; S.vd.funil = n.funil; S.vd.status = n.status; S.vd.busca = n.empresa; S.vd.resp = "todos"; S.lg.sel = null; S.view = "vendas"; render(); window.scrollTo(0, 0); break; }
+    }
+  });
+  app.addEventListener("submit", async (ev) => {
+    const f = ev.target, a = f.dataset.acao; if (!a || !a.startsWith("fx-")) return;
+    ev.preventDefault(); if (S.fx.salvando) return; S.fx.salvando = true;
+    const bt = f.querySelector('[type="submit"]'); if (bt) bt.disabled = true;
+    try {
+      if (a === "fx-salvar-tarefa") await salvarTarefa(f);
+      if (a === "fx-salvar-negocio") await salvarNegocio(f);
+      if (a === "fx-salvar-contato") await salvarContato(f);
+    } finally { S.fx.salvando = false; if (bt?.isConnected) bt.disabled = false; }
+  });
+  app.addEventListener("change", (ev) => {
+    const t = ev.target; if (!t.classList?.contains("fx-sel-funil")) return;
+    const V = S.vd, sel = t.form.querySelector('[name="etapa"]'); S.fx.novoFunil = +t.value;
+    sel.innerHTML = V.etapas.filter((e) => e.funil === +t.value && e.resultado === "aberta").map((e) => `<option value="${e.id}">${esc(e.nome)}</option>`).join("");
+  });
+
   /* ------------------------------------------------------------ eventos */
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape" || S.cidMenu) return;
@@ -2300,7 +2562,8 @@
     switch (a) {
       case "menu": S.menu = !S.menu; render(); break;
       case "sair": await sb.auth.signOut(); break;
-      case "ir": S.view = b.dataset.view; S.sel = null; S.selRow = null; S.show = 60; if (b.dataset.view === "listas") S.listas = null; if (b.dataset.view === "equipe") S.equipe = null; render(); if (b.dataset.view === "regiao") localizarPendentes(S.uf); break;
+      case "atualizar": S.menu = false; atualizarDados(); render(); break;
+      case "ir": S.view = b.dataset.view; S.sel = null; S.selRow = null; S.show = 60; render(); if (b.dataset.view === "regiao") localizarPendentes(S.uf); break;
       case "fechar-msg": S.msg = ""; render(); break;
       case "so-novas": S.soNovas = true; render(); break;
       case "tipo": S.tipo = b.dataset.v; S.show = 60; salvarPreferencias(); render(); break;
@@ -2400,14 +2663,16 @@
   });
 
   /* ------------------------------------------------------------- início */
-  async function iniciar() {
+  let iniciando = null;
+  function iniciar() { if (!iniciando) iniciando = iniciarAgora().finally(() => { iniciando = null; }); return iniciando; }
+  async function iniciarAgora() {
     const { data } = await sb.auth.getSession();
     S.user = data.session?.user || null;
     if (!S.user) return render();
     await carregarPerfil();
     render();
     if (!S.perfil.aprovado) return;
-    carregarAgenda(); carregarLig();
+    carregarLig(); carregarAgenda();
     if (avisosStatus() === "granted") registrarSw();
     const abrir = new URLSearchParams(location.search).get("abrir");
     if (abrir) { history.replaceState(null, "", location.pathname); abrirFicha(abrir); }
@@ -2417,7 +2682,7 @@
   }
   sb.auth.onAuthStateChange((evento, sessao) => {
     if (evento === "PASSWORD_RECOVERY") { S.recuperando = true; S.user = sessao?.user || null; render(); return; }
-    if (evento === "SIGNED_IN" && !S.user && !S.recuperando) { iniciar(); return; }
+    if (evento === "SIGNED_IN" && !S.user && !S.recuperando && !iniciando) { iniciar(); return; }
     if (evento === "SIGNED_OUT") { S.user = null; S.perfil = null; S.pendentes = 0; S.equipe = null; S.lg = { ...S.lg, dono: null, carregado: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, sel: null, novo: false }; S.ag = { ...S.ag, fichas: [], carregado: false, cnpjs: new Set() }; S.rows = []; S.sel = null; S.selRow = null; S.menu = false; render(); }
   });
   iniciar();
