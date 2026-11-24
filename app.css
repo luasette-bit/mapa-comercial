@@ -926,7 +926,7 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
   .ficha-escura .upw-sec-files { padding: 52px clamp(18px, 3vw, 40px) 48px; min-height: 100%; }
   .ficha-escura .upw-sec-files__wrap { max-width: 1160px; }
   .ficha-escura .upw-sec-files .upw-sec-files__title { font-size: clamp(32px, 3.6vw, 50px); }
-  .ficha-escura .fechar-painel { position: absolute; top: 14px; right: 16px; z-index: 10; background: #ffffff14; color: #F3F6FC; border-color: #ffffff33; }
+  .ficha-escura .fechar-painel { position: absolute; top: 14px; right: 16px; z-index: 10; height: 36px; padding: 0 14px; align-items: center; background: #ffffff14; color: #F3F6FC; border-color: #ffffff33; }
   .ficha-escura .fechar-painel:hover { background: #ffffff26; }
   .mc-dado a { color: #9AD9FF; text-decoration: none; } .mc-dado a:hover { color: #fff; text-decoration: underline; }
   .mc-dado.mc-largo-sempre { grid-column: 1 / -1; }
