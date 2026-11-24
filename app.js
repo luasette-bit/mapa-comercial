@@ -1181,10 +1181,13 @@
   }
   function ultimaDe(f) { const l = S.lg.porFicha.get(f.id); return l && l.length ? l[l.length - 1] : null; }
   // quem fechou contrato também fez demonstração: entra nas duas contagens
+  const fezDemo = (f) => f.funil === "contrato" || ["demo_realizada", "contrato"].includes(f.etapa) || (S.lg.porFicha.get(f.id) || []).some((r) => r.tipo === "demo_realizada");
   function naEtapa(f, k) {
     if (k === "todas") return true;
     if (k === "retorno") return !!f.retorno_em;
-    if (k === "fez_demo") return f.etapa === "demo_realizada" || f.etapa === "contrato" || (S.lg.porFicha.get(f.id) || []).some((r) => r.tipo === "demo_realizada");
+    if (k === "fez_demo") return fezDemo(f);
+    // Demonstração conta também quem já fechou: o contrato só vem depois da demo
+    if (k === "demonstracao") return (f.funil || "mapeamento") === "demonstracao" || fezDemo(f);
     return (f.funil || "mapeamento") === k;
   }
   function fichasFiltradas() {
@@ -1229,7 +1232,7 @@
         <div class="campo" style="flex:1 1 300px"><label for="lg-busca">Procurar</label><input id="lg-busca" class="input" type="search" value="${esc(L.busca)}" placeholder="Nome, cidade, responsável, e-mail, anotação…" autocomplete="off"></div>
         <div class="campo"><span class="rotulo">Ver como</span><div class="abas" role="tablist">${[["quadro", "Quadro por etapa"], ["lista", "Lista"]].map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="lg-modo" data-v="${k}" aria-selected="${L.modo === k}">${l}</button>`).join("")}</div></div>
       </div>
-      ${L.modo === "lista" ? `<div class="campo"><span class="rotulo">Mostrar</span><div class="chips">${[["todas", "Todas"], ...FUNIL.map(([k, l]) => [k, l]), ["fez_demo", "Fizeram demonstração"], ["retorno", "Com retorno marcado"]].map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(L.fichas.filter((f) => naEtapa(f, k)).length)}</b></button>`).join("")}</div></div>` : ""}
+      ${L.modo === "lista" ? `<div class="campo"><span class="rotulo">Mostrar</span><div class="chips">${[["todas", "Todas"], ...FUNIL.map(([k, l]) => [k, l]), ["retorno", "Com retorno marcado"]].map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(L.fichas.filter((f) => naEtapa(f, k)).length)}</b></button>`).join("")}</div></div>` : ""}
       </section>
       ${L.modo === "quadro" ? quadroHtml() : `
         <section class="cartao lista" style="margin-top:18px"><div class="lista-cab"><b>Administradoras</b><span class="t12 fraco">o contato mais recente primeiro</span></div>
@@ -1297,7 +1300,7 @@
     if (m) for (const r of m.lig) { const hh = +localSP(r.criado_em).slice(11, 13); const x = horas.find((y) => y[0] === hh); if (x && localSP(r.criado_em).slice(0, 10) === hj) x[1]++; }
     const maxH = Math.max(1, ...horas.map((x) => x[1])), horaAgora = hora;
     const minhas = pronto ? L.fichas.filter((f) => f.usuario_id === S.user.id) : [];
-    const porEtapa = FUNIL.map(([k, l]) => [k, l, minhas.filter((f) => (f.funil || "mapeamento") === k).length]);
+    const porEtapa = FUNIL.map(([k, l]) => [k, l, minhas.filter((f) => naEtapa(f, k)).length]);
     const maxE = Math.max(1, ...porEtapa.map((x) => x[2]));
     const corE = { mapeamento: "#9AAAC6", indisponivel: "#9AAAC6", contato: "#2C63DB", follow_semestral: "#FDB601", sem_interesse: "#E3B4AE", demonstracao: "#5B2A86", contrato: "#1E7A46" };
     const Ac = pronto ? acumulado(hj) : null;
@@ -1354,7 +1357,8 @@
     const L = S.lg, lista = fichasFiltradasQuadro(), por = new Map(FUNIL.map(([k]) => [k, []]));
     for (const f of lista) (por.get(f.funil) || por.get("mapeamento")).push(f);
     return `<div class="quadro" role="list">${FUNIL.map(([k, l, sub]) => { const cs = por.get(k);
-      return `<section class="qd-col" data-funil="${k}" role="listitem" aria-label="${l}"><div class="qd-cab"><span class="qd-titulo">${l}</span><span class="qd-cont num">${fmtN(cs.length)}</span>${sub ? `<span class="t11 fraco qd-sub">${sub}</span>` : ""}</div>
+      const total = k === "demonstracao" ? lista.filter((f) => naEtapa(f, "demonstracao")).length : cs.length, fechou = total - cs.length;
+      return `<section class="qd-col" data-funil="${k}" role="listitem" aria-label="${l}"><div class="qd-cab"><span class="qd-titulo">${l}</span><span class="qd-cont num">${fmtN(total)}</span>${k === "demonstracao" && fechou > 0 ? `<span class="t11 fraco qd-sub">${fmtN(fechou)} ${fechou === 1 ? "já fechou e está" : "já fecharam e estão"} em Contrato</span>` : sub ? `<span class="t11 fraco qd-sub">${sub}</span>` : ""}</div>
         <div class="qd-cards">${cs.slice(0, L.porColuna[k] || 60).map(cartaoQuadro).join("") || '<span class="t12 fraco qd-vazio">Nenhuma aqui</span>'}${cs.length > (L.porColuna[k] || 60) ? `<button type="button" class="mini" data-acao="qd-mais" data-v="${k}">Mostrar mais ${fmtN(cs.length - (L.porColuna[k] || 60))}</button>` : ""}</div></section>`; }).join("")}</div>`;
   }
   function fichasFiltradasQuadro() {
