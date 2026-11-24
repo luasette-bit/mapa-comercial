@@ -20,8 +20,10 @@
   const app = $("#app");
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-  const fmtN = (n) => Number(n || 0).toLocaleString("pt-BR");
-  const fmtData = (d) => { if (!d) return ""; const x = new Date(d.length === 10 ? d + "T12:00:00" : d); return isNaN(x) ? "" : x.toLocaleDateString("pt-BR"); };
+  // formatadores criados uma vez só: criar um Intl a cada chamada é o que deixava as listas lentas
+  const NUM_BR = new Intl.NumberFormat("pt-BR");
+  const fmtN = (n) => NUM_BR.format(Number(n || 0));
+  const fmtData = (d) => { if (!d) return ""; if (d.length === 10) return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`; const l = localSP(d); return l ? `${l.slice(8, 10)}/${l.slice(5, 7)}/${l.slice(0, 4)}` : ""; };
   const fmtCnpj = (c) => (c && c.length === 14 ? `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8, 12)}-${c.slice(12)}` : c || "");
   const MIN = new Set(["de", "da", "do", "das", "dos", "e", "em", "a", "o"]);
   const titulo = (s) => String(s || "").toLowerCase().split(/(\s+)/).map((w, i) => !w.trim() ? w : /^(ltda\.?|me|epp|eireli|s\/a|s\.a\.?|s\/c|ss)$/.test(w) ? w.toUpperCase() : (i && MIN.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join("");
@@ -47,6 +49,7 @@
   function salvarPreferencias() { try { localStorage.setItem("mapa-comercial", JSON.stringify({ uf: S.uf, cidade: S.cidade, cidadeId: S.cidadeId, tipo: S.tipo })); } catch { /* sem armazenamento */ } }
 
   const S = {
+    dv: 0,
     user: null, perfil: null, view: "inicio", menu: false,
     uf: lembrar.uf || "SP", cidade: lembrar.cidade || null, cidadeId: lembrar.cidadeId || null, cidMenu: false, cidBusca: "", estado: null, buscadas: new Map(), totais: new Map(), contando: null, cidOrdem: "az", tipo: lembrar.tipo || "Todas", sistema: "Todos",
     soAtivas: true, escExp: false, soNovas: false, escBase: false, aba: "lista",
@@ -293,13 +296,13 @@
     if (S.recuperando) return renderNovaSenha();
     if (!S.user) return S.cadastro ? renderCadastro() : renderLogin();
     if (S.perfil && !S.perfil.aprovado) return renderAguardando();
-    app.innerHTML = topo() + `<main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? "" : faixaAgenda()}${S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : telaEquipe()}</main>`;
+    app.innerHTML = topo() + `<main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? "" : faixaAgenda()}${S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : telaEquipe()}</main>`;
     if (S.view === "regiao") desenharMapa();
   }
 
   function topo() {
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
-    const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["listas", "Listas exportadas"]];
+    const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["listas", "Listas exportadas"]];
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
@@ -734,8 +737,8 @@
     const { exportacoes, atividade } = S.listas;
     const NOME_ACAO = { confirmou: "confirmou", marcou_errado: "marcou como errado", desfez: "desfez a marcação de", removeu: "removeu", exportou: "exportou" };
     return `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Listas exportadas</h1><p class="fraco" style="margin:0">Quem baixou listas do mapeamento e o que a equipe confirmou ou corrigiu.</p></div></div>
-      <section class="cartao" style="overflow:hidden"><div class="lista-cab"><b>Exportações</b></div><div class="rolagem">${exportacoes.length ? `<table class="tab-simples"><thead><tr><th>Data</th><th>Quem</th><th>Lista</th><th>Empresas</th></tr></thead><tbody>${exportacoes.map((x) => `<tr><td class="num">${esc(new Date(x.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}</td><td>${esc(x.usuario_nome)}</td><td>${esc(x.empresa || "")}</td><td class="num">${fmtN(x.quantidade)}</td></tr>`).join("")}</tbody></table>` : `<div class="vazio">Nenhuma lista exportada ainda.</div>`}</div></section>
-      <section class="cartao" style="overflow:hidden"><div class="lista-cab"><b>Atividade da equipe</b><span class="t12 fraco">últimas 60 ações</span></div><div class="rolagem">${atividade.length ? `<table class="tab-simples"><thead><tr><th>Data</th><th>Quem</th><th>O que fez</th></tr></thead><tbody>${atividade.map((x) => `<tr><td class="num">${esc(new Date(x.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}</td><td>${esc(x.usuario_nome || "")}</td><td>${esc(NOME_ACAO[x.acao] || x.acao)} ${x.campo ? `<b>${esc(x.campo.toLowerCase())}</b> de ` : ""}${esc(x.empresa || "")}${x.quantidade ? ` (${fmtN(x.quantidade)} empresas)` : ""}</td></tr>`).join("")}</tbody></table>` : `<div class="vazio">Nada por aqui ainda.</div>`}</div></section>`;
+      <section class="cartao" style="overflow:hidden"><div class="lista-cab"><b>Exportações</b></div><div class="rolagem">${exportacoes.length ? `<table class="tab-simples"><thead><tr><th>Data</th><th>Quem</th><th>Lista</th><th>Empresas</th></tr></thead><tbody>${exportacoes.map((x) => `<tr><td class="num">${esc(dataHoraBR(x.criado_em))}</td><td>${esc(x.usuario_nome)}</td><td>${esc(x.empresa || "")}</td><td class="num">${fmtN(x.quantidade)}</td></tr>`).join("")}</tbody></table>` : `<div class="vazio">Nenhuma lista exportada ainda.</div>`}</div></section>
+      <section class="cartao" style="overflow:hidden"><div class="lista-cab"><b>Atividade da equipe</b><span class="t12 fraco">últimas 60 ações</span></div><div class="rolagem">${atividade.length ? `<table class="tab-simples"><thead><tr><th>Data</th><th>Quem</th><th>O que fez</th></tr></thead><tbody>${atividade.map((x) => `<tr><td class="num">${esc(dataHoraBR(x.criado_em))}</td><td>${esc(x.usuario_nome || "")}</td><td>${esc(NOME_ACAO[x.acao] || x.acao)} ${x.campo ? `<b>${esc(x.campo.toLowerCase())}</b> de ` : ""}${esc(x.empresa || "")}${x.quantidade ? ` (${fmtN(x.quantidade)} empresas)` : ""}</td></tr>`).join("")}</tbody></table>` : `<div class="vazio">Nada por aqui ainda.</div>`}</div></section>`;
   }
   async function carregarListas() {
     const [a, b] = await Promise.all([
@@ -1063,13 +1066,25 @@
   const DIAS = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
   const TZ = "America/Sao_Paulo";
   const pad2 = (n) => String(n).padStart(2, "0");
-  const hojeISO = () => new Date().toLocaleDateString("sv-SE", { timeZone: TZ });
+  // data e hora em São Paulo: um formatador só, e cada timestamp convertido uma vez (guardado num Map)
+  const FMT_SP = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const partesSP = (d) => { const p = {}; for (const x of FMT_SP.formatToParts(d)) p[x.type] = x.value; return `${p.year}-${p.month}-${p.day}T${p.hour === "24" ? "00" : p.hour}:${p.minute}`; };
+  const CACHE_SP = new Map();
+  const dataHoraBR = (ts) => { const l = localSP(ts); return l ? `${l.slice(8, 10)}/${l.slice(5, 7)}/${l.slice(0, 4)}, ${l.slice(11, 16)}` : ""; };
+  function localSP(ts) {
+    if (!ts) return "";
+    let v = CACHE_SP.get(ts);
+    if (v === undefined) { const d = new Date(ts); v = isNaN(d) ? "" : partesSP(d); if (CACHE_SP.size > 60000) CACHE_SP.clear(); CACHE_SP.set(ts, v); }
+    return v;
+  }
+  // "hoje" calculado no máximo uma vez por minuto
+  let HOJE = { ate: 0, v: "" };
+  const hojeISO = () => { const n = Date.now(); if (n >= HOJE.ate) HOJE = { ate: n - (n % 60000) + 60000, v: partesSP(new Date(n)).slice(0, 10) }; return HOJE.v; };
   const isoData = (iso) => new Date(iso + "T12:00:00Z");
   const somaDias = (iso, n) => { const d = isoData(iso); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
   const segundaDe = (iso) => somaDias(iso, -((isoData(iso).getUTCDay() + 6) % 7));
   const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
   const ddmmaaaa = (iso) => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "";
-  const localSP = (ts) => ts ? new Date(ts).toLocaleString("sv-SE", { timeZone: TZ }).slice(0, 16).replace(" ", "T") : "";
   const extenso = (iso, hora) => `${iso.slice(8, 10)} de ${MESES[+iso.slice(5, 7) - 1]}${hora ? ` às ${hora}` : ""}`;
 
   S.lg = { dono: null, carregado: false, carregando: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, busca: "", etapa: "todas", sel: null, novo: false, apagar: null, mostrar: 100, dadosAberto: true, idx: new Map(), modo: (() => { try { return localStorage.getItem("mapa-adm-modo") || "quadro"; } catch { return "quadro"; } })(), porColuna: {}, arrastando: null, arrastou: false };
@@ -1087,15 +1102,28 @@
       if (!data || data.length < 1000) return out;
     }
   }
+  const COLS_FICHA = "id,usuario_id,cnpj,nome,telefones,whatsapp,horario_funcionamento,cidade,uf,sistema,qtd_condominios,qtd_unidades,atendente,email,numero_responsavel,melhor_horario,responsavel,etapa,funil,demo_em,demo_formato,contrato_em,criado_em,atualizado_em,contato_anterior,retorno_em,retorno_nota,observacoes";
+  // busca as anotações de uma ficha (as importadas do Agendor não vêm na abertura do sistema)
+  async function garantirTextos(fichaId) {
+    const L = S.lg; if (!L.textosFicha || L.textosFicha.has(fichaId)) return;
+    L.textosFicha.add(fichaId);
+    const regs = L.porFicha.get(fichaId) || []; if (!regs.some((r) => r.texto === undefined)) return;
+    const { data, error } = await sb.from("registros").select("id,texto").eq("ficha_id", fichaId);
+    if (error) { L.textosFicha.delete(fichaId); return; }
+    const t = new Map((data || []).map((r) => [r.id, r.texto])); for (const r of regs) if (t.has(r.id)) r.texto = t.get(r.id);
+    render();
+  }
   async function carregarLig() {
     const L = S.lg; if (L.carregando) return; L.carregando = true;
     const dono = donoAtual();
     const q = (t, cols) => () => { let x = sb.from(t).select(cols); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order(t === "acumulado_base" ? "usuario_id" : t === "relatorios" ? "inicio" : "id"); };
     try {
       const [fichas, regs, base, rels] = await Promise.all([
-        tudo(q("fichas", "*")), tudo(q("registros", "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,envio,canal,texto,criado_em")),
+        tudo(q("fichas", COLS_FICHA)), tudo(q("registros", "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,envio,canal,criado_em")),
         tudo(q("acumulado_base", "*")), tudo(q("relatorios", "*")),
-      ]);
+        // o texto vem junto só dos contatos registrados no sistema; o das anotações importadas é buscado ao abrir a ficha
+        tudo(() => { let x = sb.from("registros").select("id,texto").neq("tipo", "anotacao"); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order("id"); }),
+      ]).then(([fichas, regs, base, rels, textos]) => { const t = new Map(textos.map((r) => [r.id, r.texto])); for (const r of regs) if (t.has(r.id)) r.texto = t.get(r.id); L.textosFicha = new Set(); return [fichas, regs, base, rels]; });
       Object.assign(L, { fichas, regs, base, rels });
       if (S.perfil?.papel === "admin" && !L.pessoas) { const { data } = await sb.from("perfis").select("id,nome").eq("aprovado", true).order("nome"); L.pessoas = data || []; }
       derivar();
@@ -1104,7 +1132,7 @@
     finally { L.carregando = false; render(); }
   }
   function derivar() {
-    const L = S.lg;
+    const L = S.lg; S.dv = (S.dv || 0) + 1;
     L.fichaPorId = new Map(L.fichas.map((f) => [f.id, f]));
     L.porFicha = new Map();
     const ord = [...L.regs].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.criado_em < b.criado_em ? -1 : 1));
@@ -1182,22 +1210,43 @@
   }
   function ultimaDe(f) { const l = S.lg.porFicha.get(f.id); return l && l.length ? l[l.length - 1] : null; }
   // quem fechou contrato também fez demonstração: entra nas duas contagens
-  const fezDemo = (f) => f.funil === "contrato" || ["demo_realizada", "contrato"].includes(f.etapa) || (S.lg.porFicha.get(f.id) || []).some((r) => r.tipo === "demo_realizada");
+  function filtrosAdms() {
+    const V = S.vd, out = [["todas", "Todas"]];
+    if (V.carregado) for (const e of V.etapas.filter((x) => x.funil === V.scc)) if (S.lg.fichas.some((f) => V.porFicha.get(f.id)?.etapa === e.id)) out.push(["e:" + e.id, e.nome]);
+    if (V.carregado) out.push(["sem_negocio", "Sem negócio"]);
+    out.push(["fez_demo", "Fizeram demonstração"], ["retorno", "Com retorno marcado"]);
+    return out;
+  }
+  const fezDemo = (f) => f.funil === "contrato" || (etapaSCC(f)?.ordem || 0) >= 6 || ["demo_realizada", "contrato"].includes(f.etapa) || (S.lg.porFicha.get(f.id) || []).some((r) => r.tipo === "demo_realizada");
   function naEtapa(f, k) {
     if (k === "todas") return true;
     if (k === "retorno") return !!f.retorno_em;
     if (k === "fez_demo") return fezDemo(f);
+    if (k === "sem_negocio") return !S.vd.porFicha.get(f.id);
+    if (k.startsWith("e:")) return S.vd.porFicha.get(f.id)?.etapa === +k.slice(2);
     // Demonstração conta também quem já fechou: o contrato só vem depois da demo
     if (k === "demonstracao") return (f.funil || "mapeamento") === "demonstracao" || fezDemo(f);
     return (f.funil || "mapeamento") === k;
   }
   function fichasFiltradas() {
-    const L = S.lg, palavras = norm(L.busca).split(/\s+/).filter(Boolean);
-    return L.fichas.filter((f) => {
+    const L = S.lg, chave = `${S.dv}|${L.etapa}|${L.busca}`;
+    if (L.ff && L.ffChave === chave) return L.ff;
+    const palavras = norm(L.busca).split(/\s+/).filter(Boolean);
+    L.ff = L.fichas.filter((f) => {
       if (!naEtapa(f, L.etapa)) return false;
       if (!palavras.length) return true;
       const t = L.idx.get(f.id) || ""; return palavras.every((p) => t.includes(p));
-    }).sort((x, y) => { const a = ultimaDe(x)?.data || x.criado_em.slice(0, 10), c = ultimaDe(y)?.data || y.criado_em.slice(0, 10); return a < c ? 1 : a > c ? -1 : (x.atualizado_em < y.atualizado_em ? 1 : -1); });
+    }).map((f) => [ultimaDe(f)?.data || (f.criado_em || "").slice(0, 10), f.atualizado_em || "", f])
+      .sort((x, y) => (x[0] < y[0] ? 1 : x[0] > y[0] ? -1 : x[1] < y[1] ? 1 : -1)).map((x) => x[2]);
+    L.ffChave = chave; return L.ff;
+  }
+  // contagem de cada chip numa passada só, guardada até os dados mudarem
+  function contagensChips(chips) {
+    const L = S.lg, chave = `${S.dv}|${chips.map((c) => c[0]).join(",")}`;
+    if (L.cc && L.ccChave === chave) return L.cc;
+    const c = new Map(chips.map(([k]) => [k, 0]));
+    for (const f of L.fichas) for (const [k] of chips) if (naEtapa(f, k)) c.set(k, c.get(k) + 1);
+    L.cc = c; L.ccChave = chave; return c;
   }
   function celulaRetorno(f) {
     if (!f.retorno_em) return '<span class="fraco t12">—</span>';
@@ -1208,11 +1257,11 @@
     const lista = fichasFiltradas();
     if (!lista.length) return `<div class="vazio">${S.lg.fichas.length ? "Nenhuma administradora com essa busca." : "Nenhuma administradora ainda. Clique em <b>+ Nova administradora</b> ou, no Mapeamento, abra uma empresa e clique em <b>Registrar ligação</b>."}</div>`;
     return lista.slice(0, S.lg.mostrar).map((f) => {
-      const u = ultimaDe(f), lig = (S.lg.porFicha.get(f.id) || []).filter((r) => LIGACAO.has(r.tipo)).length, el = FUNIL_NOME[f.funil] || "Mapeamento", ec = FUNIL_COR[f.funil] || "s-neutro";
+      const u = ultimaDe(f), lig = (S.lg.porFicha.get(f.id) || []).filter((r) => LIGACAO.has(r.tipo)).length, { nome: el, cor: ec } = etapaDaFicha(f);
       return `<button type="button" class="lg-linha" data-acao="lg-sel" data-id="${f.id}" aria-pressed="${S.lg.sel === f.id}">
         <span class="pilha" style="gap:1px;min-width:0"><span class="t-nome">${esc(f.nome)}</span><span class="t12 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "Cidade não informada")}${S.lg.dono === "todos" ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span></span>
         <span class="t13">${f.sistema ? esc(f.sistema) : '<span class="fraco">Sistema ?</span>'}</span>
-        <span><span class="selo ${ec}">${el}</span></span>
+        <span><span class="selo ${ec}">${esc(el)}</span></span>
         <span class="t12">${u ? `<b class="num">${ddmm(u.data)}</b> · ${esc(rotuloReg(u))}<br><span class="fraco">${lig} ${lig === 1 ? "contato" : "contatos"}</span>` : '<span class="fraco">Sem ligação ainda</span>'}</span>
         <span>${celulaRetorno(f)}</span>
       </button>`;
@@ -1223,23 +1272,216 @@
     const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Administradoras</h1><p class="fraco" style="margin:0">A ficha de cada administradora com todos os contatos feitos. Procure por nome, cidade, responsável, e-mail ou qualquer coisa que você anotou.</p></div>
       <div class="linha-flex" style="align-items:flex-end">${seletorPessoa("lg-dono")}${souDono() ? `<button type="button" class="btn btn-primario" data-acao="lg-nova">+ Nova administradora</button>` : ""}</div></div>`;
     if (!L.carregado) { if (!L.carregando) carregarLig(); return cab + `<div class="cartao vazio">Carregando as administradoras…</div>`; }
+    if (!S.vd.carregado && !S.vd.carregando) carregarVendas();
     const hoje = hojeISO(), m = metricas(hoje, hoje);
     const ind = (v, l, sub = "") => `<div class="ind ${v ? "" : "zero"}"><span class="v">${fmtN(v)}</span><span class="t12 fraco">${l}${sub}</span></div>`;
-    const nRet = L.fichas.filter((f) => f.retorno_em).length;
     return cab + `
       <section class="cartao" style="overflow:hidden"><div class="lista-cab"><b>Hoje, ${DIAS[isoData(hoje).getUTCDay()]} ${ddmm(hoje)}</b><button type="button" class="mini" data-acao="lg-rel-dia">Ver relatório do dia →</button></div>
         <div class="resumo resumo6">${ind(m.ligacoes, "Contatos", m.ligacoes ? ` com ${fmtN(m.pessoas)} administradora${m.pessoas === 1 ? "" : "s"}` : "")}${ind(m.primeira_ligacao, "Contatos novos")}${ind(m.follow_up, "Follow-ups")}${ind(m.sem_contato, "Sem contato")}${ind(m.negativa, "Negativas")}${ind(m.demo_agendada, "Demos agendadas")}</div></section>
       <section class="cartao filtros"><div class="linha-filtros">
         <div class="campo" style="flex:1 1 300px"><label for="lg-busca">Procurar</label><input id="lg-busca" class="input" type="search" value="${esc(L.busca)}" placeholder="Nome, cidade, responsável, e-mail, anotação…" autocomplete="off"></div>
-        <div class="campo"><span class="rotulo">Ver como</span><div class="abas" role="tablist">${[["quadro", "Quadro por etapa"], ["lista", "Lista"]].map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="lg-modo" data-v="${k}" aria-selected="${L.modo === k}">${l}</button>`).join("")}</div></div>
       </div>
-      ${L.modo === "lista" ? `<div class="campo"><span class="rotulo">Mostrar</span><div class="chips">${[["todas", "Todas"], ...FUNIL.map(([k, l]) => [k, l]), ["retorno", "Com retorno marcado"]].map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(L.fichas.filter((f) => naEtapa(f, k)).length)}</b></button>`).join("")}</div></div>` : ""}
+      <div class="campo"><span class="rotulo">Mostrar <span class="fraco" style="font-weight:500">· etapa do negócio no funil SCC</span></span><div class="chips">${(() => { const ch = filtrosAdms(), n = contagensChips(ch); return ch.map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${esc(l)}<b>${fmtN(n.get(k))}</b></button>`).join(""); })()}</div></div>
       </section>
-      ${L.modo === "quadro" ? quadroHtml() : `
-        <section class="cartao lista" style="margin-top:18px"><div class="lista-cab"><b>Administradoras</b><span class="t12 fraco">o contato mais recente primeiro</span></div>
-          <div class="rolagem"><div class="lg-tabela"><div class="lg-cab"><span>Administradora</span><span>Sistema</span><span>Etapa</span><span>Último contato</span><span>Ligar de novo</span></div><div id="lg-lista">${linhasFichas()}</div></div></div></section>`}
+        <section class="cartao lista"><div class="lista-cab"><b>Administradoras</b><span class="t12 fraco">o contato mais recente primeiro</span></div>
+          <div class="rolagem"><div class="lg-tabela"><div class="lg-cab"><span>Administradora</span><span>Sistema</span><span>Etapa</span><span>Último contato</span><span>Ligar de novo</span></div><div id="lg-lista">${linhasFichas()}</div></div></div></section>
       ${L.sel || L.novo ? gaveta(painelFicha(), "lg-fechar") : ""}`;
   }
+
+  /* ---- Vendas: quadro de negócios por funil, no jeito do Agendor */
+  const MOTIVOS_PERDA = ["Desistência", "Prazo", "Preço", "Produto/Serviço"];
+  const MOEDA0 = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }), MOEDA2 = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+  const moeda = (v) => (v == null || isNaN(v) ? "" : (Number(v) % 1 ? MOEDA2 : MOEDA0).format(Number(v)));
+  const COLL = new Intl.Collator("pt-BR");
+  const diasDesde = (ts) => Math.max(0, Math.floor((Date.now() - (typeof ts === "number" ? ts : Date.parse(ts))) / 864e5));
+  const STATUS_VD = [["em_andamento", "Em andamento"], ["ganho", "Ganhos"], ["perdido", "Perdidos"], ["todos", "Todos"]];
+  const curtoFunil = (f) => ({ SCC: "SCC · Adm. Condomínios", SCL: "SCL · Imobiliárias", CON: "Construtoras", POS: "Serviços Adicionais", ACO: "Acompanhamento" }[f.sigla] || f.nome);
+
+  function negociosFiltrados() {
+    const V = S.vd, chave = `${S.dv}|${V.status}|${V.resp}|${V.busca}`;
+    if (V.nf && V.nfChave === chave) return V.nf;
+    const palavras = norm(V.busca).split(/\s+/).filter(Boolean);
+    V.nf = V.negocios.filter((n) => {
+      if (V.status !== "todos" && n.status !== V.status) return false;
+      if (V.resp !== "todos" && (n.responsavel || "") !== V.resp) return false;
+      return !palavras.length || palavras.every((p) => n.busca.includes(p));
+    }).sort((a, b) => a.t - b.t); // há mais tempo na etapa primeiro
+    V.nfChave = chave; return V.nf;
+  }
+  function cartaoNegocio(n, etapa) {
+    const V = S.vd, dias = diasDesde(n.t), alerta = n.status === "em_andamento" && etapa.alerta != null && dias > etapa.alerta;
+    const prods = (n.produtos || []).map((id) => V.produtoPorId.get(id)?.nome).filter(Boolean);
+    const titulo = n.titulo && norm(n.titulo) !== norm(n.empresa) ? n.titulo : "";
+    const pode = n.dono === S.user.id;
+    return `<div class="vd-card ${alerta ? "vd-alerta" : ""} ${n.status !== "em_andamento" ? "vd-" + n.status : ""}" ${pode && n.status === "em_andamento" ? `draggable="true" data-vd-arrastar="${n.id}"` : ""}>
+      <button type="button" class="vd-abrir" data-acao="vd-abrir" data-id="${n.id}" aria-label="Abrir a ficha de ${esc(n.empresa)}">
+        <span class="vd-emp">${esc(n.empresa)}</span>
+        ${titulo ? `<span class="vd-tit">${esc(titulo)}</span>` : ""}
+        <span class="vd-linha"><b class="vd-valor ${n.valor ? "" : "vd-sem"}">${n.valor ? moeda(n.valor) : "Sem valor"}</b><span class="vd-dias" title="${alerta ? `Passou de ${etapa.alerta} dias nesta etapa` : "Dias nesta etapa"}">${ICONE_RELOGIO}${dias}d</span></span>
+        ${prods.length ? `<span class="vd-prods">${prods.map((p) => `<span>${esc(p)}</span>`).join("")}</span>` : ""}
+        <span class="vd-pe">${n.cidade ? `<span class="t12 fraco">${esc(n.cidade)}${n.uf ? ` - ${esc(n.uf)}` : ""}</span>` : "<span></span>"}${n.responsavel ? `<span class="vd-resp" title="Responsável">${esc(n.responsavel.split(" ")[0])}</span>` : ""}</span>
+      </button>
+      ${n.status === "em_andamento" ? (pode ? `<div class="vd-acoes"><button type="button" class="vd-ganho" data-acao="vd-ganho" data-id="${n.id}">Ganho</button><button type="button" class="vd-perdido" data-acao="vd-perdido" data-id="${n.id}">Perdido</button></div>` : "")
+        : `<div class="vd-acoes"><span class="selo ${n.status === "ganho" ? "s-conf" : "s-errado"}">${n.status === "ganho" ? "Ganho" : `Perdido${n.motivo ? ` · ${esc(n.motivo)}` : ""}`}</span>${pode ? `<button type="button" class="vd-reabrir" data-acao="vd-reabrir" data-id="${n.id}">Reabrir</button>` : ""}</div>`}
+    </div>`;
+  }
+  function telaVendas() {
+    const V = S.vd;
+    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Vendas</h1><p class="fraco" style="margin:0">Os negócios de cada funil, etapa por etapa. Arraste o cartão para mudar de etapa e clique para abrir a ficha da administradora.</p></div></div>`;
+    if (!V.carregado) { if (!V.carregando) carregarVendas(); return cab + `<div class="cartao vazio">Carregando os negócios…</div>`; }
+    const funil = V.funis.find((f) => f.id === V.funil) || V.funis[0];
+    const etapas = V.etapas.filter((e) => e.funil === funil.id);
+    const lista = negociosFiltrados(), doFunil = lista.filter((n) => n.funil === funil.id);
+    const porEtapa = new Map(etapas.map((e) => [e.id, []]));
+    for (const n of doFunil) porEtapa.get(n.etapa)?.push(n);
+    const total = doFunil.reduce((s, n) => s + (Number(n.valor) || 0), 0);
+    const resps = V.resps || [];
+    const contaFunil = (f) => lista.filter((n) => n.funil === f.id).length;
+    const colunas = etapas.map((e) => {
+      const cs = porEtapa.get(e.id);
+      const soma = cs.reduce((s, n) => s + (Number(n.valor) || 0), 0), lim = V.porColuna[e.id] || 40;
+      const nAlerta = e.alerta != null ? cs.filter((n) => n.status === "em_andamento" && diasDesde(n.t) > e.alerta).length : 0;
+      return `<section class="qd-col vd-col ${e.resultado !== "aberta" ? "vd-col-" + e.resultado : ""}" data-etapa="${e.id}" aria-label="${esc(e.nome)}">
+        <div class="qd-cab"><span class="qd-titulo">${esc(e.nome)}</span><span class="qd-cont num">${fmtN(cs.length)}</span>
+          <span class="vd-soma">${soma ? moeda(soma) : "R$ 0"}</span>
+          ${e.alerta != null ? `<span class="t11 fraco qd-sub">Alerta depois de ${e.alerta} ${e.alerta === 1 ? "dia" : "dias"}${nAlerta ? ` · <b style="color:var(--vermelho)">${nAlerta} ${nAlerta === 1 ? "atrasado" : "atrasados"}</b>` : ""}</span>` : ""}</div>
+        <div class="qd-cards">${cs.slice(0, lim).map((n) => cartaoNegocio(n, e)).join("") || '<span class="t12 fraco qd-vazio">Nenhum negócio</span>'}${cs.length > lim ? `<button type="button" class="mini" data-acao="vd-mais" data-v="${e.id}">Mostrar mais ${fmtN(cs.length - lim)}</button>` : ""}</div>
+      </section>`;
+    }).join("");
+    return cab + `
+      <section class="cartao filtros">
+        <div class="campo"><span class="rotulo">Funil</span><div class="chips">${V.funis.map((f) => `<button type="button" class="chip" data-acao="vd-funil" data-v="${f.id}" aria-pressed="${f.id === funil.id}">${esc(curtoFunil(f))}<b>${fmtN(contaFunil(f))}</b></button>`).join("")}</div></div>
+        <div class="linha-filtros">
+          <div class="campo" style="flex:1 1 260px"><label for="vd-busca">Procurar</label><input id="vd-busca" class="input" type="search" value="${esc(V.busca)}" placeholder="Empresa, título, cidade, produto…" autocomplete="off"></div>
+          <div class="campo" style="min-width:200px"><label for="vd-resp">Responsável</label><select id="vd-resp" class="input"><option value="todos">Todos</option>${resps.map((r) => `<option ${V.resp === r ? "selected" : ""}>${esc(r)}</option>`).join("")}</select></div>
+          <div class="campo"><span class="rotulo">Mostrar</span><div class="abas" role="tablist">${STATUS_VD.map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="vd-status" data-v="${k}" aria-selected="${V.status === k}">${l}</button>`).join("")}</div></div>
+        </div>
+      </section>
+      <div class="vd-resumo"><b>${fmtN(doFunil.length)}</b> ${doFunil.length === 1 ? "negócio" : "negócios"} ${V.status === "em_andamento" ? "em andamento" : V.status === "ganho" ? "ganhos" : V.status === "perdido" ? "perdidos" : ""} no ${esc(curtoFunil(funil))}${total ? ` · <b>${moeda(total)}</b> somados` : ""}</div>
+      <div class="quadro vd-quadro">${colunas}</div>
+      ${V.perder ? modalPerda() : ""}`;
+  }
+  function modalPerda() {
+    const n = S.vd.negocios.find((x) => x.id === S.vd.perder);
+    return `<div class="gaveta-fundo" data-acao="vd-perda-cancelar"></div>
+      <div class="vd-modal" role="dialog" aria-modal="true" aria-labelledby="vd-perda-t">
+        <form class="pilha" data-acao="vd-perda" style="gap:16px">
+          <div class="pilha" style="gap:4px"><h2 id="vd-perda-t">Marcar como perdido</h2><span class="t13 fraco">${esc(n?.empresa || "")}${n?.valor ? ` · ${moeda(n.valor)}` : ""}</span></div>
+          <div class="pilha" style="gap:8px"><span class="rotulo">Por que o negócio foi perdido?</span>
+            <div class="vd-motivos">${MOTIVOS_PERDA.map((m, i) => `<label class="vd-motivo"><input type="radio" name="motivo" value="${m}" ${i === 0 ? "required" : ""}><span>${m}</span></label>`).join("")}</div></div>
+          <div class="linha-flex" style="justify-content:flex-end"><button type="button" class="btn btn-sec" data-acao="vd-perda-cancelar">Cancelar</button><button type="submit" class="btn btn-perigo">Marcar como perdido</button></div>
+        </form>
+      </div>`;
+  }
+
+  S.vd = { carregado: false, carregando: false, funil: null, status: "em_andamento", resp: "todos", busca: "", perder: null, porColuna: {}, negocios: [], funis: [], etapas: [], produtoPorId: new Map(), porFicha: new Map(), etapaPorId: new Map() };
+  const mapNeg = (n) => ({ id: n.id, ficha: n.ficha_id, dono: n.usuario_id, titulo: n.titulo, funil: n.funil_id, etapa: n.etapa_id, etapaAnterior: n.etapa_anterior_id, desde: n.etapa_desde || n.atualizado_em, status: n.status, valor: n.valor, motivo: n.motivo_perda,
+    responsavel: n.responsavel_agendor || nomePessoa(n.usuario_id) || "", empresa: n.fichas?.nome || n.titulo || "", cidade: n.fichas?.cidade || "", uf: n.fichas?.uf || "", produtos: (n.negocio_produtos || []).map((p) => p.produto_id) });
+  const COLS_NEG = "id,ficha_id,usuario_id,titulo,funil_id,etapa_id,etapa_anterior_id,etapa_desde,status,valor,motivo_perda,responsavel_agendor,atualizado_em,fichas(nome,cidade,uf),negocio_produtos(produto_id)";
+  const dados = (r) => { if (r.error) throw r.error; return r.data || []; };
+  async function carregarVendas() {
+    const V = S.vd; if (V.carregando || !S.user) return; V.carregando = true;
+    try {
+      const [funis, etapas, produtos, negs] = await Promise.all([
+        sb.from("funis").select("id,nome,sigla,ordem").eq("ativo", true).order("ordem").then(dados),
+        sb.from("etapas").select("id,funil_id,nome,ordem,dias_alerta,resultado").order("funil_id").order("ordem").then(dados),
+        sb.from("produtos").select("id,nome").then(dados),
+        tudo(() => sb.from("negocios").select(COLS_NEG).order("id")),
+      ]);
+      if (S.perfil?.papel === "admin" && !S.lg.pessoas) { const { data } = await sb.from("perfis").select("id,nome").eq("aprovado", true).order("nome"); S.lg.pessoas = data || []; }
+      V.funis = funis; V.etapas = etapas.map((e) => ({ id: e.id, funil: e.funil_id, nome: e.nome, ordem: e.ordem, alerta: e.dias_alerta, resultado: e.resultado }));
+      V.produtoPorId = new Map(produtos.map((p) => [p.id, p]));
+      V.negocios = negs.map(mapNeg);
+      if (V.funil == null) V.funil = (funis.find((f) => f.sigla === "SCC") || funis[0])?.id;
+      derivarVendas(); V.carregado = true;
+    } catch (e) { console.error(e); toast("Não deu para carregar os negócios. Tente de novo."); }
+    finally { V.carregando = false; render(); }
+  }
+  function derivarVendas() {
+    const V = S.vd; S.dv = (S.dv || 0) + 1;
+    for (const n of V.negocios) {
+      n.t = Date.parse(n.desde) || 0;
+      n.busca = norm([n.empresa, n.titulo, n.cidade, n.responsavel, ...(n.produtos || []).map((p) => V.produtoPorId.get(p)?.nome)].join(" "));
+    }
+    V.resps = [...new Set(V.negocios.map((n) => n.responsavel).filter(Boolean))].sort(COLL.compare);
+    V.etapaPorId = new Map(V.etapas.map((e) => [e.id, e]));
+    V.scc = V.funis.find((f) => f.sigla === "SCC")?.id;
+    V.porFicha = new Map();
+    // o negócio do funil SCC de cada ficha: o em andamento mais recente; se não houver, o último fechado
+    const peso = (n) => (n.status === "em_andamento" ? "1" : "0") + (n.desde || "");
+    for (const n of V.negocios) if (n.funil === V.scc) { const a = V.porFicha.get(n.ficha); if (!a || peso(n) > peso(a)) V.porFicha.set(n.ficha, n); }
+  }
+  async function recarregarNegociosDaFicha(fichaId) {
+    if (!S.vd.carregado) return;
+    const { data, error } = await sb.from("negocios").select(COLS_NEG).eq("ficha_id", fichaId);
+    if (error) return;
+    S.vd.negocios = S.vd.negocios.filter((n) => n.ficha !== fichaId).concat((data || []).map(mapNeg)); derivarVendas();
+  }
+  const etapaSCC = (f) => { const n = S.vd.porFicha.get(f.id); return n ? S.vd.etapaPorId.get(n.etapa) : null; };
+  function etapaDaFicha(f) {
+    const n = S.vd.porFicha.get(f.id), e = n && S.vd.etapaPorId.get(n.etapa);
+    if (!e) return { nome: FUNIL_NOME[f.funil] || "Mapeamento", cor: FUNIL_COR[f.funil] || "s-neutro", ordem: null };
+    const cor = n.status === "ganho" || e.resultado === "ganho" ? "s-conf" : n.status === "perdido" || e.resultado === "perdido" ? "s-errado" : e.ordem >= 6 ? "s-roxo" : e.ordem >= 3 ? "s-ident" : "s-neutro";
+    return { nome: n.status === "perdido" && e.resultado !== "perdido" ? `${e.nome} · perdido` : e.nome, cor, ordem: e.ordem, negocio: n };
+  }
+  const agoraISO = () => new Date().toISOString();
+  async function gravarNegocio(n, mud, local, aviso) {
+    const antes = { ...n }; Object.assign(n, local); derivarVendas(); render();
+    const { error } = await sb.from("negocios").update(mud).eq("id", n.id);
+    if (error) { console.error(error); Object.assign(n, antes); derivarVendas(); toast("Não foi possível salvar. Tente de novo."); render(); return false; }
+    if (aviso) toast(aviso); return true;
+  }
+  async function moverNegocio(id, etapaId) {
+    const V = S.vd, n = V.negocios.find((x) => x.id === id), e = V.etapaPorId.get(etapaId);
+    if (!n || !e || n.etapa === etapaId || n.dono !== S.user.id) return;
+    const agora = agoraISO();
+    if (!(await gravarNegocio(n, { etapa_id: etapaId, etapa_desde: agora }, { etapa: etapaId, desde: agora }, `${n.empresa} foi para ${e.nome}.`))) return;
+    if (norm(e.nome) === "follow-up semestral") retornoSemestral(n.ficha);
+  }
+  async function retornoSemestral(fichaId) {
+    const f = S.lg.fichaPorId?.get(fichaId) || S.ag.fichas.find((x) => x.id === fichaId);
+    if (f?.retorno_em && diaDe(f.retorno_em) > hojeISO()) return;
+    const d = isoData(hojeISO()); d.setUTCMonth(d.getUTCMonth() + 6); let dia = d.toISOString().slice(0, 10);
+    while ([0, 6].includes(isoData(dia).getUTCDay())) dia = somaDias(dia, 1);
+    const mud = { retorno_em: tsSP(dia, "09:00"), retorno_nota: f?.retorno_nota || "Follow-up semestral" };
+    const { error } = await sb.from("fichas").update(mud).eq("id", fichaId);
+    if (error) return;
+    if (f) Object.assign(f, mud); S.dv++;
+    toast(`Retorno marcado para ${ddmmaaaa(dia)} na Agenda.`); carregarAgenda();
+  }
+  async function ganharNegocio(id) {
+    const V = S.vd, n = V.negocios.find((x) => x.id === id); if (!n) return;
+    const g = V.etapas.find((e) => e.funil === n.funil && e.resultado === "ganho"), agora = agoraISO();
+    await gravarNegocio(n, { status: "ganho", etapa_anterior_id: n.etapa, etapa_id: g ? g.id : n.etapa, etapa_desde: agora, conclusao_em: hojeISO(), motivo_perda: null },
+      { status: "ganho", etapaAnterior: n.etapa, etapa: g ? g.id : n.etapa, desde: agora, motivo: null }, `${n.empresa}: negócio ganho${g ? `, foi para ${g.nome}` : ""}. Parabéns!`);
+  }
+  async function perderNegocio(id, motivo) {
+    const n = S.vd.negocios.find((x) => x.id === id); if (!n) return;
+    await gravarNegocio(n, { status: "perdido", motivo_perda: motivo, conclusao_em: hojeISO() }, { status: "perdido", motivo }, `${n.empresa}: negócio perdido (${motivo}).`);
+  }
+  async function reabrirNegocio(id) {
+    const n = S.vd.negocios.find((x) => x.id === id); if (!n) return;
+    const volta = n.status === "ganho" && n.etapaAnterior ? n.etapaAnterior : n.etapa, agora = agoraISO();
+    await gravarNegocio(n, { status: "em_andamento", etapa_id: volta, etapa_anterior_id: null, etapa_desde: agora, conclusao_em: null, motivo_perda: null },
+      { status: "em_andamento", etapa: volta, etapaAnterior: null, desde: agora, motivo: null }, `${n.empresa} voltou para ${S.vd.etapaPorId.get(volta)?.nome || "em andamento"}.`);
+  }
+  // Mover a etapa pela ficha: move o negócio do funil SCC; se a ficha ainda não tem, cria
+  async function moverEtapaFicha(fichaId, etapaId) {
+    const V = S.vd, n = V.porFicha.get(fichaId);
+    if (n) { if (n.status !== "em_andamento") { toast("Esse negócio está fechado. Reabra na aba Vendas para mudar a etapa."); render(); return; } return moverNegocio(n.id, etapaId); }
+    const f = S.lg.fichaPorId.get(fichaId); if (!f || f.usuario_id !== S.user.id) return;
+    const { data, error } = await sb.from("negocios").insert({ ficha_id: fichaId, usuario_id: S.user.id, titulo: f.nome.slice(0, 200), funil_id: V.scc, etapa_id: etapaId, etapa_desde: agoraISO(), status: "em_andamento", origem: "prospeccao", inicio_em: hojeISO() }).select(COLS_NEG).single();
+    if (error) { console.error(error); toast("Não foi possível criar o negócio. Tente de novo."); return; }
+    V.negocios.push(mapNeg(data)); derivarVendas(); render();
+    const e = V.etapaPorId.get(etapaId); toast(`${f.nome} foi para ${e?.nome}.`);
+    if (e && norm(e.nome) === "follow-up semestral") retornoSemestral(fichaId);
+  }
+  function seletorEtapa(f, cls, id) {
+    const V = S.vd; if (!V.carregado) return "";
+    const n = V.porFicha.get(f.id), etapas = V.etapas.filter((e) => e.funil === V.scc);
+    return `<select ${id ? `id="${id}"` : ""} class="${cls} sel-etapa" data-id="${f.id}" ${n && n.status !== "em_andamento" ? "disabled" : ""}>${n ? "" : '<option value="" selected>Sem negócio no funil SCC</option>'}${etapas.map((e) => `<option value="${e.id}" ${n?.etapa === e.id ? "selected" : ""}>${esc(e.nome)}</option>`).join("")}</select>`;
+  }
+  const ICONE_RELOGIO = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 
   /* ---- Início: saudação, o dia e o funil, sem excesso de informação */
   const FRASES = {
@@ -1301,7 +1543,9 @@
     if (m) for (const r of m.lig) { const hh = +localSP(r.criado_em).slice(11, 13); const x = horas.find((y) => y[0] === hh); if (x && localSP(r.criado_em).slice(0, 10) === hj) x[1]++; }
     const maxH = Math.max(1, ...horas.map((x) => x[1])), horaAgora = hora;
     const minhas = pronto ? L.fichas.filter((f) => f.usuario_id === S.user.id) : [];
-    const porEtapa = FUNIL.map(([k, l]) => [k, l, minhas.filter((f) => naEtapa(f, k)).length]);
+    if (!S.vd.carregado && !S.vd.carregando) carregarVendas();
+    const meus = S.vd.negocios.filter((n) => n.dono === S.user.id && n.funil === S.vd.scc);
+    const porEtapa = S.vd.etapas.filter((e) => e.funil === S.vd.scc && (e.resultado === "aberta" || e.resultado === "ganho")).map((e) => [e.ordem, e.nome, meus.filter((n) => n.etapa === e.id && (e.resultado === "ganho" ? n.status === "ganho" : n.status === "em_andamento")).length]).filter((x) => x[2] || [1, 3, 6, 12].includes(x[0]));
     const maxE = Math.max(1, ...porEtapa.map((x) => x[2]));
     const corE = { mapeamento: "#9AAAC6", indisponivel: "#9AAAC6", contato: "#2C63DB", follow_semestral: "#FDB601", sem_interesse: "#E3B4AE", demonstracao: "#5B2A86", contrato: "#1E7A46" };
     const Ac = pronto ? acumulado(hj) : null;
@@ -1327,64 +1571,11 @@
         <div class="pilha" style="gap:6px"><span class="t12 fraco">Contatos por hora</span><div class="in-barras" aria-hidden="true">${horas.map(([h, v]) => `<i style="height:${v ? Math.max(10, Math.round((v / maxH) * 100)) : 6}%" class="${h === horaAgora ? "agora" : v ? "tem" : ""}" title="${h}h: ${v}"></i>`).join("")}</div><span class="in-eixo"><span>8h</span><span>12h</span><span>16h</span><span>19h</span></span></div>`
         : '<span class="t13 fraco">Carregando…</span>'}
       </section>
-      <section class="in-cartao"><div class="in-cab"><h2>Suas administradoras</h2><button type="button" class="in-link" data-acao="ir" data-view="adms">Ver quadro →</button></div>
+      <section class="in-cartao"><div class="in-cab"><h2>Suas administradoras</h2><button type="button" class="in-link" data-acao="ir" data-view="vendas">Ver funil →</button></div>
         ${pronto ? `<div class="pilha" style="gap:9px">${porEtapa.map(([k, l, v]) => `<span class="in-etapa"><span class="fraco">${l}</span><span class="in-trilho"><i style="width:${v ? Math.max(3, Math.round((v / maxE) * 100)) : 0}%;background:${corE[k]}"></i></span><b class="num">${fmtN(v)}</b></span>`).join("")}</div>
         <div class="in-acum"><b>${fmtN(Ac.demos.length)} ${Ac.demos.length === 1 ? "demonstração" : "demonstrações"}</b> e <b>${fmtN(Ac.contratos.length)} ${Ac.contratos.length === 1 ? "contrato" : "contratos"}</b> no acumulado. ${periodo === "noite" ? "Amanhã tem mais." : "Falta pouco para a próxima."}</div>` : '<span class="t13 fraco">Carregando…</span>'}
       </section>
     </div>`;
-  }
-
-  /* ---- quadro: uma coluna por etapa */
-  const ICONE_TEL = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
-  const ICONE_RELOGIO = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
-  const ATIVAS = new Set(["mapeamento", "indisponivel", "contato", "demonstracao"]);
-  function cartaoQuadro(f) {
-    const u = ultimaDe(f), hj = hojeISO();
-    const dias = u ? Math.max(0, Math.round((isoData(hj) - isoData(u.data)) / 864e5)) : null;
-    const atr = f.retorno_em && diaDe(f.retorno_em) < hj;
-    const demo = f.funil === "demonstracao" && f.demo_em && f.etapa === "demo_agendada" ? localSP(f.demo_em) : "";
-    let sinal = "";
-    if (f.retorno_em) sinal = `<span class="qd-ic ${atr ? "qd-ic-atr" : "qd-ic-ok"}" title="${atr ? "Retorno atrasado" : "Retorno marcado"}">${ICONE_TEL}</span>`;
-    else if (ATIVAS.has(f.funil || "mapeamento") && !demo && f.etapa !== "demo_realizada") sinal = `<span class="qd-ic qd-ic-nada" title="Sem próximo passo marcado">!</span>`;
-    const proximo = demo ? `<span class="qd-prox qd-prox-demo">Demo ${ddmm(demo.slice(0, 10))} · ${demo.slice(11, 16)}</span>`
-      : f.retorno_em ? `<span class="qd-prox ${atr ? "qd-prox-atr" : ""}">${atr ? "Atrasado · " : ""}${esc(quandoTxt(f.retorno_em))}</span>` : "";
-    return `<button type="button" class="qd-card ${atr ? "qd-atr" : ""}" data-acao="lg-sel" data-id="${f.id}" ${souDono() ? 'draggable="true" data-qd="1"' : ""} aria-pressed="${S.lg.sel === f.id}">
-      <span class="qd-topo"><span class="qd-nome">${esc(f.nome)}</span>${sinal}</span>
-      <span class="t12 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "Cidade não informada")}${f.sistema ? ` · ${esc(f.sistema)}` : ""}${S.lg.dono === "todos" ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span>
-      <span class="qd-pe">${proximo || "<span></span>"}<span class="qd-dias" title="${u ? `Último contato em ${ddmmaaaa(u.data)}` : "Nenhum contato ainda"}">${u ? `${ICONE_RELOGIO}${dias}d` : "novo"}</span></span>
-    </button>`;
-  }
-  function quadroHtml() {
-    const L = S.lg, lista = fichasFiltradasQuadro(), por = new Map(FUNIL.map(([k]) => [k, []]));
-    for (const f of lista) (por.get(f.funil) || por.get("mapeamento")).push(f);
-    return `<div class="quadro" role="list">${FUNIL.map(([k, l, sub]) => { const cs = por.get(k);
-      const total = k === "demonstracao" ? lista.filter((f) => naEtapa(f, "demonstracao")).length : cs.length, fechou = total - cs.length;
-      return `<section class="qd-col" data-funil="${k}" role="listitem" aria-label="${l}"><div class="qd-cab"><span class="qd-titulo">${l}</span><span class="qd-cont num">${fmtN(total)}</span>${k === "demonstracao" && fechou > 0 ? `<span class="t11 fraco qd-sub">${fmtN(fechou)} ${fechou === 1 ? "já fechou e está" : "já fecharam e estão"} em Contrato</span>` : sub ? `<span class="t11 fraco qd-sub">${sub}</span>` : ""}</div>
-        <div class="qd-cards">${cs.slice(0, L.porColuna[k] || 60).map(cartaoQuadro).join("") || '<span class="t12 fraco qd-vazio">Nenhuma aqui</span>'}${cs.length > (L.porColuna[k] || 60) ? `<button type="button" class="mini" data-acao="qd-mais" data-v="${k}">Mostrar mais ${fmtN(cs.length - (L.porColuna[k] || 60))}</button>` : ""}</div></section>`; }).join("")}</div>`;
-  }
-  function fichasFiltradasQuadro() {
-    const L = S.lg, palavras = norm(L.busca).split(/\s+/).filter(Boolean);
-    const lista = palavras.length ? L.fichas.filter((f) => { const t = L.idx.get(f.id) || ""; return palavras.every((p) => t.includes(p)); }) : [...L.fichas];
-    // atrasados primeiro, depois quem tem retorno mais perto, depois o contato mais antigo
-    const chave = (f) => (f.retorno_em ? (diaDe(f.retorno_em) < hojeISO() ? "0" : "1") + localSP(f.retorno_em) : "2" + (ultimaDe(f)?.data || "0000"));
-    return lista.sort((a, b) => (chave(a) < chave(b) ? -1 : 1));
-  }
-  async function moverFunil(id, para) {
-    const L = S.lg, f = L.fichaPorId.get(id); if (!f || f.funil === para || f.usuario_id !== S.user.id) return;
-    const mud = { funil: para };
-    let aviso = `${f.nome} foi para ${FUNIL_NOME[para]}.`;
-    if (para === "follow_semestral" && (!f.retorno_em || diaDe(f.retorno_em) <= hojeISO())) {
-      const d = isoData(hojeISO()); d.setUTCMonth(d.getUTCMonth() + 6); let dia = d.toISOString().slice(0, 10);
-      while ([0, 6].includes(isoData(dia).getUTCDay())) dia = somaDias(dia, 1);
-      mud.retorno_em = tsSP(dia, "09:00"); mud.retorno_nota = f.retorno_nota || "Follow-up semestral";
-      aviso += ` Retorno marcado para ${ddmmaaaa(dia)}.`;
-    }
-    if (para === "contrato" && f.etapa !== "contrato") aviso += " Para contar nos relatórios, registre \"Contrato fechado\" na ficha.";
-    if (para === "demonstracao" && !["demo_agendada", "demo_realizada", "contrato"].includes(f.etapa)) aviso += " Para contar nos relatórios, registre a demo na ficha.";
-    const antes = { ...f }; Object.assign(f, mud); render();
-    const { error } = await sb.from("fichas").update(mud).eq("id", id);
-    if (error) { console.error(error); Object.assign(f, antes); toast("Não foi possível mover. Tente de novo."); render(); return; }
-    toast(aviso); carregarAgenda();
   }
 
   function campoFicha(k, label, f, ro) {
@@ -1466,15 +1657,16 @@
   }
   const diasEntre = (a, b) => Math.round((isoData(b) - isoData(a)) / 864e5);
   function fichaGaveta(f, ro) {
-    const L = S.lg, hj = hojeISO();
+    const L = S.lg, hj = hojeISO(); garantirTextos(f.id);
     const regs = [...(L.porFicha.get(f.id) || [])].reverse();
     const lig = regs.filter((r) => r.tipo !== "anotacao");
     const visiveis = L.gvTodos === f.id ? regs : regs.slice(0, 8);
     const aberto = regs.some((r) => r.id === L.gvAberto) && visiveis.some((r) => r.id === L.gvAberto) ? L.gvAberto : visiveis[0]?.id;
     const nomes = String(f.nome).trim().split(/\s+/);
     const tit = nomes.length > 1 ? `${esc(nomes.slice(0, Math.ceil(nomes.length / 2)).join(" "))} <em>${esc(nomes.slice(Math.ceil(nomes.length / 2)).join(" "))}</em>` : `<em>${esc(f.nome)}</em>`;
-    const passo = { mapeamento: 0, indisponivel: 0, contato: 1, follow_semestral: 1, sem_interesse: 1, demonstracao: 2, contrato: 3 }[f.funil || "mapeamento"];
-    const passos = ["Mapeamento", "Contato", "Demonstração", "Contrato"].map((l, i) => `<span class="mc-passo ${i < passo || (i === 3 && passo === 3) ? "feito" : i === passo ? "agora" : ""}"><i></i>${i === 1 && f.funil === "sem_interesse" ? "Sem interesse" : i === 1 && f.funil === "follow_semestral" ? "Follow-up semestral" : l}</span>`).join("");
+    const ef = etapaDaFicha(f), semInt = ef.ordem === 5 || ef.ordem === 10 || f.funil === "sem_interesse";
+    const passo = ef.ordem != null ? (ef.ordem <= 2 ? 0 : ef.ordem <= 5 ? 1 : ef.ordem <= 11 ? 2 : 3) : { mapeamento: 0, indisponivel: 0, contato: 1, follow_semestral: 1, sem_interesse: 1, demonstracao: 2, contrato: 3 }[f.funil || "mapeamento"];
+    const passos = ["Mapeamento", "Contato", "Demonstração", "Contrato"].map((l, i) => `<span class="mc-passo ${i < passo || (i === 3 && passo === 3) ? "feito" : i === passo ? "agora" : ""}"><i></i>${i === passo && ef.ordem != null && ![1, 3, 6, 12].includes(ef.ordem) ? esc(ef.nome) : i === 1 && semInt ? "Sem interesse" : l}</span>`).join("");
     const demoFut = f.demo_em && f.etapa === "demo_agendada" && diaDe(f.demo_em) >= hj ? f.demo_em : null;
     const primeiro = regs.length ? regs[regs.length - 1].data : null, ultimo = regs[0]?.data;
     const terceiro = demoFut ? [diasEntre(hj, diaDe(demoFut)), diasEntre(hj, diaDe(demoFut)) === 1 ? "dia para a demo" : "dias para a demo"]
@@ -1500,7 +1692,7 @@
     ].filter((d) => d[2]).map(([i, l, v, html, largo]) => `<div class="mc-dado ${largo ? "mc-largo-sempre" : ""}"><span>${I[i]}${l}</span><b>${html ? v : esc(v)}</b></div>`).join("");
     const proximo = demoFut ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} ${quandoTxt(demoFut).toLowerCase().replace(" · ", " às ")}.`
       : f.retorno_em ? `${diaDe(f.retorno_em) < hj ? "Retorno atrasado: era" : "Ligar de novo"} ${quandoTxt(f.retorno_em).toLowerCase().replace(" · ", " às ")}${f.retorno_nota ? `. ${f.retorno_nota}` : ""}.`
-      : f.funil === "contrato" ? "Contrato fechado. Agora é com o time de implantação." : "Nenhum próximo passo marcado ainda.";
+      : (ef.ordem != null ? ef.negocio?.status === "ganho" || passo === 3 : f.funil === "contrato") ? "Contrato fechado. Agora é com o time de implantação." : "Nenhum próximo passo marcado ainda.";
     const pastas = visiveis.map((r) => {
       const v = visualReg(r), h = horaReg(r), q = `${ddmm(r.data)}${h ? ` às ${h}` : ""}`;
       const ds = r.detalhes?.length ? r.detalhes : r.detalhe ? [r.detalhe] : [];
@@ -1523,15 +1715,15 @@
         <div class="upw-sec-files__head">
           <p class="upw-sec-files__eyebrow">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</p>
           <h2 class="upw-sec-files__title">${tit}</h2>
-          <div class="mc-selos"><span class="mc-selo etapa">${esc(FUNIL_NOME[f.funil] || "Mapeamento")}</span>${f.sistema ? `<span class="mc-selo">${esc(f.sistema)}</span>` : ""}${f.qtd_condominios ? `<span class="mc-selo">${fmtN(f.qtd_condominios)} condomínios</span>` : ""}${fezDemo(f) && f.funil !== "demonstracao" ? '<span class="mc-selo">Fez demonstração</span>' : ""}</div>
-          <div class="mc-jornada" style="--mc-passo: ${passo}" aria-label="Etapa atual: ${esc(FUNIL_NOME[f.funil] || "Mapeamento")}">${passos}</div>
+          <div class="mc-selos"><span class="mc-selo etapa">${esc(ef.nome)}</span>${ef.negocio?.valor ? `<span class="mc-selo">${moeda(ef.negocio.valor)}</span>` : ""}${f.sistema ? `<span class="mc-selo">${esc(f.sistema)}</span>` : ""}${f.qtd_condominios ? `<span class="mc-selo">${fmtN(f.qtd_condominios)} condomínios</span>` : ""}${fezDemo(f) && f.funil !== "demonstracao" ? '<span class="mc-selo">Fez demonstração</span>' : ""}</div>
+          <div class="mc-jornada" style="--mc-passo: ${passo}" aria-label="Etapa atual: ${esc(ef.nome)}">${passos}</div>
           <div class="mc-numeros">
             <div class="mc-numero"><b data-conta="${lig.length}">${visto ? lig.length : 0}</b><span>${lig.length === 1 ? "contato" : "contatos"}</span></div>
             <div class="mc-numero"><b data-conta="${conversa}">${visto ? conversa : 0}</b><span>${conversa === 1 ? "dia de conversa" : "dias de conversa"}</span></div>
             <div class="mc-numero"><b data-conta="${terceiro[0]}">${visto ? terceiro[0] : 0}</b><span>${terceiro[1]}</span></div>
           </div>
           <div class="mc-dados">${dados}</div>
-          ${ro ? "" : `<label class="mc-etapa">Mover para a etapa <select class="sel-funil" data-id="${f.id}">${FUNIL.map(([k, l]) => `<option value="${k}" ${f.funil === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>`}
+          ${ro || !S.vd.carregado ? "" : `<label class="mc-etapa">Etapa no funil SCC ${seletorEtapa(f, "")}</label>`}
         </div>
         <div class="upw-sec-files__drawer">
           ${regs.length ? `<div class="upw-sec-files__filters" role="group" aria-label="Filtrar contatos">${filtros}</div>
@@ -1554,7 +1746,7 @@
     const ro = f.usuario_id !== S.user.id;
     if (L.registrar !== f.id) return `<aside class="cartao painel painel-lg ficha-escura" aria-label="Ficha da administradora"><button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>${fichaGaveta(f, ro)}</aside>`;
     const regs = [...(L.porFicha.get(f.id) || [])].reverse();
-    const el = FUNIL_NOME[f.funil] || "Mapeamento", ec = FUNIL_COR[f.funil] || "s-neutro";
+    const { nome: el, cor: ec } = etapaDaFicha(f);
     const tels = String(f.telefones || "").split(/[|,/]| e /).map((t) => t.trim()).filter((t) => t.replace(/\D/g, "").length >= 10);
     const wpp = String(f.whatsapp || "").replace(/\D/g, "");
     const links = (wpp.length >= 10 ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${wpp.slice(-11)}">WhatsApp ${esc(f.whatsapp)}</a>` : "") + tels.slice(0, 3).map((t) => { const n = t.replace(/\D/g, ""); return `<a class="mini" href="tel:+55${n}">Ligar ${esc(t.replace(/\s*(wpp|whats.*|google)\s*$/i, ""))}</a>${/^\d{2}9/.test(n) ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${n}">WhatsApp</a>` : ""}`; }).join("");
@@ -1563,9 +1755,9 @@
       <button type="button" class="mini mc-voltar" data-acao="lg-voltar-ficha">← Voltar à ficha</button>
       <div class="pilha"><span class="t11 fraco" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span>
         <h2>${esc(f.nome)}</h2><span class="t13 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}${f.horario_funcionamento ? ` · ${esc(f.horario_funcionamento)}` : ""}</span>
-        <span class="linha-flex" style="gap:6px">${ro ? `<span class="selo ${ec}">${el}</span>` : ""}${f.sistema ? `<span class="selo s-sis">${esc(f.sistema)}</span>` : ""}${f.demo_em ? `<span class="selo s-roxo">Demo ${esc(new Date(f.demo_em).toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" }))}</span>` : ""}${f.retorno_em ? celulaRetorno(f) : ""}</span>
+        <span class="linha-flex" style="gap:6px">${ro ? `<span class="selo ${ec}">${el}</span>` : ""}${f.sistema ? `<span class="selo s-sis">${esc(f.sistema)}</span>` : ""}${f.demo_em ? `<span class="selo s-roxo">Demo ${esc(dataHoraBR(f.demo_em))}</span>` : ""}${f.retorno_em ? celulaRetorno(f) : ""}</span>
         ${f.retorno_nota && f.retorno_em ? `<span class="t13">Lembrete: ${esc(f.retorno_nota)}</span>` : ""}
-        ${ro ? "" : `<div class="campo" style="max-width:260px;margin-top:4px"><label for="fx-funil">Etapa</label><select id="fx-funil" class="input sel-funil" data-id="${f.id}">${FUNIL.map(([k, l]) => `<option value="${k}" ${f.funil === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}
+        ${ro || !S.vd.carregado ? "" : `<div class="campo" style="max-width:300px;margin-top:4px"><label for="fx-etapa">Etapa no funil SCC</label>${seletorEtapa(f, "input", "fx-etapa")}</div>`}
         ${links ? `<span class="linha-flex" style="gap:6px;margin-top:4px">${links}</span>` : ""}
       </div>
       ${ro ? `<details class="lg-bloco" open><summary><b>Dados da administradora</b></summary>${camposDados(f, true)}</details>` : formLigacao(f)}
@@ -1634,7 +1826,7 @@
       derivar(); form.dataset.sujo = "";
       const salvo = novo && L.regs.find((x) => x.id === novo.id);
       toast(salvo ? (LIGACAO.has(salvo.tipo) ? `Salvo como ${salvo.nova ? "contato novo" : "follow-up"}${nf?.retorno_em ? ` · ligar de novo ${quandoTxt(nf.retorno_em).toLowerCase()}` : ""}.` : "Registro salvo.") : f ? "Dados salvos." : "Ficha criada.");
-      carregarAgenda();
+      carregarAgenda(); recarregarNegociosDaFicha(id).then(() => render());
       if (mapa) {
         L.proxima = fd.get("proxima") === "on";
         const prox = L.proxima && modo === "ligacao" ? proximaEmpresa(form.dataset.cnpj) : null;
@@ -1658,18 +1850,19 @@
     const L = S.lg;
     if (L.dono && L.dono !== S.user.id) { L.dono = null; L.carregado = false; }
     if (!L.carregado) { if (!L.carregando) carregarLig(); return `<div class="caixa-cinza"><span class="t13 fraco">Abrindo a ficha…</span></div>`; }
-    const f = fichaDoCnpj(r.cnpj), soc = S.socios.get(r.cnpj_basico) || [];
+    const f = fichaDoCnpj(r.cnpj), soc = S.socios.get(r.cnpj_basico) || []; if (f) garantirTextos(f.id);
     const base = f || { nome: nomeEmp(r), telefones: [r.telefone1, r.telefone2].filter(Boolean).join(" / ") || null, email: r.email || null, cidade: r.municipio ? titulo(r.municipio) : null, uf: r.uf || null, sistema: sistemaDe(r).nome || null, cnpj: r.cnpj };
     const regs = f ? [...(L.porFicha.get(f.id) || [])].reverse() : [];
     const resumo = f ? `<div class="caixa-cinza"><div class="linha-flex" style="justify-content:space-between"><b class="t13">Já está nas suas administradoras</b><button type="button" class="mini" data-acao="lg-abrir" data-id="${f.id}">Ver ficha completa</button></div>
-        <span class="linha-flex" style="gap:6px"><span class="selo ${FUNIL_COR[f.funil] || "s-neutro"}">${FUNIL_NOME[f.funil] || "Mapeamento"}</span>${f.retorno_em ? celulaRetorno(f) : ""}</span>
+        <span class="linha-flex" style="gap:6px"><span class="selo ${etapaDaFicha(f).cor}">${esc(etapaDaFicha(f).nome)}</span>${f.retorno_em ? celulaRetorno(f) : ""}</span>
         ${regs.slice(0, 3).map((x) => `<span class="t12"><b class="num">${ddmm(x.data)}</b> · ${esc(rotuloReg(x))}${x.texto ? ` · <span class="fraco">${esc(x.texto.length > 110 ? x.texto.slice(0, 110) + "…" : x.texto)}</span>` : ""}</span>`).join("")}${regs.length > 3 ? `<span class="t12 fraco">e mais ${regs.length - 3} no histórico</span>` : ""}</div>`
       : soc.length ? `<span class="t12 fraco">Sócio${soc.length > 1 ? "s" : ""} na Receita: <b>${esc(soc.slice(0, 3).map((x) => titulo(x.nome)).join(", "))}</b></span>` : "";
     return `<div class="pilha" style="gap:12px">${resumo}${formLigacao(base, { cnpj: r.cnpj })}</div>`;
   }
-  async function abrirFicha(id) {
+  async function abrirFicha(id, dono) {
     const L = S.lg;
-    if (L.dono && L.dono !== S.user.id) { L.dono = null; L.carregado = false; }
+    if (dono && dono !== S.user.id) { if (L.dono !== "todos" && L.dono !== dono) { L.dono = "todos"; L.carregado = false; } }
+    else if (L.dono && L.dono !== S.user.id && !L.fichaPorId?.get(id)) { L.dono = null; L.carregado = false; }
     S.view = "adms"; S.sel = null; S.selRow = null; L.sel = id; L.novo = false; L.busca = ""; L.etapa = "todas"; L.registrar = null; L.gvAberto = null; L.gvTodos = null;
     if (!L.carregado) await carregarLig(); else render();
     window.scrollTo(0, 0);
@@ -1772,7 +1965,7 @@
     const { data, error } = await sb.from("fichas").update({ retorno_em: novo }).eq("id", id).select("retorno_em").single();
     if (error) { console.error(error); toast("Não foi possível remarcar. Tente de novo."); return; }
     f.retorno_em = data.retorno_em;
-    const lf = S.lg.fichas.find((x) => x.id === id); if (lf) lf.retorno_em = data.retorno_em;
+    const lf = S.lg.fichas.find((x) => x.id === id); if (lf) lf.retorno_em = data.retorno_em; S.dv = (S.dv || 0) + 1;
     S.ag.dia = dia; toast(`Retorno remarcado para ${ddmm(dia)} às ${hora}.`); render();
   }
   function faixaAgenda() {
@@ -1950,11 +2143,19 @@
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM") return;
     const a = b.dataset.acao, L = S.lg, R = S.rl, A = S.ag;
-    if (!a.startsWith("lg-") && !a.startsWith("rl-") && !a.startsWith("ag-") && !a.startsWith("av-") && !a.startsWith("qd-") && !a.startsWith("in-") && a !== "ficha-empresa") { if (!a.startsWith("lg-apagar")) L.apagar = null; return; }
+    if (!a.startsWith("lg-") && !a.startsWith("rl-") && !a.startsWith("ag-") && !a.startsWith("av-") && !a.startsWith("vd-") && !a.startsWith("in-") && a !== "ficha-empresa") { if (!a.startsWith("lg-apagar")) L.apagar = null; return; }
     if (a !== "lg-apagar-reg" && a !== "lg-apagar-ficha") L.apagar = null;
     switch (a) {
       case "ficha-empresa": if (S.selRow) { b.disabled = true; await abrirFichaDaEmpresa(S.selRow); } break;
       case "lg-abrir": await abrirFicha(b.dataset.id); break;
+      case "vd-funil": S.vd.funil = +b.dataset.v; S.vd.porColuna = {}; render(); break;
+      case "vd-status": S.vd.status = b.dataset.v; render(); break;
+      case "vd-mais": S.vd.porColuna[b.dataset.v] = (S.vd.porColuna[b.dataset.v] || 40) + 40; render(); break;
+      case "vd-abrir": { if (S.vd.arrastou) break; const n = S.vd.negocios.find((x) => x.id === b.dataset.id); if (n) await abrirFicha(n.ficha, n.dono); break; }
+      case "vd-ganho": await ganharNegocio(b.dataset.id); break;
+      case "vd-perdido": S.vd.perder = b.dataset.id; render(); break;
+      case "vd-perda-cancelar": S.vd.perder = null; render(); break;
+      case "vd-reabrir": await reabrirNegocio(b.dataset.id); break;
       case "lg-registrar": L.registrar = L.sel; L.dadosAberto = b.dataset.v === "dados" || L.dadosAberto; render(); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); if (b.dataset.v === "dados") $("#fx-nome")?.focus(); else document.querySelector('.gaveta [name="res"]')?.focus(); break;
       case "lg-voltar-ficha": L.registrar = null; render(); break;
       case "lg-gv-todos": L.gvTodos = b.dataset.id; render(); break;
@@ -1974,8 +2175,6 @@
         if (!e.includes("@")) { toast("Preencha o e-mail para contato na ficha."); $("#fx-email")?.focus(); break; }
         window.open(`mailto:${encodeURIComponent(e)}`, "_blank"); const c = b.closest("form")?.querySelector('[name="envio"][value="email"]'); if (c) { c.checked = true; c.form.dataset.sujo = "1"; } break;
       }
-      case "lg-modo": L.modo = b.dataset.v; try { localStorage.setItem("mapa-adm-modo", L.modo); } catch { /* sem armazenamento */ } render(); break;
-      case "qd-mais": L.porColuna[b.dataset.v] = (L.porColuna[b.dataset.v] || 60) + 60; render(); break;
       case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } L.sel = b.dataset.id; L.novo = false; L.registrar = null; L.gvAberto = null; L.gvTodos = null; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
       case "lg-fechar": L.sel = null; L.novo = false; L.registrar = null; render(); break;
       case "lg-nova": L.novo = true; L.sel = null; L.dadosAberto = true; render(); $("#fx-nome")?.focus(); break;
@@ -2029,20 +2228,23 @@
   });
   app.addEventListener("submit", async (ev) => {
     const f = ev.target, a = f.dataset.acao;
-    if (!a || !(a.startsWith("lg-") || a.startsWith("rl-"))) return;
+    if (!a || !(a.startsWith("lg-") || a.startsWith("rl-") || a.startsWith("vd-"))) return;
     ev.preventDefault();
     if (a === "lg-salvar") salvarTudo(f, ev.submitter?.value === "dados" ? "dados" : "ligacao");
+    if (a === "vd-perda") { const m = new FormData(f).get("motivo"); if (!m) { toast("Escolha o motivo."); return; } const id = S.vd.perder; S.vd.perder = null; await perderNegocio(id, String(m)); }
     if (a === "rl-obs") { const fd = new FormData(f); const obs = [0, 1, 2].map((i) => ({ titulo: String(fd.get("t" + i) || "").trim(), texto: String(fd.get("x" + i) || "").trim() })).filter((o) => o.titulo || o.texto); if (await salvarRel({ observacoes: obs })) { S.rl.editObs = false; toast("Observações salvas."); render(); } }
     if (a === "rl-aj") { const fd = new FormData(f), aj = {}; for (const [k, v] of fd) if (String(v).trim() !== "") aj[k] = Math.max(0, parseInt(v, 10) || 0); if (await salvarRel({ ajustes: aj })) { S.rl.editAj = false; toast(Object.keys(aj).length ? "Números corrigidos." : "Números voltaram a ser contados pelo sistema."); render(); } }
   });
   app.addEventListener("input", (ev) => {
     const fm = ev.target.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1";
-    if (ev.target.id === "lg-busca") { S.lg.busca = ev.target.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); const q = $(".quadro"); if (q) q.outerHTML = quadroHtml(); }
+    if (ev.target.id === "vd-busca") { const v = ev.target.value; clearTimeout(S.vd.espera); S.vd.espera = setTimeout(() => { const a = $("#vd-busca"); if (!a) return; S.vd.busca = a.value; const pos = a.selectionStart, foco = document.activeElement === a; render(); const i = $("#vd-busca"); if (i && foco) { i.focus(); i.setSelectionRange(pos, pos); } }, 200); void v; return; }
+    if (ev.target.id === "lg-busca") { clearTimeout(S.lg.espera); S.lg.espera = setTimeout(() => { const a = $("#lg-busca"); if (!a) return; S.lg.busca = a.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); }, 200); }
   });
   app.addEventListener("change", (ev) => {
     const t = ev.target;
     if (t.classList.contains("sel-dono")) { S.lg.dono = t.value === S.user.id ? null : t.value; S.lg.carregado = false; S.lg.sel = null; S.lg.novo = false; S.rl.editObs = S.rl.editAj = false; render(); return; }
-    if (t.classList.contains("sel-funil")) { moverFunil(t.dataset.id, t.value); return; }
+    if (t.classList.contains("sel-etapa")) { if (t.value) moverEtapaFicha(t.dataset.id, +t.value); return; }
+    if (t.id === "vd-resp") { S.vd.resp = t.value; render(); return; }
     { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
     if (t.name === "res" && t.closest('[data-acao="lg-salvar"]')) {
       const d = $("#rg-demo"); if (d) d.hidden = !t.form.querySelector('[name="res"][value="demo_agendada"]:checked');
@@ -2051,11 +2253,11 @@
   });
   app.addEventListener("gaveta-abriu", (ev) => { S.lg.gvAberto = ev.detail; });
   app.addEventListener("toggle", (ev) => { if (ev.target.classList?.contains("lg-bloco-dados")) S.lg.dadosAberto = ev.target.open; }, true);
-  // arrastar um cartão para outra etapa do quadro
-  app.addEventListener("dragstart", (ev) => { const c = ev.target.closest?.("[data-qd]"); if (!c) return; S.lg.arrastando = c.dataset.id; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", c.dataset.id); c.classList.add("ag-movendo"); });
-  app.addEventListener("dragover", (ev) => { const col = ev.target.closest?.(".qd-col"); if (!col || !S.lg.arrastando) return; ev.preventDefault(); app.querySelectorAll(".qd-alvo").forEach((x) => x !== col && x.classList.remove("qd-alvo")); col.classList.add("qd-alvo"); });
-  app.addEventListener("drop", (ev) => { const col = ev.target.closest?.(".qd-col"); if (!col || !S.lg.arrastando) return; ev.preventDefault(); const id = S.lg.arrastando; S.lg.arrastando = null; S.lg.arrastou = true; setTimeout(() => (S.lg.arrastou = false), 300); moverFunil(id, col.dataset.funil); });
-  app.addEventListener("dragend", () => { S.lg.arrastando = null; app.querySelectorAll(".qd-alvo").forEach((x) => x.classList.remove("qd-alvo")); });
+  // arrastar um negócio para outra etapa (Vendas)
+  app.addEventListener("dragstart", (ev) => { const c = ev.target.closest?.("[data-vd-arrastar]"); if (!c) return; S.vd.arrastando = c.dataset.vdArrastar; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", S.vd.arrastando); c.classList.add("ag-movendo"); });
+  app.addEventListener("dragover", (ev) => { const col = ev.target.closest?.(".vd-col"); if (!col || !S.vd.arrastando) return; ev.preventDefault(); app.querySelectorAll(".qd-alvo").forEach((x) => x !== col && x.classList.remove("qd-alvo")); col.classList.add("qd-alvo"); });
+  app.addEventListener("drop", (ev) => { const col = ev.target.closest?.(".vd-col"); if (!col || !S.vd.arrastando) return; ev.preventDefault(); const id = S.vd.arrastando; S.vd.arrastando = null; S.vd.arrastou = true; setTimeout(() => (S.vd.arrastou = false), 300); moverNegocio(id, +col.dataset.etapa); });
+  app.addEventListener("dragend", () => { S.vd.arrastando = null; app.querySelectorAll(".qd-alvo").forEach((x) => x.classList.remove("qd-alvo")); });
   // arrastar um retorno para outro dia da agenda
   app.addEventListener("dragstart", (ev) => { const it = ev.target.closest?.("[data-arrastar]"); if (!it) return; S.ag.arrastando = it.dataset.id; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", it.dataset.id); it.classList.add("ag-movendo"); });
   app.addEventListener("dragend", (ev) => { ev.target.classList?.remove("ag-movendo"); S.ag.arrastando = null; app.querySelectorAll(".ag-alvo").forEach((x) => x.classList.remove("ag-alvo")); });
