@@ -1019,6 +1019,12 @@
   const RES = Object.fromEntries(RESULTADOS.map(([k, l, c]) => [k, { l, c }]));
   const LIGACAO = new Set(["conversou", "sem_contato", "negativa", "demo_agendada"]);
   const ETAPA = { prospeccao: ["Em prospecção", "s-neutro"], demo_agendada: ["Demo agendada", "s-roxo"], demo_realizada: ["Demo realizada", "s-ident"], contrato: ["Contrato fechado", "s-conf"], negativa: ["Negativa", "s-errado"] };
+  const FUNIL = [
+    ["mapeamento", "Mapeamento", "Ainda não contatadas"], ["indisponivel", "Indisponível", "Não conseguiu falar"], ["contato", "Contato", "Já conversou"],
+    ["follow_semestral", "Follow-up semestral", "Retomar em 6 meses"], ["sem_interesse", "Sem interesse", ""], ["demonstracao", "Demonstração", "Agendada ou feita"], ["contrato", "Contrato fechado", ""],
+  ];
+  const FUNIL_NOME = Object.fromEntries(FUNIL.map(([k, l]) => [k, l]));
+  const FUNIL_COR = { mapeamento: "s-neutro", indisponivel: "s-vazio", contato: "s-ident", follow_semestral: "s-nao", sem_interesse: "s-errado", demonstracao: "s-roxo", contrato: "s-conf" };
   const FILTRO_ETAPA = [["todas", "Todas"], ["prospeccao", "Em prospecção"], ["demo_agendada", "Demo agendada"], ["demo_realizada", "Demo realizada"], ["contrato", "Contrato"], ["negativa", "Negativa"]];
   const CAMPOS = [
     ["nome", "Administradora"], ["telefones", "Números disponíveis para contato"], ["horario_funcionamento", "Horário de funcionamento"],
@@ -1039,7 +1045,7 @@
   const localSP = (ts) => ts ? new Date(ts).toLocaleString("sv-SE", { timeZone: TZ }).slice(0, 16).replace(" ", "T") : "";
   const extenso = (iso, hora) => `${iso.slice(8, 10)} de ${MESES[+iso.slice(5, 7) - 1]}${hora ? ` às ${hora}` : ""}`;
 
-  S.lg = { dono: null, carregado: false, carregando: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, busca: "", etapa: "todas", sel: null, novo: false, apagar: null, mostrar: 100, dadosAberto: true, idx: new Map() };
+  S.lg = { dono: null, carregado: false, carregando: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, busca: "", etapa: "todas", sel: null, novo: false, apagar: null, mostrar: 100, dadosAberto: true, idx: new Map(), modo: (() => { try { return localStorage.getItem("mapa-adm-modo") || "quadro"; } catch { return "quadro"; } })(), porColuna: {}, arrastando: null, arrastou: false };
   S.rl = { periodo: "dia", ref: hojeISO(), editObs: false, editAj: false };
 
   const donoAtual = () => S.lg.dono || S.user.id;
@@ -1146,8 +1152,8 @@
   function naEtapa(f, k) {
     if (k === "todas") return true;
     if (k === "retorno") return !!f.retorno_em;
-    if (k === "demo_realizada") return f.etapa === "demo_realizada" || f.etapa === "contrato" || (S.lg.porFicha.get(f.id) || []).some((r) => r.tipo === "demo_realizada");
-    return f.etapa === k;
+    if (k === "fez_demo") return f.etapa === "demo_realizada" || f.etapa === "contrato" || (S.lg.porFicha.get(f.id) || []).some((r) => r.tipo === "demo_realizada");
+    return (f.funil || "mapeamento") === k;
   }
   function fichasFiltradas() {
     const L = S.lg, palavras = norm(L.busca).split(/\s+/).filter(Boolean);
@@ -1166,7 +1172,7 @@
     const lista = fichasFiltradas();
     if (!lista.length) return `<div class="vazio">${S.lg.fichas.length ? "Nenhuma administradora com essa busca." : "Nenhuma administradora ainda. Clique em <b>+ Nova administradora</b> ou, no Mapeamento, abra uma empresa e clique em <b>Registrar ligação</b>."}</div>`;
     return lista.slice(0, S.lg.mostrar).map((f) => {
-      const u = ultimaDe(f), lig = (S.lg.porFicha.get(f.id) || []).filter((r) => LIGACAO.has(r.tipo)).length, [el, ec] = ETAPA[f.etapa] || ETAPA.prospeccao;
+      const u = ultimaDe(f), lig = (S.lg.porFicha.get(f.id) || []).filter((r) => LIGACAO.has(r.tipo)).length, el = FUNIL_NOME[f.funil] || "Mapeamento", ec = FUNIL_COR[f.funil] || "s-neutro";
       return `<button type="button" class="lg-linha" data-acao="lg-sel" data-id="${f.id}" aria-pressed="${S.lg.sel === f.id}">
         <span class="pilha" style="gap:1px;min-width:0"><span class="t-nome">${esc(f.nome)}</span><span class="t12 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "Cidade não informada")}${S.lg.dono === "todos" ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span></span>
         <span class="t13">${f.sistema ? esc(f.sistema) : '<span class="fraco">Sistema ?</span>'}</span>
@@ -1189,13 +1195,67 @@
         <div class="resumo resumo6">${ind(m.ligacoes, "Contatos", m.ligacoes ? ` com ${fmtN(m.pessoas)} administradora${m.pessoas === 1 ? "" : "s"}` : "")}${ind(m.primeira_ligacao, "Contatos novos")}${ind(m.follow_up, "Follow-ups")}${ind(m.sem_contato, "Sem contato")}${ind(m.negativa, "Negativas")}${ind(m.demo_agendada, "Demos agendadas")}</div></section>
       <section class="cartao filtros"><div class="linha-filtros">
         <div class="campo" style="flex:1 1 300px"><label for="lg-busca">Procurar</label><input id="lg-busca" class="input" type="search" value="${esc(L.busca)}" placeholder="Nome, cidade, responsável, e-mail, anotação…" autocomplete="off"></div>
-        <div class="campo"><span class="rotulo">Mostrar</span><div class="chips">${FILTRO_ETAPA.map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(L.fichas.filter((f) => naEtapa(f, k)).length)}</b></button>`).join("")}<button type="button" class="chip" data-acao="lg-etapa" data-v="retorno" aria-pressed="${L.etapa === "retorno"}">Com retorno marcado<b>${fmtN(nRet)}</b></button></div></div>
-      </div></section>
-      <div class="duas">
+        <div class="campo"><span class="rotulo">Ver como</span><div class="abas" role="tablist">${[["quadro", "Quadro por etapa"], ["lista", "Lista"]].map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="lg-modo" data-v="${k}" aria-selected="${L.modo === k}">${l}</button>`).join("")}</div></div>
+      </div>
+      ${L.modo === "lista" ? `<div class="campo"><span class="rotulo">Mostrar</span><div class="chips">${[["todas", "Todas"], ...FUNIL.map(([k, l]) => [k, l]), ["fez_demo", "Fizeram demonstração"], ["retorno", "Com retorno marcado"]].map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(L.fichas.filter((f) => naEtapa(f, k)).length)}</b></button>`).join("")}</div></div>` : ""}
+      </section>
+      ${L.modo === "quadro" ? quadroHtml() + (L.sel || L.novo ? `<div class="gaveta-fundo" data-acao="lg-fechar"></div><div class="gaveta">${painelFicha()}</div>` : "") : `<div class="duas">
         <section class="cartao lista"><div class="lista-cab"><b>Administradoras</b><span class="t12 fraco">o contato mais recente primeiro</span></div>
           <div class="rolagem"><div class="lg-tabela"><div class="lg-cab"><span>Administradora</span><span>Sistema</span><span>Etapa</span><span>Último contato</span><span>Ligar de novo</span></div><div id="lg-lista">${linhasFichas()}</div></div></div></section>
         ${painelFicha()}
-      </div>`;
+      </div>`}`;
+  }
+
+  /* ---- quadro: uma coluna por etapa */
+  const ICONE_TEL = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+  const ICONE_RELOGIO = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  const ATIVAS = new Set(["mapeamento", "indisponivel", "contato", "demonstracao"]);
+  function cartaoQuadro(f) {
+    const u = ultimaDe(f), hj = hojeISO();
+    const dias = u ? Math.max(0, Math.round((isoData(hj) - isoData(u.data)) / 864e5)) : null;
+    const atr = f.retorno_em && diaDe(f.retorno_em) < hj;
+    const demo = f.funil === "demonstracao" && f.demo_em && f.etapa === "demo_agendada" ? localSP(f.demo_em) : "";
+    let sinal = "";
+    if (f.retorno_em) sinal = `<span class="qd-ic ${atr ? "qd-ic-atr" : "qd-ic-ok"}" title="${atr ? "Retorno atrasado" : "Retorno marcado"}">${ICONE_TEL}</span>`;
+    else if (ATIVAS.has(f.funil || "mapeamento") && !demo && f.etapa !== "demo_realizada") sinal = `<span class="qd-ic qd-ic-nada" title="Sem próximo passo marcado">!</span>`;
+    const proximo = demo ? `<span class="qd-prox qd-prox-demo">Demo ${ddmm(demo.slice(0, 10))} · ${demo.slice(11, 16)}</span>`
+      : f.retorno_em ? `<span class="qd-prox ${atr ? "qd-prox-atr" : ""}">${atr ? "Atrasado · " : ""}${esc(quandoTxt(f.retorno_em))}</span>` : "";
+    return `<button type="button" class="qd-card ${atr ? "qd-atr" : ""}" data-acao="lg-sel" data-id="${f.id}" ${souDono() ? 'draggable="true" data-qd="1"' : ""} aria-pressed="${S.lg.sel === f.id}">
+      <span class="qd-topo"><span class="qd-nome">${esc(f.nome)}</span>${sinal}</span>
+      <span class="t12 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "Cidade não informada")}${f.sistema ? ` · ${esc(f.sistema)}` : ""}${S.lg.dono === "todos" ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span>
+      <span class="qd-pe">${proximo || "<span></span>"}<span class="qd-dias" title="${u ? `Último contato em ${ddmmaaaa(u.data)}` : "Nenhum contato ainda"}">${u ? `${ICONE_RELOGIO}${dias}d` : "novo"}</span></span>
+    </button>`;
+  }
+  function quadroHtml() {
+    const L = S.lg, lista = fichasFiltradasQuadro(), por = new Map(FUNIL.map(([k]) => [k, []]));
+    for (const f of lista) (por.get(f.funil) || por.get("mapeamento")).push(f);
+    return `<div class="quadro" role="list">${FUNIL.map(([k, l, sub]) => { const cs = por.get(k);
+      return `<section class="qd-col" data-funil="${k}" role="listitem" aria-label="${l}"><div class="qd-cab"><span class="qd-titulo">${l}</span><span class="qd-cont num">${fmtN(cs.length)}</span>${sub ? `<span class="t11 fraco qd-sub">${sub}</span>` : ""}</div>
+        <div class="qd-cards">${cs.slice(0, L.porColuna[k] || 60).map(cartaoQuadro).join("") || '<span class="t12 fraco qd-vazio">Nenhuma aqui</span>'}${cs.length > (L.porColuna[k] || 60) ? `<button type="button" class="mini" data-acao="qd-mais" data-v="${k}">Mostrar mais ${fmtN(cs.length - (L.porColuna[k] || 60))}</button>` : ""}</div></section>`; }).join("")}</div>`;
+  }
+  function fichasFiltradasQuadro() {
+    const L = S.lg, palavras = norm(L.busca).split(/\s+/).filter(Boolean);
+    const lista = palavras.length ? L.fichas.filter((f) => { const t = L.idx.get(f.id) || ""; return palavras.every((p) => t.includes(p)); }) : [...L.fichas];
+    // atrasados primeiro, depois quem tem retorno mais perto, depois o contato mais antigo
+    const chave = (f) => (f.retorno_em ? (diaDe(f.retorno_em) < hojeISO() ? "0" : "1") + localSP(f.retorno_em) : "2" + (ultimaDe(f)?.data || "0000"));
+    return lista.sort((a, b) => (chave(a) < chave(b) ? -1 : 1));
+  }
+  async function moverFunil(id, para) {
+    const L = S.lg, f = L.fichaPorId.get(id); if (!f || f.funil === para || f.usuario_id !== S.user.id) return;
+    const mud = { funil: para };
+    let aviso = `${f.nome} foi para ${FUNIL_NOME[para]}.`;
+    if (para === "follow_semestral" && (!f.retorno_em || diaDe(f.retorno_em) <= hojeISO())) {
+      const d = isoData(hojeISO()); d.setUTCMonth(d.getUTCMonth() + 6); let dia = d.toISOString().slice(0, 10);
+      while ([0, 6].includes(isoData(dia).getUTCDay())) dia = somaDias(dia, 1);
+      mud.retorno_em = tsSP(dia, "09:00"); mud.retorno_nota = f.retorno_nota || "Follow-up semestral";
+      aviso += ` Retorno marcado para ${ddmmaaaa(dia)}.`;
+    }
+    if (para === "contrato" && f.etapa !== "contrato") aviso += " Para contar nos relatórios, registre \"Contrato fechado\" na ficha.";
+    if (para === "demonstracao" && !["demo_agendada", "demo_realizada", "contrato"].includes(f.etapa)) aviso += " Para contar nos relatórios, registre a demo na ficha.";
+    const antes = { ...f }; Object.assign(f, mud); render();
+    const { error } = await sb.from("fichas").update(mud).eq("id", id);
+    if (error) { console.error(error); Object.assign(f, antes); toast("Não foi possível mover. Tente de novo."); render(); return; }
+    toast(aviso); carregarAgenda();
   }
 
   function campoFicha(k, label, f, ro) {
@@ -1255,15 +1315,16 @@
     if (!f) return `<aside class="cartao painel painel-lg" data-vazio="true"><div class="painel-vazio"><span class="painel-vazio-icone">${ICONE.busca}</span><b>Nenhuma administradora aberta</b><span class="fraco t13">Clique numa administradora da lista para ver a ficha, o histórico e registrar um contato.</span></div></aside>`;
     const ro = f.usuario_id !== S.user.id;
     const regs = [...(L.porFicha.get(f.id) || [])].reverse();
-    const [el, ec] = ETAPA[f.etapa] || ETAPA.prospeccao;
+    const el = FUNIL_NOME[f.funil] || "Mapeamento", ec = FUNIL_COR[f.funil] || "s-neutro";
     const tels = String(f.telefones || "").split(/[|,/]| e /).map((t) => t.trim()).filter((t) => t.replace(/\D/g, "").length >= 10);
     const links = tels.slice(0, 3).map((t) => { const n = t.replace(/\D/g, ""); return `<a class="mini" href="tel:+55${n}">Ligar ${esc(t.replace(/\s*(wpp|whats.*|google)\s*$/i, ""))}</a>${/^\d{2}9/.test(n) ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${n}">WhatsApp</a>` : ""}`; }).join("");
     return `<aside class="cartao painel painel-lg" aria-label="Ficha da administradora">
       <button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>
       <div class="pilha"><span class="t11 fraco" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span>
         <h2>${esc(f.nome)}</h2><span class="t13 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}${f.horario_funcionamento ? ` · ${esc(f.horario_funcionamento)}` : ""}</span>
-        <span class="linha-flex" style="gap:6px"><span class="selo ${ec}">${el}</span>${f.sistema ? `<span class="selo s-sis">${esc(f.sistema)}</span>` : ""}${f.demo_em ? `<span class="selo s-roxo">Demo ${esc(new Date(f.demo_em).toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" }))}</span>` : ""}${f.retorno_em ? celulaRetorno(f) : ""}</span>
+        <span class="linha-flex" style="gap:6px">${ro ? `<span class="selo ${ec}">${el}</span>` : ""}${f.sistema ? `<span class="selo s-sis">${esc(f.sistema)}</span>` : ""}${f.demo_em ? `<span class="selo s-roxo">Demo ${esc(new Date(f.demo_em).toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" }))}</span>` : ""}${f.retorno_em ? celulaRetorno(f) : ""}</span>
         ${f.retorno_nota && f.retorno_em ? `<span class="t13">Lembrete: ${esc(f.retorno_nota)}</span>` : ""}
+        ${ro ? "" : `<div class="campo" style="max-width:260px;margin-top:4px"><label for="fx-funil">Etapa</label><select id="fx-funil" class="input sel-funil" data-id="${f.id}">${FUNIL.map(([k, l]) => `<option value="${k}" ${f.funil === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}
         ${links ? `<span class="linha-flex" style="gap:6px;margin-top:4px">${links}</span>` : ""}
       </div>
       ${ro ? `<details class="lg-bloco" open><summary><b>Dados da administradora</b></summary>${camposDados(f, true)}</details>` : formLigacao(f)}
@@ -1615,11 +1676,13 @@
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM") return;
     const a = b.dataset.acao, L = S.lg, R = S.rl, A = S.ag;
-    if (!a.startsWith("lg-") && !a.startsWith("rl-") && !a.startsWith("ag-") && !a.startsWith("av-") && a !== "ficha-empresa") { if (!a.startsWith("lg-apagar")) L.apagar = null; return; }
+    if (!a.startsWith("lg-") && !a.startsWith("rl-") && !a.startsWith("ag-") && !a.startsWith("av-") && !a.startsWith("qd-") && a !== "ficha-empresa") { if (!a.startsWith("lg-apagar")) L.apagar = null; return; }
     if (a !== "lg-apagar-reg" && a !== "lg-apagar-ficha") L.apagar = null;
     switch (a) {
       case "ficha-empresa": if (S.selRow) { b.disabled = true; await abrirFichaDaEmpresa(S.selRow); } break;
-      case "lg-sel": L.sel = b.dataset.id; L.novo = false; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
+      case "lg-modo": L.modo = b.dataset.v; try { localStorage.setItem("mapa-adm-modo", L.modo); } catch { /* sem armazenamento */ } render(); break;
+      case "qd-mais": L.porColuna[b.dataset.v] = (L.porColuna[b.dataset.v] || 60) + 60; render(); break;
+      case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } L.sel = b.dataset.id; L.novo = false; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
       case "lg-fechar": L.sel = null; L.novo = false; render(); break;
       case "lg-nova": L.novo = true; L.sel = null; L.dadosAberto = true; render(); $("#fx-nome")?.focus(); break;
       case "lg-etapa": L.etapa = b.dataset.v; L.mostrar = 100; render(); break;
@@ -1679,17 +1742,23 @@
     if (a === "rl-aj") { const fd = new FormData(f), aj = {}; for (const [k, v] of fd) if (String(v).trim() !== "") aj[k] = Math.max(0, parseInt(v, 10) || 0); if (await salvarRel({ ajustes: aj })) { S.rl.editAj = false; toast(Object.keys(aj).length ? "Números corrigidos." : "Números voltaram a ser contados pelo sistema."); render(); } }
   });
   app.addEventListener("input", (ev) => {
-    if (ev.target.id === "lg-busca") { S.lg.busca = ev.target.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); }
+    if (ev.target.id === "lg-busca") { S.lg.busca = ev.target.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); const q = $(".quadro"); if (q) q.outerHTML = quadroHtml(); }
   });
   app.addEventListener("change", (ev) => {
     const t = ev.target;
     if (t.classList.contains("sel-dono")) { S.lg.dono = t.value === S.user.id ? null : t.value; S.lg.carregado = false; S.lg.sel = null; S.lg.novo = false; S.rl.editObs = S.rl.editAj = false; render(); return; }
+    if (t.classList.contains("sel-funil")) { moverFunil(t.dataset.id, t.value); return; }
     if (t.name === "res" && t.closest('[data-acao="lg-salvar"]')) {
       const d = $("#rg-demo"); if (d) d.hidden = t.value !== "demo_agendada";
       if (t.value === "pediu_retorno" && !$("#rt-data")?.value) $("#rt-data")?.focus();
     }
   });
   app.addEventListener("toggle", (ev) => { if (ev.target.classList?.contains("lg-bloco-dados")) S.lg.dadosAberto = ev.target.open; }, true);
+  // arrastar um cartão para outra etapa do quadro
+  app.addEventListener("dragstart", (ev) => { const c = ev.target.closest?.("[data-qd]"); if (!c) return; S.lg.arrastando = c.dataset.id; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", c.dataset.id); c.classList.add("ag-movendo"); });
+  app.addEventListener("dragover", (ev) => { const col = ev.target.closest?.(".qd-col"); if (!col || !S.lg.arrastando) return; ev.preventDefault(); app.querySelectorAll(".qd-alvo").forEach((x) => x !== col && x.classList.remove("qd-alvo")); col.classList.add("qd-alvo"); });
+  app.addEventListener("drop", (ev) => { const col = ev.target.closest?.(".qd-col"); if (!col || !S.lg.arrastando) return; ev.preventDefault(); const id = S.lg.arrastando; S.lg.arrastando = null; S.lg.arrastou = true; setTimeout(() => (S.lg.arrastou = false), 300); moverFunil(id, col.dataset.funil); });
+  app.addEventListener("dragend", () => { S.lg.arrastando = null; app.querySelectorAll(".qd-alvo").forEach((x) => x.classList.remove("qd-alvo")); });
   // arrastar um retorno para outro dia da agenda
   app.addEventListener("dragstart", (ev) => { const it = ev.target.closest?.("[data-arrastar]"); if (!it) return; S.ag.arrastando = it.dataset.id; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", it.dataset.id); it.classList.add("ag-movendo"); });
   app.addEventListener("dragend", (ev) => { ev.target.classList?.remove("ag-movendo"); S.ag.arrastando = null; app.querySelectorAll(".ag-alvo").forEach((x) => x.classList.remove("ag-alvo")); });
