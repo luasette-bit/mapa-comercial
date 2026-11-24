@@ -1053,7 +1053,7 @@
   const FUNIL_COR = { mapeamento: "s-neutro", indisponivel: "s-vazio", contato: "s-ident", follow_semestral: "s-nao", sem_interesse: "s-errado", demonstracao: "s-roxo", contrato: "s-conf" };
   const FILTRO_ETAPA = [["todas", "Todas"], ["prospeccao", "Em prospecção"], ["demo_agendada", "Demo agendada"], ["demo_realizada", "Demo realizada"], ["contrato", "Contrato"], ["negativa", "Negativa"]];
   const CAMPOS = [
-    ["nome", "Administradora"], ["telefones", "Números disponíveis para contato"], ["horario_funcionamento", "Horário de funcionamento"],
+    ["nome", "Administradora"], ["telefones", "Números disponíveis para contato"], ["whatsapp", "WhatsApp"], ["horario_funcionamento", "Horário de funcionamento"],
     ["cidade", "Cidade"], ["uf", "UF"], ["sistema", "Sistema usado"], ["qtd_condominios", "Quantos condomínios atende"], ["qtd_unidades", "Quantas unidades"],
     ["atendente", "Nome de quem atendeu a ligação"], ["email", "E-mail para contato"], ["numero_responsavel", "Número do responsável"],
     ["melhor_horario", "Melhor horário para falar com o responsável"], ["responsavel", "Nome do responsável"], ["cnpj", "CNPJ"],
@@ -1092,7 +1092,7 @@
     const q = (t, cols) => () => { let x = sb.from(t).select(cols); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order(t === "acumulado_base" ? "usuario_id" : t === "relatorios" ? "inicio" : "id"); };
     try {
       const [fichas, regs, base, rels] = await Promise.all([
-        tudo(q("fichas", "*")), tudo(q("registros", "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,canal,texto,criado_em")),
+        tudo(q("fichas", "*")), tudo(q("registros", "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,envio,canal,texto,criado_em")),
         tudo(q("acumulado_base", "*")), tudo(q("relatorios", "*")),
       ]);
       Object.assign(L, { fichas, regs, base, rels });
@@ -1113,7 +1113,7 @@
       for (const r of lista) { r.nova = false; if (LIGACAO.has(r.tipo)) { r.nova = primeira; primeira = false; } }
     }
     // texto de busca de cada ficha: todos os campos e todas as anotações
-    L.idx = new Map(L.fichas.map((f) => [f.id, norm([f.nome, f.cidade, f.uf, f.sistema, f.responsavel, f.telefones, f.email, f.atendente, f.numero_responsavel, f.melhor_horario, f.horario_funcionamento, f.cnpj, f.observacoes, f.retorno_nota, ...(L.porFicha.get(f.id) || []).map((r) => r.texto)].join(" ")).replace(/\s+/g, " ")]));
+    L.idx = new Map(L.fichas.map((f) => [f.id, norm([f.nome, f.cidade, f.uf, f.sistema, f.responsavel, f.telefones, f.whatsapp, f.email, f.atendente, f.numero_responsavel, f.melhor_horario, f.horario_funcionamento, f.cnpj, f.observacoes, f.retorno_nota, ...(L.porFicha.get(f.id) || []).map((r) => r.texto)].join(" ")).replace(/\s+/g, " ")]));
   }
   const nomePessoa = (id) => id === S.user.id ? S.perfil?.nome : (S.lg.pessoas || []).find((p) => p.id === id)?.nome || "";
   const jaLigou = (f) => f.contato_anterior || (S.lg.porFicha.get(f.id) || []).some((r) => LIGACAO.has(r.tipo));
@@ -1145,7 +1145,7 @@
     ["caixa_postal", "Caixa postal", "sem_contato", "caixa_postal"],
     ["numero_invalido", "Número não existe", "sem_contato", "numero_invalido"],
     ["conversou", "Conversei", "conversou", null],
-    ["material_enviado", "Só por e-mail / material enviado", "conversou", "material_enviado"],
+    ["material_enviado", "Só atende por e-mail / WhatsApp", "conversou", "material_enviado"],
     ["pediu_retorno", "Pediu para retornar", "conversou", "pediu_retorno"],
     ["sem_abertura", "Sem abertura", "conversou", "sem_abertura"],
     ["negativa", "Sem interesse", "negativa", null],
@@ -1154,10 +1154,13 @@
     ["contrato", "Contrato fechado", "contrato", null],
     ["anotacao", "Só anotação", "anotacao", null],
   ];
-  const DETALHE = { nao_atende: "Não atende", caixa_postal: "Caixa postal", numero_invalido: "Número não existe", material_enviado: "Material enviado / só por e-mail", pediu_retorno: "Pediu para retornar", sem_abertura: "Sem abertura" };
+  const DETALHE = { nao_atende: "Não atende", caixa_postal: "Caixa postal", numero_invalido: "Número não existe", material_enviado: "Só atende por e-mail / WhatsApp", pediu_retorno: "Pediu para retornar", sem_abertura: "Sem abertura" };
   const CANAL = { ligacao: "Ligação", whatsapp: "WhatsApp", email: "E-mail" };
   const NOME_BOTAO = Object.fromEntries(BOTOES.map(([k, l]) => [k, l]));
-  const rotuloReg = (r) => (r.canal && r.canal !== "ligacao" ? CANAL[r.canal] + " · " : "") + (r.detalhes?.length > 1 ? r.detalhes.map((k) => NOME_BOTAO[k] || k).join(" + ") : DETALHE[r.detalhe] || (r.detalhes?.[0] && NOME_BOTAO[r.detalhes[0]]) || RES[r.tipo]?.l || r.tipo);
+  const ENVIO = { whatsapp: "WhatsApp", email: "e-mail" };
+  const envioTxt = (r) => (r.envio?.length ? ` · Apresentação enviada por ${r.envio.map((k) => ENVIO[k] || k).join(" e ")}` : "");
+  const rotuloReg = (r) => (r.canal && r.canal !== "ligacao" ? CANAL[r.canal] + " · " : "") + rotuloRes(r) + envioTxt(r);
+  const rotuloRes = (r) => (r.detalhes?.length > 1 ? r.detalhes.map((k) => NOME_BOTAO[k] || k).join(" + ") : DETALHE[r.detalhe] || (r.detalhes?.[0] && NOME_BOTAO[r.detalhes[0]]) || RES[r.tipo]?.l || r.tipo);
   // quando ela marca mais de um resultado, o principal (que conta nos relatórios) é o que chegou mais longe
   const PRIORIDADE = ["contrato", "demo_realizada", "demo_agendada", "negativa", "conversou", "sem_contato", "anotacao"];
   const horaReg = (r) => (r.criado_em && localSP(r.criado_em).slice(0, 10) === r.data ? localSP(r.criado_em).slice(11, 16) : "");
@@ -1316,10 +1319,14 @@
       <div class="caixa-cinza"><b>Registrar contato</b>
         <div class="linha-flex" style="align-items:flex-end;gap:12px">
           <div class="campo" style="min-width:150px"><label for="rg-data">Dia</label><input id="rg-data" name="data" type="date" class="input" value="${hj}" max="${hj}"></div>
-          <div class="campo" style="min-width:0"><span class="rotulo">Por onde</span><div class="chips">${Object.entries(CANAL).map(([k, l], i) => `<label class="chip-radio"><input type="radio" name="canal" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>
+          <div class="campo" style="min-width:0"><span class="rotulo">Contato feito por</span><div class="chips">${Object.entries(CANAL).map(([k, l], i) => `<label class="chip-radio"><input type="radio" name="canal" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>
         </div>
         <span class="rotulo">O que aconteceu <span class="fraco" style="font-weight:500">· pode marcar mais de um</span></span>
         <div class="chips">${BOTOES.map(([k, l]) => `<label class="chip-radio chip-check"><input type="checkbox" name="res" value="${k}"><span>${l}</span></label>`).join("")}</div>
+        <span class="rotulo">Enviei a apresentação por</span>
+        <div class="linha-flex" style="gap:8px">${Object.entries(ENVIO).map(([k, l]) => `<label class="chip-radio chip-check"><input type="checkbox" name="envio" value="${k}"><span>${k === "email" ? "E-mail" : l}</span></label>`).join("")}
+          <span class="linha-flex" style="gap:6px;margin-left:auto"><button type="button" class="mini mini-ok" data-acao="lg-abrir-wpp">Abrir WhatsApp</button><button type="button" class="mini" data-acao="lg-abrir-email">Abrir e-mail</button></span></div>
+        <span class="t12 fraco">O número e o e-mail ficam nos campos <b>WhatsApp</b> e <b>E-mail para contato</b> da ficha.</span>
         <div id="rg-demo" class="linha-flex" hidden><div class="campo"><label for="rg-demo-em">Dia e hora da demonstração</label><input id="rg-demo-em" name="rg_demo_em" type="datetime-local" class="input"></div><div class="campo"><label for="rg-formato">Formato</label><select id="rg-formato" name="rg_formato" class="input"><option value="virtual">Virtual</option><option value="presencial">Presencial</option></select></div></div>
         <div class="campo"><label for="rg-texto">Anotação</label><textarea id="rg-texto" name="texto" class="input lg-texto" rows="4" placeholder="Com quem falou, o que disse, próximo passo…"></textarea></div>
         <span class="t12 fraco">${proxima}</span>
@@ -1346,7 +1353,8 @@
     const regs = [...(L.porFicha.get(f.id) || [])].reverse();
     const el = FUNIL_NOME[f.funil] || "Mapeamento", ec = FUNIL_COR[f.funil] || "s-neutro";
     const tels = String(f.telefones || "").split(/[|,/]| e /).map((t) => t.trim()).filter((t) => t.replace(/\D/g, "").length >= 10);
-    const links = tels.slice(0, 3).map((t) => { const n = t.replace(/\D/g, ""); return `<a class="mini" href="tel:+55${n}">Ligar ${esc(t.replace(/\s*(wpp|whats.*|google)\s*$/i, ""))}</a>${/^\d{2}9/.test(n) ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${n}">WhatsApp</a>` : ""}`; }).join("");
+    const wpp = String(f.whatsapp || "").replace(/\D/g, "");
+    const links = (wpp.length >= 10 ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${wpp.slice(-11)}">WhatsApp ${esc(f.whatsapp)}</a>` : "") + tels.slice(0, 3).map((t) => { const n = t.replace(/\D/g, ""); return `<a class="mini" href="tel:+55${n}">Ligar ${esc(t.replace(/\s*(wpp|whats.*|google)\s*$/i, ""))}</a>${/^\d{2}9/.test(n) ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${n}">WhatsApp</a>` : ""}`; }).join("");
     return `<aside class="cartao painel painel-lg" aria-label="Ficha da administradora">
       <button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>
       <div class="pilha"><span class="t11 fraco" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span>
@@ -1380,6 +1388,9 @@
     if (!d.nome) { toast("Informe o nome da administradora."); L.dadosAberto = true; form.querySelector(".lg-bloco").open = true; $("#fx-nome")?.focus(); return; }
 
     const marcados = modo === "ligacao" ? fd.getAll("res").map(String) : [];
+    const envio = modo === "ligacao" ? fd.getAll("envio").map(String) : [];
+    // só marcou o envio da apresentação: conta como conversa
+    if (envio.length && !marcados.length) marcados.push("conversou");
     const escolhidos = BOTOES.filter((b) => marcados.includes(b[0]));
     const res = escolhidos.length ? [...escolhidos].sort((a, b) => PRIORIDADE.indexOf(a[2]) - PRIORIDADE.indexOf(b[2]))[0] : null;
     const data = String(fd.get("data") || "") || hojeISO(), texto = String(fd.get("texto") || "").trim() || null;
@@ -1410,7 +1421,7 @@
       }
       let novo = null;
       if (res) {
-        const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data, tipo: res[2], detalhe: escolhidos.length === 1 ? res[3] : null, detalhes: escolhidos.map((b) => b[0]), canal: fd.get("canal") || "ligacao", texto }).select().single(); if (error) throw error;
+        const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data, tipo: res[2], detalhe: escolhidos.length === 1 ? res[3] : null, detalhes: escolhidos.map((b) => b[0]), envio: envio.length ? envio : null, canal: fd.get("canal") || "ligacao", texto }).select().single(); if (error) throw error;
         L.regs.push(r); novo = r;
       }
       const { data: nf } = await sb.from("fichas").select("*").eq("id", id).single();
@@ -1740,6 +1751,16 @@
     switch (a) {
       case "ficha-empresa": if (S.selRow) { b.disabled = true; await abrirFichaDaEmpresa(S.selRow); } break;
       case "lg-abrir": await abrirFicha(b.dataset.id); break;
+      case "lg-abrir-wpp": {
+        const n = String($("#fx-whatsapp")?.value || $("#fx-numero_responsavel")?.value || "").replace(/\D/g, "");
+        if (n.length < 10) { toast("Preencha o WhatsApp na ficha."); $("#fx-whatsapp")?.focus(); break; }
+        window.open(`https://wa.me/${n.length <= 11 ? "55" + n : n}`, "_blank", "noopener"); const c = b.closest("form")?.querySelector('[name="envio"][value="whatsapp"]'); if (c) { c.checked = true; c.form.dataset.sujo = "1"; } break;
+      }
+      case "lg-abrir-email": {
+        const e = String($("#fx-email")?.value || "").trim();
+        if (!e.includes("@")) { toast("Preencha o e-mail para contato na ficha."); $("#fx-email")?.focus(); break; }
+        window.open(`mailto:${encodeURIComponent(e)}`, "_blank"); const c = b.closest("form")?.querySelector('[name="envio"][value="email"]'); if (c) { c.checked = true; c.form.dataset.sujo = "1"; } break;
+      }
       case "lg-modo": L.modo = b.dataset.v; try { localStorage.setItem("mapa-adm-modo", L.modo); } catch { /* sem armazenamento */ } render(); break;
       case "qd-mais": L.porColuna[b.dataset.v] = (L.porColuna[b.dataset.v] || 60) + 60; render(); break;
       case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } L.sel = b.dataset.id; L.novo = false; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
