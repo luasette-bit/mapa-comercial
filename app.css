@@ -489,3 +489,17 @@ a.mini { display: inline-flex; align-items: center; text-decoration: none; }
 
 .hoje-mapa { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 12px 18px; margin-bottom: 18px; }
 .hoje-mapa .mini { margin-left: auto; }
+
+/* ficha aberta: quase tela cheia */
+body.com-gaveta { overflow: hidden; }
+.gaveta-grande { width: min(1240px, 96vw); }
+.gaveta-grande .painel { padding: 24px 30px 30px; gap: 20px; }
+.gaveta-grande .painel h2 { font-size: 24px; }
+.gaveta-grande .fechar-painel { position: sticky; top: 0; z-index: 2; height: 38px; padding: 0 16px; font-size: 13px; background: var(--branco); }
+@media (min-width: 1000px) {
+  .gaveta-grande .lg-lig { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px 22px; align-items: start; }
+  .gaveta-grande .lg-lig > .lg-bloco-dados { grid-column: 1; grid-row: 1 / span 8; }
+  .gaveta-grande .lg-lig > :not(.lg-bloco-dados):not(input[type=hidden]) { grid-column: 2; }
+  .gaveta-grande .receita-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 22px; }
+  .gaveta-grande .receita-grade > :first-child { grid-column: 1 / -1; }
+}

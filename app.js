@@ -272,18 +272,21 @@
   // Guarda o que está sendo digitado na ficha para não perder quando a tela se atualiza sozinha
   function guardarForm() {
     const f = app.querySelector('form[data-acao="lg-salvar"]'); if (!f || !f.dataset.sujo) return null;
-    const v = [...f.elements].filter((e) => e.name && e.type !== "submit" && e.type !== "hidden").map((e) => [e.name, e.type === "radio" ? e.value : null, e.type === "radio" || e.type === "checkbox" ? e.checked : e.value]);
+    const v = [...f.elements].filter((e) => e.name && e.type !== "submit" && e.type !== "hidden").map((e) => [e.name, e.type === "radio" || e.type === "checkbox" ? e.value : null, e.type === "radio" || e.type === "checkbox" ? e.checked : e.value]);
     return { chave: (f.dataset.ficha || "") + "|" + (f.dataset.cnpj || ""), v, foco: document.activeElement?.id };
   }
   function devolverForm(g) {
     const f = app.querySelector('form[data-acao="lg-salvar"]'); if (!g || !f || (f.dataset.ficha || "") + "|" + (f.dataset.cnpj || "") !== g.chave) return;
     for (const [n, rv, val] of g.v) { const el = rv != null ? f.querySelector(`[name="${n}"][value="${CSS.escape(rv)}"]`) : f.elements[n]; if (!el || el instanceof RadioNodeList) continue; if (el.type === "radio" || el.type === "checkbox") el.checked = val; else el.value = val; }
-    f.dataset.sujo = "1"; const d = $("#rg-demo"); if (d) d.hidden = f.querySelector('[name="res"]:checked')?.value !== "demo_agendada";
+    f.dataset.sujo = "1"; const d = $("#rg-demo"); if (d) d.hidden = !f.querySelector('[name="res"][value="demo_agendada"]:checked');
     if (g.foco) document.getElementById(g.foco)?.focus();
   }
   function render() {
-    const g = guardarForm(); renderTela(); devolverForm(g);
+    const g = guardarForm(), rolagem = app.querySelector(".gaveta .painel")?.scrollTop || 0; renderTela(); devolverForm(g);
+    const gv = app.querySelector(".gaveta .painel"); if (gv && rolagem) gv.scrollTop = rolagem;
+    document.body.classList.toggle("com-gaveta", !!gv);
   }
+  const gaveta = (html, fechar) => `<div class="gaveta-fundo" data-acao="${fechar}"></div><div class="gaveta gaveta-grande" role="dialog" aria-modal="true">${html}</div>`;
   function renderTela() {
     fundo(!S.user || S.recuperando || (S.perfil && !S.perfil.aprovado));
     if (S.recuperando) return renderNovaSenha();
@@ -336,7 +339,7 @@
     if (S.carregando && !S.rows.length) return html + `<div class="cartao vazio">Carregando as empresas…</div>`;
     if (!S.rows.length && !S.cidades.length) return html + `<div class="cartao vazio"><b>Nenhuma cidade de ${esc(ufNome(S.uf))} foi mapeada ainda.</b><br>Digite uma cidade no campo "Mapear cidade" e clique em <b>Mapear</b>. O sistema busca as administradoras sozinho.</div>`;
     if (S.aba === "cidades") return html + cidadesHtml();
-    return html + `<div class="duas">${listaHtml(lista)}${painelHtml()}</div>`;
+    return html + listaHtml(lista) + (S.selRow ? gaveta(painelHtml(), "fechar-painel") : "");
   }
   const indicador = (r, v, s) => `<div class="ind${v ? "" : " zero"}"><span class="rotulo">${r}</span><span class="v">${fmtN(v)}</span><span class="t12 fraco">${s}</span></div>`;
 
@@ -526,7 +529,7 @@
         <span class="origem">O tipo (${esc(r.tipo || "")}) é definido pelo sistema a partir do nome e da atividade registrada na Receita.</span>
       </div>
       ${blocoLigacaoMapa(r)}
-      <details class="lg-bloco"><summary><b>Dados da Receita</b><span class="t12 fraco">sistema, contato, sócios</span></summary><div class="pilha" style="gap:18px;margin-top:10px">
+      <details class="lg-bloco" open><summary><b>Dados da Receita</b><span class="t12 fraco">sistema, contato, sócios</span></summary><div class="pilha receita-grade" style="gap:18px;margin-top:10px">
       ${caixaSistema(r)}
       <div class="pilha" style="gap:10px"><span style="font-size:12px;font-weight:700">Contato</span>${campos.map(campo).join("")}</div>
       <div class="pilha" style="gap:10px">
@@ -569,7 +572,7 @@
     html += `<div id="mapa" class="mapa" role="img" aria-label="Mapa com as empresas em volta do local escolhido"></div>`;
     html += `<p class="t12 fraco" style="margin:-8px 0 0">${R.carregando ? "Procurando empresas em volta…" : `${fmtN(lista.length)} ${lista.length === 1 ? "empresa" : "empresas"} até ${R.raio < 1 ? R.raio * 1000 + " m" : R.raio + " km"}. A posição vem do endereço da Receita: quando a rua é longa, o ponto pode ficar algumas quadras deslocado.`}</p>`;
     html += `<div class="linha-flex" style="justify-content:flex-end"><button type="button" class="btn btn-sec" data-acao="exportar-regiao" ${lista.length ? "" : "disabled"}>${ICONE.excel} Exportar Excel</button></div>`;
-    return html + `<div class="duas">${listaHtml(lista, R.dist)}${painelHtml()}</div>`;
+    return html + listaHtml(lista, R.dist) + (S.selRow ? gaveta(painelHtml(), "fechar-painel") : "");
   }
 
   let mapa = null, camada = null;
@@ -1089,7 +1092,7 @@
     const q = (t, cols) => () => { let x = sb.from(t).select(cols); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order(t === "acumulado_base" ? "usuario_id" : t === "relatorios" ? "inicio" : "id"); };
     try {
       const [fichas, regs, base, rels] = await Promise.all([
-        tudo(q("fichas", "*")), tudo(q("registros", "id,ficha_id,usuario_id,data,tipo,detalhe,canal,texto,criado_em")),
+        tudo(q("fichas", "*")), tudo(q("registros", "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,canal,texto,criado_em")),
         tudo(q("acumulado_base", "*")), tudo(q("relatorios", "*")),
       ]);
       Object.assign(L, { fichas, regs, base, rels });
@@ -1153,7 +1156,10 @@
   ];
   const DETALHE = { nao_atende: "Não atende", caixa_postal: "Caixa postal", numero_invalido: "Número não existe", material_enviado: "Material enviado / só por e-mail", pediu_retorno: "Pediu para retornar", sem_abertura: "Sem abertura" };
   const CANAL = { ligacao: "Ligação", whatsapp: "WhatsApp", email: "E-mail" };
-  const rotuloReg = (r) => (r.canal && r.canal !== "ligacao" ? CANAL[r.canal] + " · " : "") + (DETALHE[r.detalhe] || RES[r.tipo]?.l || r.tipo);
+  const NOME_BOTAO = Object.fromEntries(BOTOES.map(([k, l]) => [k, l]));
+  const rotuloReg = (r) => (r.canal && r.canal !== "ligacao" ? CANAL[r.canal] + " · " : "") + (r.detalhes?.length > 1 ? r.detalhes.map((k) => NOME_BOTAO[k] || k).join(" + ") : DETALHE[r.detalhe] || (r.detalhes?.[0] && NOME_BOTAO[r.detalhes[0]]) || RES[r.tipo]?.l || r.tipo);
+  // quando ela marca mais de um resultado, o principal (que conta nos relatórios) é o que chegou mais longe
+  const PRIORIDADE = ["contrato", "demo_realizada", "demo_agendada", "negativa", "conversou", "sem_contato", "anotacao"];
   const horaReg = (r) => (r.criado_em && localSP(r.criado_em).slice(0, 10) === r.data ? localSP(r.criado_em).slice(11, 16) : "");
   const tsSP = (dia, hora) => `${dia}T${hora || "09:00"}:00-03:00`;
   const diaDe = (ts) => localSP(ts).slice(0, 10);
@@ -1222,11 +1228,10 @@
       </div>
       ${L.modo === "lista" ? `<div class="campo"><span class="rotulo">Mostrar</span><div class="chips">${[["todas", "Todas"], ...FUNIL.map(([k, l]) => [k, l]), ["fez_demo", "Fizeram demonstração"], ["retorno", "Com retorno marcado"]].map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(L.fichas.filter((f) => naEtapa(f, k)).length)}</b></button>`).join("")}</div></div>` : ""}
       </section>
-      ${L.modo === "quadro" ? quadroHtml() + (L.sel || L.novo ? `<div class="gaveta-fundo" data-acao="lg-fechar"></div><div class="gaveta">${painelFicha()}</div>` : "") : `<div class="duas">
-        <section class="cartao lista"><div class="lista-cab"><b>Administradoras</b><span class="t12 fraco">o contato mais recente primeiro</span></div>
-          <div class="rolagem"><div class="lg-tabela"><div class="lg-cab"><span>Administradora</span><span>Sistema</span><span>Etapa</span><span>Último contato</span><span>Ligar de novo</span></div><div id="lg-lista">${linhasFichas()}</div></div></div></section>
-        ${painelFicha()}
-      </div>`}`;
+      ${L.modo === "quadro" ? quadroHtml() : `
+        <section class="cartao lista" style="margin-top:18px"><div class="lista-cab"><b>Administradoras</b><span class="t12 fraco">o contato mais recente primeiro</span></div>
+          <div class="rolagem"><div class="lg-tabela"><div class="lg-cab"><span>Administradora</span><span>Sistema</span><span>Etapa</span><span>Último contato</span><span>Ligar de novo</span></div><div id="lg-lista">${linhasFichas()}</div></div></div></section>`}
+      ${L.sel || L.novo ? gaveta(painelFicha(), "lg-fechar") : ""}`;
   }
 
   /* ---- quadro: uma coluna por etapa */
@@ -1305,7 +1310,7 @@
     const L = S.lg, hj = hojeISO(), existe = !!f?.id;
     const ret = f?.retorno_em ? localSP(f.retorno_em) : "", retDia = ret.slice(0, 10), vence = ret && retDia <= hj;
     const proxima = !existe ? "Primeiro contato: vai contar como <b>contato novo</b>." : jaLigou(f) ? "Este contato vai contar como <b>follow-up</b>." : "Primeiro contato: vai contar como <b>contato novo</b>.";
-    return `<form class="pilha" style="gap:14px" data-acao="lg-salvar" autocomplete="off" novalidate ${existe ? `data-ficha="${f.id}"` : ""} ${op.cnpj ? `data-origem="mapa" data-cnpj="${esc(op.cnpj)}"` : ""}>
+    return `<form class="pilha lg-lig" style="gap:14px" data-acao="lg-salvar" autocomplete="off" novalidate ${existe ? `data-ficha="${f.id}"` : ""} ${op.cnpj ? `data-origem="mapa" data-cnpj="${esc(op.cnpj)}"` : ""}>
       <input type="hidden" name="retorno_orig" value="${esc(ret)}">
       <details class="lg-bloco lg-bloco-dados" ${L.dadosAberto ? "open" : ""}><summary><b>Dados da administradora</b><span class="t12 fraco">preencha durante a ligação</span></summary>${camposDados(f, false)}</details>
       <div class="caixa-cinza"><b>Registrar contato</b>
@@ -1313,8 +1318,8 @@
           <div class="campo" style="min-width:150px"><label for="rg-data">Dia</label><input id="rg-data" name="data" type="date" class="input" value="${hj}" max="${hj}"></div>
           <div class="campo" style="min-width:0"><span class="rotulo">Por onde</span><div class="chips">${Object.entries(CANAL).map(([k, l], i) => `<label class="chip-radio"><input type="radio" name="canal" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>
         </div>
-        <span class="rotulo">O que aconteceu</span>
-        <div class="chips">${BOTOES.map(([k, l]) => `<label class="chip-radio"><input type="radio" name="res" value="${k}"><span>${l}</span></label>`).join("")}</div>
+        <span class="rotulo">O que aconteceu <span class="fraco" style="font-weight:500">· pode marcar mais de um</span></span>
+        <div class="chips">${BOTOES.map(([k, l]) => `<label class="chip-radio chip-check"><input type="checkbox" name="res" value="${k}"><span>${l}</span></label>`).join("")}</div>
         <div id="rg-demo" class="linha-flex" hidden><div class="campo"><label for="rg-demo-em">Dia e hora da demonstração</label><input id="rg-demo-em" name="rg_demo_em" type="datetime-local" class="input"></div><div class="campo"><label for="rg-formato">Formato</label><select id="rg-formato" name="rg_formato" class="input"><option value="virtual">Virtual</option><option value="presencial">Presencial</option></select></div></div>
         <div class="campo"><label for="rg-texto">Anotação</label><textarea id="rg-texto" name="texto" class="input lg-texto" rows="4" placeholder="Com quem falou, o que disse, próximo passo…"></textarea></div>
         <span class="t12 fraco">${proxima}</span>
@@ -1374,17 +1379,19 @@
     d.retorno_nota = rd ? (String(fd.get("retorno_nota") || "").trim() || null) : null;
     if (!d.nome) { toast("Informe o nome da administradora."); L.dadosAberto = true; form.querySelector(".lg-bloco").open = true; $("#fx-nome")?.focus(); return; }
 
-    const res = modo === "ligacao" ? BOTOES.find((b) => b[0] === fd.get("res")) : null;
+    const marcados = modo === "ligacao" ? fd.getAll("res").map(String) : [];
+    const escolhidos = BOTOES.filter((b) => marcados.includes(b[0]));
+    const res = escolhidos.length ? [...escolhidos].sort((a, b) => PRIORIDADE.indexOf(a[2]) - PRIORIDADE.indexOf(b[2]))[0] : null;
     const data = String(fd.get("data") || "") || hojeISO(), texto = String(fd.get("texto") || "").trim() || null;
     if (modo === "ligacao") {
       if (!res) { toast("Escolha o que aconteceu no contato."); form.querySelector('[name="res"]')?.focus(); return; }
-      if (res[0] === "anotacao" && !texto) { toast("Escreva a anotação."); $("#rg-texto")?.focus(); return; }
-      if (res[0] === "pediu_retorno" && !rd) { toast("Marque o dia de ligar de novo."); $("#rt-data")?.focus(); return; }
+      if (escolhidos.length === 1 && res[0] === "anotacao" && !texto) { toast("Escreva a anotação."); $("#rg-texto")?.focus(); return; }
+      if (marcados.includes("pediu_retorno") && !rd) { toast("Marque o dia de ligar de novo."); $("#rt-data")?.focus(); return; }
       // o contato de hoje cumpre o retorno que vencia hoje (ou antes), a não ser que ela tenha marcado outro
       const orig = String(fd.get("retorno_orig") || "");
       if (orig && rd && localSP(d.retorno_em) === orig && orig.slice(0, 10) <= hojeISO()) { d.retorno_em = null; d.retorno_nota = null; }
-      if (res[2] === "demo_agendada" && fd.get("rg_demo_em")) { d.demo_em = fd.get("rg_demo_em") + ":00-03:00"; d.demo_formato = fd.get("rg_formato") || "virtual"; }
-      if (res[2] === "demo_realizada" && !d.demo_em) d.demo_em = data + "T12:00:00-03:00";
+      if (escolhidos.some((b) => b[2] === "demo_agendada") && fd.get("rg_demo_em")) { d.demo_em = fd.get("rg_demo_em") + ":00-03:00"; d.demo_formato = fd.get("rg_formato") || "virtual"; }
+      if (escolhidos.some((b) => b[2] === "demo_realizada") && !d.demo_em) d.demo_em = data + "T12:00:00-03:00";
     }
     if (d.retorno_em && modo === "dados" && diaDe(d.retorno_em) < hojeISO() && !(f && igual("retorno_em", f.retorno_em, d.retorno_em))) { toast("O dia de ligar de novo já passou. Escolha hoje ou outro dia."); $("#rt-data")?.focus(); return; }
     if (!f) {
@@ -1403,7 +1410,7 @@
       }
       let novo = null;
       if (res) {
-        const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data, tipo: res[2], detalhe: res[3], canal: fd.get("canal") || "ligacao", texto }).select().single(); if (error) throw error;
+        const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data, tipo: res[2], detalhe: escolhidos.length === 1 ? res[3] : null, detalhes: escolhidos.map((b) => b[0]), canal: fd.get("canal") || "ligacao", texto }).select().single(); if (error) throw error;
         L.regs.push(r); novo = r;
       }
       const { data: nf } = await sb.from("fichas").select("*").eq("id", id).single();
@@ -1804,8 +1811,8 @@
     if (t.classList.contains("sel-funil")) { moverFunil(t.dataset.id, t.value); return; }
     { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
     if (t.name === "res" && t.closest('[data-acao="lg-salvar"]')) {
-      const d = $("#rg-demo"); if (d) d.hidden = t.value !== "demo_agendada";
-      if (t.value === "pediu_retorno" && !$("#rt-data")?.value) $("#rt-data")?.focus();
+      const d = $("#rg-demo"); if (d) d.hidden = !t.form.querySelector('[name="res"][value="demo_agendada"]:checked');
+      if (t.checked && t.value === "pediu_retorno" && !$("#rt-data")?.value) $("#rt-data")?.focus();
     }
   });
   app.addEventListener("toggle", (ev) => { if (ev.target.classList?.contains("lg-bloco-dados")) S.lg.dadosAberto = ev.target.open; }, true);
@@ -1821,6 +1828,11 @@
   app.addEventListener("drop", (ev) => { const d = ev.target.closest?.(".ag-dia"); if (!d || !S.ag.arrastando) return; ev.preventDefault(); const id = S.ag.arrastando; S.ag.arrastando = null; S.ag.arrastou = true; setTimeout(() => (S.ag.arrastou = false), 300); remarcar(id, d.dataset.dia); });
 
   /* ------------------------------------------------------------ eventos */
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape" || S.cidMenu) return;
+    if (S.sel) { S.sel = null; S.selRow = null; render(); return; }
+    if (S.view === "adms" && (S.lg.sel || S.lg.novo)) { S.lg.sel = null; S.lg.novo = false; render(); }
+  });
   document.addEventListener("click", (ev) => { if (S.cidMenu && !ev.target.closest(".cid-campo")) { S.cidMenu = false; render(); } });
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM" || b.tagName === "SELECT" || b.tagName === "INPUT") return;
@@ -1914,7 +1926,7 @@
     if (ev.target.id === "r-local" && ev.key === "Enter") { ev.preventDefault(); if (S.reg.lugares[0]) app.querySelector('[data-acao="lugar"][data-i="0"]').click(); else buscarLugar(S.reg.texto); }
     if (ev.key === "Escape" && S.cidMenu) { S.cidMenu = false; render(); $(".cid-botao")?.focus(); return; }
     if (ev.target.id === "cid-busca" && ev.key === "Enter") { ev.preventDefault(); $("#cid-lista .cid-op")?.click(); return; }
-    if (ev.key === "Escape" && S.sel && window.innerWidth <= 900) { S.sel = null; S.selRow = null; render(); }
+
   });
   app.addEventListener("submit", async (ev) => {
     const f = ev.target;
