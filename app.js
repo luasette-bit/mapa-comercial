@@ -1142,10 +1142,17 @@
     return `<div class="campo" style="min-width:200px"><label for="${id}">De quem</label><select id="${id}" class="input sel-dono"><option value="${S.user.id}">Eu (${esc(S.perfil.nome)})</option>${S.lg.pessoas.filter((p) => p.id !== S.user.id).map((p) => `<option value="${p.id}" ${d === p.id ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}<option value="todos" ${d === "todos" ? "selected" : ""}>Equipe toda</option></select></div>`;
   }
   function ultimaDe(f) { const l = S.lg.porFicha.get(f.id); return l && l.length ? l[l.length - 1] : null; }
+  // quem fechou contrato também fez demonstração: entra nas duas contagens
+  function naEtapa(f, k) {
+    if (k === "todas") return true;
+    if (k === "retorno") return !!f.retorno_em;
+    if (k === "demo_realizada") return f.etapa === "demo_realizada" || f.etapa === "contrato" || (S.lg.porFicha.get(f.id) || []).some((r) => r.tipo === "demo_realizada");
+    return f.etapa === k;
+  }
   function fichasFiltradas() {
     const L = S.lg, palavras = norm(L.busca).split(/\s+/).filter(Boolean);
     return L.fichas.filter((f) => {
-      if (L.etapa === "retorno" ? !f.retorno_em : L.etapa !== "todas" && f.etapa !== L.etapa) return false;
+      if (!naEtapa(f, L.etapa)) return false;
       if (!palavras.length) return true;
       const t = L.idx.get(f.id) || ""; return palavras.every((p) => t.includes(p));
     }).sort((x, y) => { const a = ultimaDe(x)?.data || x.criado_em.slice(0, 10), c = ultimaDe(y)?.data || y.criado_em.slice(0, 10); return a < c ? 1 : a > c ? -1 : (x.atualizado_em < y.atualizado_em ? 1 : -1); });
@@ -1182,7 +1189,7 @@
         <div class="resumo resumo6">${ind(m.ligacoes, "Contatos", m.ligacoes ? ` com ${fmtN(m.pessoas)} administradora${m.pessoas === 1 ? "" : "s"}` : "")}${ind(m.primeira_ligacao, "Contatos novos")}${ind(m.follow_up, "Follow-ups")}${ind(m.sem_contato, "Sem contato")}${ind(m.negativa, "Negativas")}${ind(m.demo_agendada, "Demos agendadas")}</div></section>
       <section class="cartao filtros"><div class="linha-filtros">
         <div class="campo" style="flex:1 1 300px"><label for="lg-busca">Procurar</label><input id="lg-busca" class="input" type="search" value="${esc(L.busca)}" placeholder="Nome, cidade, responsável, e-mail, anotação…" autocomplete="off"></div>
-        <div class="campo"><span class="rotulo">Mostrar</span><div class="chips">${FILTRO_ETAPA.map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(k === "todas" ? L.fichas.length : L.fichas.filter((f) => f.etapa === k).length)}</b></button>`).join("")}<button type="button" class="chip" data-acao="lg-etapa" data-v="retorno" aria-pressed="${L.etapa === "retorno"}">Com retorno marcado<b>${fmtN(nRet)}</b></button></div></div>
+        <div class="campo"><span class="rotulo">Mostrar</span><div class="chips">${FILTRO_ETAPA.map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${l}<b>${fmtN(L.fichas.filter((f) => naEtapa(f, k)).length)}</b></button>`).join("")}<button type="button" class="chip" data-acao="lg-etapa" data-v="retorno" aria-pressed="${L.etapa === "retorno"}">Com retorno marcado<b>${fmtN(nRet)}</b></button></div></div>
       </div></section>
       <div class="duas">
         <section class="cartao lista"><div class="lista-cab"><b>Administradoras</b><span class="t12 fraco">o contato mais recente primeiro</span></div>
