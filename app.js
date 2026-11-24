@@ -1111,7 +1111,20 @@
     const { data, error } = await sb.from("registros").select("id,texto").eq("ficha_id", fichaId);
     if (error) { L.textosFicha.delete(fichaId); return; }
     const t = new Map((data || []).map((r) => [r.id, r.texto])); for (const r of regs) if (t.has(r.id)) r.texto = t.get(r.id);
-    render();
+    if (!preencherTextos(fichaId)) render();
+  }
+  // os textos chegaram: preenche só os cartões que já estão na tela (sem refazer a ficha, sem reiniciar as animações)
+  function preencherTextos(fichaId) {
+    const lugares = app.querySelectorAll("[data-texto]"); if (!lugares.length) return S.view !== "mapa";
+    const porId = new Map((S.lg.porFicha.get(fichaId) || []).map((r) => [r.id, r]));
+    let achou = false;
+    for (const el of lugares) {
+      const r = porId.get(el.dataset.texto); if (!r || r.texto === undefined) continue;
+      achou = true;
+      if (el.classList.contains("mc-texto")) el.outerHTML = textoReg(r);
+      else el.outerHTML = esc(tituloReg(r));
+    }
+    return achou;
   }
   async function carregarLig() {
     const L = S.lg; if (L.carregando) return; L.carregando = true;
@@ -1649,6 +1662,9 @@
     else if (r.tipo === "conversou") curto = ds.includes("pediu_retorno") ? "Retorno" : "Conversa";
     return { cor, cat, curto, selo };
   }
+  const textoReg = (r) => (r.texto ? `<p class="mc-texto">${esc(r.texto).replace(/\n/g, "<br>")}</p>` : `<p class="mc-texto" style="color:#5B6475">Sem anotação.</p>`);
+  // enquanto o texto da anotação importada não chega: um espaço reservado do mesmo tamanho
+  const TEXTO_CARREGANDO = (id) => `<p class="mc-texto mc-esqueleto" data-texto="${id}" aria-label="Carregando a anotação"><span></span><span></span></p>`;
   function tituloReg(r) {
     const t = String(r.texto || "").replace(/\s+/g, " ").trim();
     if (!t) return rotuloRes(r);
@@ -1699,18 +1715,20 @@
       const chips = [CANAL[r.canal || "ligacao"], ...ds.map((k) => NOME_BOTAO[k] || k), ...(r.envio || []).map((k) => `Apresentação por ${ENVIO[k] || k}`)];
       const meta = [LIGACAO.has(r.tipo) ? (r.nova ? "Contato novo" : "Follow-up") : { demo_realizada: "Demonstração", contrato: "Contrato", anotacao: "Anotação" }[r.tipo] || "Registro", L.dono === "todos" ? nomePessoa(r.usuario_id) : ""].filter(Boolean).join(" · ");
       return `<li class="upw-sec-files__item" data-cat="${v.cat}" data-cor="${v.cor}" data-id="${r.id}" data-num="${regs.length - regs.indexOf(r)}" data-quando="${esc(q)}" data-carimbo="${esc(v.selo)}" ${r.id === aberto ? "data-aberto" : ""}><div class="upw-sec-files__folder">
-        <h3><button type="button" class="upw-sec-files__q"><span class="upw-sec-files__tab">${ddmm(r.data)} · ${esc(v.curto)}</span><span class="upw-sec-files__qt">${esc(tituloReg(r))}</span></button></h3>
+        <h3><button type="button" class="upw-sec-files__q"><span class="upw-sec-files__tab">${ddmm(r.data)} · ${esc(v.curto)}</span><span class="upw-sec-files__qt">${r.texto === undefined ? `<span class="mc-esq-tit" data-texto="${r.id}"></span>` : esc(tituloReg(r))}</span></button></h3>
         <div class="upw-sec-files__a"><div class="upw-sec-files__in"><div class="upw-sec-files__paper">
           <div class="mc-chips">${chips.map((c) => `<span class="mc-chip">${esc(c)}</span>`).join("")}</div>
           <span class="mc-meta">${esc(meta)}</span>
-          ${r.texto ? `<p>${esc(r.texto).replace(/\n/g, "<br>")}</p>` : `<p style="color:#5B6475">Sem anotação.</p>`}
+          ${r.texto === undefined ? TEXTO_CARREGANDO(r.id) : textoReg(r)}
           ${ro ? "" : `<div class="mc-rodape"><span></span><button type="button" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar" : "Apagar"}</button></div>`}
         </div></div></div>
       </div></li>`;
     }).join("");
     const filtros = [["todas", "Todos", ""], ["conversa", "Conversas", "azul"], ["sem", "Sem contato", "vermelho"], ["demo", "Demos", "roxo"]].map(([k, l, c]) => `<button type="button" class="upw-sec-files__f" data-filter="${k}" ${c ? `data-cor="${c}"` : ""} aria-pressed="${k === "todas"}">${l}</button>`).join("");
     const visto = L.gvVisto === f.id; L.gvVisto = f.id;
-    return `<section class="upw-sec-files ${visto ? "is-in" : ""}" ${visto ? "data-visto" : ""} aria-label="Ficha de ${esc(f.nome)}"><div class="mc-aurora" aria-hidden="true"><i></i><i></i><i></i></div><div class="mc-estrelas" aria-hidden="true"></div>
+    if (!visto) L.gvInicio = performance.now();
+    const fase = `--mc-t:-${((performance.now() - (L.gvInicio || 0)) / 1000).toFixed(2)}s`;
+    return `<section class="upw-sec-files ${visto ? "is-in mc-sem-entrada" : ""}" ${visto ? "data-visto" : ""} style="${fase}" aria-label="Ficha de ${esc(f.nome)}"><div class="mc-aurora" aria-hidden="true"><i></i><i></i><i></i></div><div class="mc-estrelas" aria-hidden="true"></div>
       <div class="upw-sec-files__wrap">
         <div class="upw-sec-files__head">
           <p class="upw-sec-files__eyebrow">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</p>
@@ -2252,6 +2270,10 @@
     }
   });
   app.addEventListener("gaveta-abriu", (ev) => { S.lg.gvAberto = ev.detail; });
+  // depois de um redesenho a ficha fica sem animação de entrada; ao mexer nela, as animações voltam para as próximas pastas
+  const reativarEntrada = (ev) => { const sec = ev.target.closest?.(".mc-sem-entrada"); if (sec) sec.classList.remove("mc-sem-entrada"); };
+  app.addEventListener("pointerdown", reativarEntrada, true);
+  app.addEventListener("keydown", reativarEntrada, true);
   app.addEventListener("toggle", (ev) => { if (ev.target.classList?.contains("lg-bloco-dados")) S.lg.dadosAberto = ev.target.open; }, true);
   // arrastar um negócio para outra etapa (Vendas)
   app.addEventListener("dragstart", (ev) => { const c = ev.target.closest?.("[data-vd-arrastar]"); if (!c) return; S.vd.arrastando = c.dataset.vdArrastar; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", S.vd.arrastando); c.classList.add("ag-movendo"); });
