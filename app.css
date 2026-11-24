@@ -486,3 +486,6 @@ a.mini { display: inline-flex; align-items: center; text-decoration: none; }
 .gaveta .painel { position: static; height: 100%; max-height: none; min-width: 0; width: 100%; border-radius: 0; box-shadow: var(--sombra); }
 .gaveta .fechar-painel { display: inline-flex; align-self: flex-end; }
 @media (max-width: 640px) { .qd-col { flex-basis: 84vw; } }
+
+.hoje-mapa { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 12px 18px; margin-bottom: 18px; }
+.hoje-mapa .mini { margin-left: auto; }

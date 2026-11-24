@@ -223,7 +223,9 @@
     if (r.exportada) t.push(`<span class="selo s-roxo">Exportada por ${esc(r.exportada)}</span>`);
     if (r.situacao && r.situacao !== "ATIVA") t.push(`<span class="selo s-errado">Empresa ${esc(r.situacao.toLowerCase())}</span>`);
     if (r.matriz === false) t.push(`<span class="selo s-neutro">Filial</span>`);
-    if (S.ag?.cnpjs?.has(r.cnpj)) t.push(`<span class="selo s-conf">Nas suas administradoras</span>`);
+    const fx = S.lg.carregado && S.user ? fichaDoCnpj(r.cnpj) : null, ux = fx && ultimaDe(fx);
+    if (ux) t.push(`<span class="selo ${ux.data === hojeISO() ? "s-conf" : "s-ident"}">${ux.data === hojeISO() ? "Hoje" : `Contato em ${ddmm(ux.data)}`} · ${esc(rotuloReg(ux))}</span>`);
+    else if (S.ag?.cnpjs?.has(r.cnpj)) t.push(`<span class="selo s-ident">Nas suas administradoras</span>`);
     return t.join("");
   }
   function celulaSistema(r) {
@@ -267,7 +269,22 @@
     if (window.FundoPRG) ligado ? window.FundoPRG.ligar() : window.FundoPRG.desligar();
   }
 
+  // Guarda o que está sendo digitado na ficha para não perder quando a tela se atualiza sozinha
+  function guardarForm() {
+    const f = app.querySelector('form[data-acao="lg-salvar"]'); if (!f || !f.dataset.sujo) return null;
+    const v = [...f.elements].filter((e) => e.name && e.type !== "submit" && e.type !== "hidden").map((e) => [e.name, e.type === "radio" ? e.value : null, e.type === "radio" || e.type === "checkbox" ? e.checked : e.value]);
+    return { chave: (f.dataset.ficha || "") + "|" + (f.dataset.cnpj || ""), v, foco: document.activeElement?.id };
+  }
+  function devolverForm(g) {
+    const f = app.querySelector('form[data-acao="lg-salvar"]'); if (!g || !f || (f.dataset.ficha || "") + "|" + (f.dataset.cnpj || "") !== g.chave) return;
+    for (const [n, rv, val] of g.v) { const el = rv != null ? f.querySelector(`[name="${n}"][value="${CSS.escape(rv)}"]`) : f.elements[n]; if (!el || el instanceof RadioNodeList) continue; if (el.type === "radio" || el.type === "checkbox") el.checked = val; else el.value = val; }
+    f.dataset.sujo = "1"; const d = $("#rg-demo"); if (d) d.hidden = f.querySelector('[name="res"]:checked')?.value !== "demo_agendada";
+    if (g.foco) document.getElementById(g.foco)?.focus();
+  }
   function render() {
+    const g = guardarForm(); renderTela(); devolverForm(g);
+  }
+  function renderTela() {
     fundo(!S.user || S.recuperando || (S.perfil && !S.perfil.aprovado));
     if (S.recuperando) return renderNovaSenha();
     if (!S.user) return S.cadastro ? renderCadastro() : renderLogin();
@@ -299,6 +316,10 @@
     if (S.msg) html += `<div class="aviso aviso-ok" role="status"><span>${esc(S.msg)}</span><button type="button" class="mini mini-ok" data-acao="fechar-msg">Fechar</button></div>`;
     if (S.erro) html += `<div class="aviso aviso-erro" role="alert"><span>${esc(S.erro)}</span></div>`;
     if (novas && !S.soNovas) html += `<section class="faixa-novas" aria-label="Empresas novas"><div class="linha-flex" style="gap:12px;flex-wrap:nowrap"><div class="sino">${ICONE.sino}</div><div class="pilha" style="gap:2px"><strong>${novas} ${novas === 1 ? "empresa nova aberta" : "empresas novas abertas"} no último mês</strong><span class="t12" style="color:#5B4A12">Empresa recém-aberta ainda está escolhendo sistema: é o melhor momento para chegar.</span></div></div><button type="button" class="btn btn-escuro" data-acao="so-novas">Ver só as novas</button></section>`;
+    if (S.lg.carregado && !S.lg.dono) {
+      const m = metricas(hojeISO(), hojeISO());
+      html += `<section class="cartao hoje-mapa"><span class="t13"><b>Suas ligações de hoje:</b> ${fmtN(m.ligacoes)} ${m.ligacoes === 1 ? "contato" : "contatos"} · ${fmtN(m.primeira_ligacao)} ${m.primeira_ligacao === 1 ? "novo" : "novos"} · ${fmtN(m.follow_up)} follow-up${m.follow_up === 1 ? "" : "s"}${m.demo_agendada ? ` · ${fmtN(m.demo_agendada)} demo agendada${m.demo_agendada === 1 ? "" : "s"}` : ""}</span><span class="t12 fraco">Clique numa empresa da lista, preencha a ficha e salve: o contato já entra no relatório do dia.</span><button type="button" class="mini" data-acao="lg-rel-dia">Ver relatório do dia →</button></section>`;
+    }
     html += filtrosHtml();
     if (S.mapeando) html += progressoHtml();
     html += `<section class="cartao resumo" aria-label="Resumo">
@@ -493,7 +514,7 @@
       [!!r.nome_condominio, "O nome indica administração de condomínios"],
     ];
     const grupo = S.grupo.filter((g) => g.cnpj !== r.cnpj);
-    return `<aside class="cartao painel" aria-label="Detalhes da empresa">
+    return `<aside class="cartao painel painel-lg" aria-label="Detalhes da empresa">
       <button type="button" class="mini fechar-painel" data-acao="fechar-painel">Fechar ✕</button>
       <div class="pilha">
         <span class="t11 fraco" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Empresa selecionada</span>
@@ -504,6 +525,8 @@
         <span class="origem">Situação cadastral · Origem: Receita Federal${r.data_inicio ? ` · aberta em ${esc(fmtData(r.data_inicio))}` : ""}</span>
         <span class="origem">O tipo (${esc(r.tipo || "")}) é definido pelo sistema a partir do nome e da atividade registrada na Receita.</span>
       </div>
+      ${blocoLigacaoMapa(r)}
+      <details class="lg-bloco"><summary><b>Dados da Receita</b><span class="t12 fraco">sistema, contato, sócios</span></summary><div class="pilha" style="gap:18px;margin-top:10px">
       ${caixaSistema(r)}
       <div class="pilha" style="gap:10px"><span style="font-size:12px;font-weight:700">Contato</span>${campos.map(campo).join("")}</div>
       <div class="pilha" style="gap:10px">
@@ -516,8 +539,8 @@
         ${checks.map(([ok, l]) => `<div class="motivo"><span class="bol ${ok ? "bol-ok" : "bol-nao"}">${ok ? "✓" : "·"}</span><span>${l}</span></div>`).join("")}
         <span class="t12 fraco">Atividade principal: ${esc(CNAES[r.cnae_principal] || r.cnae_principal || "não informada")}</span>
       </div>
+      </div></details>
       <div class="acoes-painel">
-        <button type="button" class="btn btn-primario" data-acao="ficha-empresa">${S.ag?.cnpjs?.has(r.cnpj) ? "Abrir ficha e registrar" : "Registrar ligação"}</button>
         <button type="button" class="btn btn-sec" data-acao="copiar">Copiar dados</button>
         <button type="button" class="btn btn-perigo" data-acao="remover">${S.confirmarRemocao ? "Confirmar remoção" : "Remover do mapeamento"}</button>
       </div>
@@ -1278,11 +1301,11 @@
       <datalist id="lg-sistemas">${SOFTWARES.map((s) => `<option value="${esc(s)}">`).join("")}<option value="Sem sistema"></datalist>
     </div>`;
   }
-  function formLigacao(f) {
-    const L = S.lg, hj = hojeISO();
+  function formLigacao(f, op = {}) {
+    const L = S.lg, hj = hojeISO(), existe = !!f?.id;
     const ret = f?.retorno_em ? localSP(f.retorno_em) : "", retDia = ret.slice(0, 10), vence = ret && retDia <= hj;
-    const proxima = !f ? "Primeiro contato: vai contar como <b>contato novo</b>." : jaLigou(f) ? "Este contato vai contar como <b>follow-up</b>." : "Primeiro contato: vai contar como <b>contato novo</b>.";
-    return `<form class="pilha" style="gap:14px" data-acao="lg-salvar" autocomplete="off" novalidate>
+    const proxima = !existe ? "Primeiro contato: vai contar como <b>contato novo</b>." : jaLigou(f) ? "Este contato vai contar como <b>follow-up</b>." : "Primeiro contato: vai contar como <b>contato novo</b>.";
+    return `<form class="pilha" style="gap:14px" data-acao="lg-salvar" autocomplete="off" novalidate ${existe ? `data-ficha="${f.id}"` : ""} ${op.cnpj ? `data-origem="mapa" data-cnpj="${esc(op.cnpj)}"` : ""}>
       <input type="hidden" name="retorno_orig" value="${esc(ret)}">
       <details class="lg-bloco lg-bloco-dados" ${L.dadosAberto ? "open" : ""}><summary><b>Dados da administradora</b><span class="t12 fraco">preencha durante a ligação</span></summary>${camposDados(f, false)}</details>
       <div class="caixa-cinza"><b>Registrar contato</b>
@@ -1305,7 +1328,8 @@
         </div>
         <span class="t12 fraco">${vence ? `Este retorno é de ${retDia === hj ? "hoje" : ddmm(retDia)}: ao salvar o contato ele sai da agenda. Para marcar outro, mude o dia.` : "Sem hora, o aviso chega às 9h. O retorno aparece na Agenda e você recebe um aviso no horário."}</span>
       </div>
-      <div class="linha-flex"><button type="submit" name="modo" value="ligacao" class="btn btn-primario">${f ? "Salvar contato" : "Criar e salvar contato"}</button><button type="submit" name="modo" value="dados" class="btn btn-sec">${f ? "Salvar só os dados" : "Só criar a ficha"}</button></div>
+      ${op.cnpj ? `<label class="lg-check"><input type="checkbox" name="proxima" ${L.proxima !== false ? "checked" : ""}> <span>Depois de salvar, abrir a próxima da lista</span></label>` : ""}
+      <div class="linha-flex"><button type="submit" name="modo" value="ligacao" class="btn btn-primario">${existe ? "Salvar contato" : op.cnpj ? "Salvar contato" : "Criar e salvar contato"}</button><button type="submit" name="modo" value="dados" class="btn btn-sec">${existe ? "Salvar só os dados" : op.cnpj ? "Só guardar a ficha" : "Só criar a ficha"}</button></div>
     </form>`;
   }
   function painelFicha() {
@@ -1337,7 +1361,8 @@
 
   const igual = (k, a, b) => (k.endsWith("_em") && k !== "contrato_em" ? localSP(a) === localSP(b) : (a ?? null) === (b ?? null));
   async function salvarTudo(form, modo) {
-    const L = S.lg, fd = new FormData(form), f = L.novo ? null : L.fichaPorId.get(L.sel);
+    const L = S.lg, fd = new FormData(form), mapa = form.dataset.origem === "mapa";
+    const f = form.dataset.ficha ? L.fichaPorId.get(form.dataset.ficha) : mapa ? null : L.novo ? null : L.fichaPorId.get(L.sel);
     const d = {};
     for (const [k] of CAMPOS) { const v = String(fd.get(k) ?? "").trim(); d[k] = k.startsWith("qtd_") ? (v === "" ? null : Math.max(0, parseInt(v, 10) || 0)) : (v || null); }
     if (d.cnpj) d.cnpj = d.cnpj.replace(/\D/g, "") || null;
@@ -1364,7 +1389,7 @@
     if (d.retorno_em && modo === "dados" && diaDe(d.retorno_em) < hojeISO() && !(f && igual("retorno_em", f.retorno_em, d.retorno_em))) { toast("O dia de ligar de novo já passou. Escolha hoje ou outro dia."); $("#rt-data")?.focus(); return; }
     if (!f) {
       const dup = L.fichas.find((x) => x.usuario_id === S.user.id && ((d.cnpj && x.cnpj === d.cnpj) || norm(x.nome) === norm(d.nome)));
-      if (dup) { toast("Essa administradora já tem ficha. Abri a ficha dela."); L.novo = false; L.sel = dup.id; render(); return; }
+      if (dup) { toast("Essa administradora já tem ficha. Abri a ficha dela."); if (mapa) { abrirFicha(dup.id); return; } L.novo = false; L.sel = dup.id; render(); return; }
     }
     form.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = true));
     try {
@@ -1383,15 +1408,42 @@
       }
       const { data: nf } = await sb.from("fichas").select("*").eq("id", id).single();
       if (nf) L.fichas[L.fichas.findIndex((x) => x.id === nf.id)] = nf;
-      L.novo = false; L.sel = id; derivar();
+      if (!mapa) { L.novo = false; L.sel = id; }
+      derivar(); form.dataset.sujo = "";
       const salvo = novo && L.regs.find((x) => x.id === novo.id);
       toast(salvo ? (LIGACAO.has(salvo.tipo) ? `Salvo como ${salvo.nova ? "contato novo" : "follow-up"}${nf?.retorno_em ? ` · ligar de novo ${quandoTxt(nf.retorno_em).toLowerCase()}` : ""}.` : "Registro salvo.") : f ? "Dados salvos." : "Ficha criada.");
       carregarAgenda();
+      if (mapa) {
+        L.proxima = fd.get("proxima") === "on";
+        const prox = L.proxima && modo === "ligacao" ? proximaEmpresa(form.dataset.cnpj) : null;
+        if (prox) { await selecionar(prox); document.querySelector(".painel")?.scrollTo(0, 0); return; }
+      }
       render();
     } catch (e) {
       console.error(e); toast("Não foi possível salvar. Tente de novo.");
       form.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = false));
     }
+  }
+  const fichaDoCnpj = (cnpj) => S.lg.fichas.find((x) => x.usuario_id === S.user.id && x.cnpj === cnpj);
+  const contatadaHoje = (cnpj) => { const f = fichaDoCnpj(cnpj); return !!f && (S.lg.porFicha.get(f.id) || []).some((r) => r.data === hojeISO()); };
+  function proximaEmpresa(cnpj) {
+    const lista = filtrados(S.rows), i = lista.findIndex((r) => r.cnpj === cnpj);
+    for (let j = i + 1; j < lista.length; j++) if (!contatadaHoje(lista[j].cnpj)) return lista[j].cnpj;
+    return null;
+  }
+  // No Mapeamento: a ficha abre ao lado da empresa e o contato entra direto nas ligações do dia
+  function blocoLigacaoMapa(r) {
+    const L = S.lg;
+    if (L.dono && L.dono !== S.user.id) { L.dono = null; L.carregado = false; }
+    if (!L.carregado) { if (!L.carregando) carregarLig(); return `<div class="caixa-cinza"><span class="t13 fraco">Abrindo a ficha…</span></div>`; }
+    const f = fichaDoCnpj(r.cnpj), soc = S.socios.get(r.cnpj_basico) || [];
+    const base = f || { nome: nomeEmp(r), telefones: [r.telefone1, r.telefone2].filter(Boolean).join(" / ") || null, email: r.email || null, cidade: r.municipio ? titulo(r.municipio) : null, uf: r.uf || null, sistema: sistemaDe(r).nome || null, cnpj: r.cnpj };
+    const regs = f ? [...(L.porFicha.get(f.id) || [])].reverse() : [];
+    const resumo = f ? `<div class="caixa-cinza"><div class="linha-flex" style="justify-content:space-between"><b class="t13">Já está nas suas administradoras</b><button type="button" class="mini" data-acao="lg-abrir" data-id="${f.id}">Ver ficha completa</button></div>
+        <span class="linha-flex" style="gap:6px"><span class="selo ${FUNIL_COR[f.funil] || "s-neutro"}">${FUNIL_NOME[f.funil] || "Mapeamento"}</span>${f.retorno_em ? celulaRetorno(f) : ""}</span>
+        ${regs.slice(0, 3).map((x) => `<span class="t12"><b class="num">${ddmm(x.data)}</b> · ${esc(rotuloReg(x))}${x.texto ? ` · <span class="fraco">${esc(x.texto.length > 110 ? x.texto.slice(0, 110) + "…" : x.texto)}</span>` : ""}</span>`).join("")}${regs.length > 3 ? `<span class="t12 fraco">e mais ${regs.length - 3} no histórico</span>` : ""}</div>`
+      : soc.length ? `<span class="t12 fraco">Sócio${soc.length > 1 ? "s" : ""} na Receita: <b>${esc(soc.slice(0, 3).map((x) => titulo(x.nome)).join(", "))}</b></span>` : "";
+    return `<div class="pilha" style="gap:12px">${resumo}${formLigacao(base, { cnpj: r.cnpj })}</div>`;
   }
   async function abrirFicha(id) {
     const L = S.lg;
@@ -1680,6 +1732,7 @@
     if (a !== "lg-apagar-reg" && a !== "lg-apagar-ficha") L.apagar = null;
     switch (a) {
       case "ficha-empresa": if (S.selRow) { b.disabled = true; await abrirFichaDaEmpresa(S.selRow); } break;
+      case "lg-abrir": await abrirFicha(b.dataset.id); break;
       case "lg-modo": L.modo = b.dataset.v; try { localStorage.setItem("mapa-adm-modo", L.modo); } catch { /* sem armazenamento */ } render(); break;
       case "qd-mais": L.porColuna[b.dataset.v] = (L.porColuna[b.dataset.v] || 60) + 60; render(); break;
       case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } L.sel = b.dataset.id; L.novo = false; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
@@ -1742,12 +1795,14 @@
     if (a === "rl-aj") { const fd = new FormData(f), aj = {}; for (const [k, v] of fd) if (String(v).trim() !== "") aj[k] = Math.max(0, parseInt(v, 10) || 0); if (await salvarRel({ ajustes: aj })) { S.rl.editAj = false; toast(Object.keys(aj).length ? "Números corrigidos." : "Números voltaram a ser contados pelo sistema."); render(); } }
   });
   app.addEventListener("input", (ev) => {
+    const fm = ev.target.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1";
     if (ev.target.id === "lg-busca") { S.lg.busca = ev.target.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); const q = $(".quadro"); if (q) q.outerHTML = quadroHtml(); }
   });
   app.addEventListener("change", (ev) => {
     const t = ev.target;
     if (t.classList.contains("sel-dono")) { S.lg.dono = t.value === S.user.id ? null : t.value; S.lg.carregado = false; S.lg.sel = null; S.lg.novo = false; S.rl.editObs = S.rl.editAj = false; render(); return; }
     if (t.classList.contains("sel-funil")) { moverFunil(t.dataset.id, t.value); return; }
+    { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
     if (t.name === "res" && t.closest('[data-acao="lg-salvar"]')) {
       const d = $("#rg-demo"); if (d) d.hidden = t.value !== "demo_agendada";
       if (t.value === "pediu_retorno" && !$("#rt-data")?.value) $("#rt-data")?.focus();
@@ -1881,7 +1936,7 @@
     await carregarPerfil();
     render();
     if (!S.perfil.aprovado) return;
-    carregarAgenda();
+    carregarAgenda(); carregarLig();
     if (avisosStatus() === "granted") registrarSw();
     const abrir = new URLSearchParams(location.search).get("abrir");
     if (abrir) { history.replaceState(null, "", location.pathname); abrirFicha(abrir); }
