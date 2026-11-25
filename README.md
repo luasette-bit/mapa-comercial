@@ -24,3 +24,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Quem cria conta pela tela de entrada fica aguardando aprovação em Equipe.
 - A cada publicação, troque só o número da meta `versao` no `index.html` (e o `?v=` dos arquivos).
 
+## Sistemas reconhecidos (v42)
+- O nosso sistema aparece como **SCC Online (PRG)** (antes "Omeupredio (PRG)"; o Omeupredio é o app que vem com ele). Quem usa aparece com o selo "Já é cliente · SCC Online". A detecção continua pelo link do portal omeupredio.com.br.
+- Novos: **Seu Condomínio** (seucondominio.com.br e appseucondominio.com.br) e **Alterdata** (portal Immobile Web / Condomínio Up, immobileweb.com.br).
+- Banco: 13 empresas e 1 marcação renomeadas de "Omeupredio (PRG)" para "SCC Online (PRG)"; as 442 empresas cujo site não tinha link de sistema voltaram para a fila de verificação.
+- Campo "Sistema" da ficha virou lista de escolha (com "Outro sistema…"). Nomes diferentes para o mesmo sistema viram o nome oficial (ex.: "Cond21" e "Group" → "Group Software (Condomínio21)"), então não há concorrente repetido. Entraram ApControle, BR Condomínios, Datadigitos, Icondev, Syndkos, Systemar e Sem sistema. As 14 fichas que estavam escritas de outro jeito foram padronizadas no banco; quando havia dois sistemas no mesmo texto, o detalhe foi para "Informações adicionais".
+

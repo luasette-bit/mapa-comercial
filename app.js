@@ -10,7 +10,31 @@
   const UFS = [["AC","Acre"],["AL","Alagoas"],["AM","Amazonas"],["AP","Amapá"],["BA","Bahia"],["CE","Ceará"],["DF","Distrito Federal"],["ES","Espírito Santo"],["GO","Goiás"],["MA","Maranhão"],["MG","Minas Gerais"],["MS","Mato Grosso do Sul"],["MT","Mato Grosso"],["PA","Pará"],["PB","Paraíba"],["PE","Pernambuco"],["PI","Piauí"],["PR","Paraná"],["RJ","Rio de Janeiro"],["RN","Rio Grande do Norte"],["RO","Rondônia"],["RR","Roraima"],["RS","Rio Grande do Sul"],["SC","Santa Catarina"],["SE","Sergipe"],["SP","São Paulo"],["TO","Tocantins"]];
   const TIPOS = ["Todas", "Administradora", "Imobiliária", "Construtora", "Contabilidade"];
   // softwares que o sistema reconhece pelo link do portal no site da administradora
-  const SOFTWARES = ["Superlógica", "Group Software (Condomínio21)", "Almah", "CondoMob", "uCondo", "TownSq", "CondoPanel", "Condominizar", "Omeupredio (PRG)", "Ahreas", "Winker", "Webware", "Hitecnet"];
+  const SOFTWARES = ["Superlógica", "Group Software (Condomínio21)", "Almah", "CondoMob", "uCondo", "TownSq", "CondoPanel", "Condominizar", "Seu Condomínio", "Alterdata", "Ahreas", "Winker", "Webware", "Hitecnet", "SCC Online (PRG)"];
+  // o nosso sistema: quem usa já é cliente (o app Omeupredio vem junto com ele)
+  const NOSSO = "SCC Online (PRG)";
+  // sistemas que o time já anotou nas ligações (não aparecem no site, mas existem)
+  const OUTROS_SISTEMAS = ["ApControle", "BR Condomínios", "Datadigitos", "Icondev", "Syndkos", "Systemar", "Sem sistema"];
+  // nomes diferentes para o mesmo sistema: tudo vira o nome oficial, para não contar duas vezes
+  const chaveSis = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const APELIDOS = { cond21: "Group Software (Condomínio21)", condominio21: "Group Software (Condomínio21)", group: "Group Software (Condomínio21)", groupsoftware: "Group Software (Condomínio21)", groupcondominios: "Group Software (Condomínio21)", com21: "Group Software (Condomínio21)",
+    almahcondos: "Almah", almahcondo: "Almah", superlogicacondominios: "Superlógica", omeupredio: NOSSO, omeupredioplus: NOSSO, scc: NOSSO, scconline: NOSSO, prg: NOSSO, prgsoftware: NOSSO, sccprg: NOSSO,
+    brcondominios: "BR Condomínios", brcondos: "BR Condomínios", alterdataimmobile: "Alterdata", immobile: "Alterdata", condominioup: "Alterdata", semsistema: "Sem sistema", nenhum: "Sem sistema" };
+  function sistemasConhecidos() {
+    const extra = (S.lg?.fichas || []).map((f) => f.sistema).filter(Boolean);
+    const m = new Map();
+    for (const n of [...SOFTWARES, ...OUTROS_SISTEMAS, ...extra]) { const k = chaveSis(n); if (k && !(APELIDOS[k] && chaveSis(APELIDOS[k]) !== k) && !m.has(k)) m.set(k, n); }
+    return [...m.values()].sort((a, b) => (a === "Superlógica" ? -1 : b === "Superlógica" ? 1 : a.localeCompare(b, "pt-BR")));
+  }
+  // devolve sempre o nome oficial: "Cond21", "group" e "Group Software" viram o mesmo
+  function nomeSistema(t) {
+    const v = String(t || "").trim().replace(/\s+/g, " "); if (!v) return null;
+    const k = chaveSis(v); if (APELIDOS[k]) return APELIDOS[k];
+    const igual = sistemasConhecidos().find((n) => chaveSis(n) === k); if (igual) return igual;
+    const comeca = sistemasConhecidos().find((n) => chaveSis(n).length >= 4 && (k.startsWith(chaveSis(n)) || chaveSis(n).startsWith(k)) && k.length >= 4);
+    return comeca || v.charAt(0).toUpperCase() + v.slice(1);
+  }
+  const sistemaDoForm = (form) => { const sel = form.elements.sistema?.value || ""; return sel === "__outro" ? nomeSistema(form.elements.sistema_outro?.value) : sel || null; };
   const CNAES = { "6822600": "Gestão e administração da propriedade imobiliária", "6821801": "Corretagem na compra e venda de imóveis", "6821802": "Corretagem no aluguel de imóveis", "6810202": "Aluguel de imóveis próprios", "6920601": "Atividades de contabilidade", "8112500": "Condomínios prediais", "4120400": "Construção de edifícios" };
   const COR_TIPO = { "Administradora": "#2A3F72", "Imobiliária": "#B4410E", "Construtora": "#5B2A86", "Contabilidade": "#1E7A46" };
   const COLS = "cnpj,cnpj_basico,razao_social,nome_fantasia,matriz,situacao,data_inicio,cnae_principal,cnaes_secundarios,tipo,atividade_principal_condominio,uf,municipio,logradouro,numero,complemento,bairro,cep,telefone1,telefone2,whatsapp,whatsapp_em,email,porte,referencia_receita,atualizado_em,tel_status,tel_por,tel_em,email_status,qtd_socios,removido,exportada,nova,nota,lat,lon,geo_precisao,nome_condominio,site,site_situacao,sistema,sistema_prova,sistema_em,sistema_status,sistema_por,sistema_marcado,sistema_pista,sistema_pista_url";
@@ -241,6 +265,7 @@
     const s = sistemaDe(r);
     if (pistaDe(r)) return `<span class="pilha" style="gap:2px;align-items:flex-start"><span class="selo s-pista">${esc(r.sistema_pista)}?</span><span class="t11 fraco">a conferir: portal com o nome dela</span></span>`;
     if (!s.nome) return `<span class="pilha" style="gap:2px;align-items:flex-start"><span class="selo s-vazio">Não identificado</span><span class="t11 fraco">${esc(motivoSemSistema(r))}</span></span>`;
+    if (s.nome === NOSSO) return `<span class="pilha" style="gap:2px;align-items:flex-start"><span class="selo s-conf">Já é cliente · SCC Online</span><span class="t11 ${s.nivel === "provavel" ? "fraco" : "origem-ok"}">${s.nivel === "provavel" ? "provável, pelo site" : "confirmado pela equipe"}</span></span>`;
     return `<span class="pilha" style="gap:2px;align-items:flex-start"><span class="selo s-sis">${esc(s.nome)}</span><span class="t11 ${s.nivel === "provavel" ? "fraco" : "origem-ok"}">${s.nivel === "provavel" ? "provável, pelo site" : s.nivel === "corrigido" ? "corrigido pela equipe" : "confirmado pela equipe"}</span></span>`;
   }
 
@@ -1345,7 +1370,7 @@
   function dadosDoForm(form) {
     const v = (n) => String(form.elements[n]?.value ?? "").trim();
     const dt = v("rg_demo_em");
-    return { nome: v("nome") || form.dataset.nome || "", sistema: v("sistema"), qtd_condominios: v("qtd_condominios").replace(/\D/g, ""), qtd_unidades: v("qtd_unidades").replace(/\D/g, ""), responsavel: v("responsavel"), cidade: v("cidade"), uf: v("uf"), demo: dt, formato: v("rg_formato") || "virtual" };
+    return { nome: v("nome") || form.dataset.nome || "", sistema: sistemaDoForm(form) || "", qtd_condominios: v("qtd_condominios").replace(/\D/g, ""), qtd_unidades: v("qtd_unidades").replace(/\D/g, ""), responsavel: v("responsavel"), cidade: v("cidade"), uf: v("uf"), demo: dt, formato: v("rg_formato") || "virtual" };
   }
   function faltaDemo(form) {
     const d = dadosDoForm(form), falta = DADOS_DEMO.filter(([k]) => !d[k]).map(([k, l]) => [k, l]);
@@ -1849,7 +1874,11 @@
   function campoFicha(k, label, f, ro) {
     const v = f?.[k] ?? "", dis = ro ? "disabled" : "";
     if (k === "uf") return `<div class="campo"><label for="fx-uf">${label}</label><select id="fx-uf" name="uf" class="input" ${dis}><option value=""></option>${UFS.map(([u]) => `<option ${v === u ? "selected" : ""}>${u}</option>`).join("")}</select></div>`;
-    if (k === "sistema") return `<div class="campo"><label for="fx-sistema">${label}</label><input id="fx-sistema" name="sistema" class="input" list="lg-sistemas" value="${esc(v)}" ${dis}></div>`;
+    if (k === "sistema") {
+      const atual = v ? nomeSistema(v) : "", lista = sistemasConhecidos();
+      return `<div class="campo"><label for="fx-sistema">${label}</label><select id="fx-sistema" name="sistema" class="input" ${dis}><option value="">Não sei ainda</option>${lista.map((n) => `<option value="${esc(n)}" ${n === atual ? "selected" : ""}>${esc(n === NOSSO ? "SCC Online (PRG) · já é cliente" : n)}</option>`).join("")}${atual && !lista.includes(atual) ? `<option selected>${esc(atual)}</option>` : ""}<option value="__outro">Outro sistema…</option></select>
+        <input name="sistema_outro" class="input" maxlength="80" placeholder="Nome do sistema" hidden style="margin-top:6px"></div>`;
+    }
     const tipo = k.startsWith("qtd_") ? 'type="number" min="0"' : k === "email" ? 'type="email"' : "";
     return `<div class="campo ${["nome", "telefones", "melhor_horario"].includes(k) ? "campo-largo" : ""}"><label for="fx-${k}">${label}</label><input id="fx-${k}" name="${k}" class="input" ${tipo} value="${esc(v)}" ${k === "nome" ? "required maxlength=\"200\"" : ""} ${dis}></div>`;
   }
@@ -1969,7 +1998,7 @@
     S.lg.passo = { k: form.dataset.chave, v };
     form.querySelectorAll(".rg-passo").forEach((s) => (s.hidden = s.dataset.passo !== v));
     form.querySelectorAll(".rg-etapa").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.v === v)));
-    if (v === "contato") { const r = form.querySelector("#rg-resumo"); if (r) r.innerHTML = resumoCadastro(Object.fromEntries(CAMPOS.map(([k]) => [k, String(form.elements[k]?.value ?? "").trim()]))); }
+    if (v === "contato") { const r = form.querySelector("#rg-resumo"); if (r) r.innerHTML = resumoCadastro({ ...Object.fromEntries(CAMPOS.map(([k]) => [k, String(form.elements[k]?.value ?? "").trim()])), sistema: sistemaDoForm(form) || "" }); }
     if (!silencioso) { (form.closest(".painel") || form).scrollIntoView?.({ block: "start" }); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); }
   }
   function atualizarNegativa(form) {
@@ -2132,6 +2161,10 @@
     const f = form.dataset.ficha ? L.fichaPorId.get(form.dataset.ficha) : mapa ? null : L.novo ? null : L.fichaPorId.get(L.sel);
     const d = {};
     for (const [k] of CAMPOS) { const v = String(fd.get(k) ?? "").trim(); d[k] = k.startsWith("qtd_") ? (v === "" ? null : Math.max(0, parseInt(v, 10) || 0)) : (v || null); }
+    if (form.elements.sistema?.tagName === "SELECT") {
+      if (form.elements.sistema.value === "__outro" && !String(form.elements.sistema_outro?.value || "").trim()) { toast("Escreva o nome do sistema."); irPasso(form, "dados", true); form.elements.sistema_outro?.focus(); return; }
+      d.sistema = sistemaDoForm(form);
+    }
     if (d.cnpj) d.cnpj = d.cnpj.replace(/\D/g, "") || null;
     d.observacoes = String(fd.get("observacoes") || "").trim() || null;
     const demo = String(fd.get("demo_em") || ""); d.demo_em = demo ? demo + ":00-03:00" : null;
@@ -2662,6 +2695,7 @@
     { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
     if (t.closest?.('[data-acao="lg-salvar"]') && !$("#rg-painel")?.hidden && t.name !== "res") atualizarBlocoDemo(t.form, false);
     if ((t.name === "res" || t.name === "neg_destino") && t.closest('[data-acao="lg-salvar"]')) atualizarNegativa(t.form);
+    if (t.name === "sistema" && t.tagName === "SELECT" && t.form) { const o = t.form.elements.sistema_outro; if (o) { o.hidden = t.value !== "__outro"; if (!o.hidden) o.focus(); } }
     if ((t.name === "res" || t.name === "envio") && t.closest('[data-acao="lg-salvar"]')) {
       atualizarBlocoDemo(t.form, t.name === "res" && t.value === "demo_realizada");
       const c = $("#rg-conta"); if (c) c.innerHTML = avisoContagem(t.form);
