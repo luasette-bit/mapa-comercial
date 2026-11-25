@@ -1178,3 +1178,16 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 /* saindo do esqueleto: troca direto, com um esmaecer curto (sem tela vazia no meio) */
 .de-esq .in-ola, .de-esq .in-cta, .de-esq.in-cartoes .in-cartao { animation: esq-entra .18s ease-out both; }
 @keyframes esq-entra { from { opacity: .35; } }
+
+/* ---- Registrar contato: uma escolha só, "Só anotação" como link discreto, aviso de contagem ao lado do Salvar */
+.rg-res { margin: 0; padding: 0; border: 0; display: grid; gap: 8px; min-width: 0; }
+.rg-res legend { padding: 0; margin-bottom: 8px; }
+.rg-so-anot { position: relative; justify-self: start; cursor: pointer; }
+.rg-so-anot input { position: absolute; opacity: 0; pointer-events: none; }
+.rg-so-anot span { font-size: 12.5px; color: #5B6475; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: #C9D4EA; }
+.rg-so-anot:hover span { color: var(--link); text-decoration-color: currentColor; }
+.rg-so-anot input:checked + span { color: var(--link); font-weight: 600; text-decoration-color: currentColor; }
+.rg-so-anot input:focus-visible + span { outline: 3px solid #8FB0F0; outline-offset: 2px; border-radius: 4px; }
+.rg-salvar { align-items: center; }
+.rg-conta { color: #4A5468; }
+.rg-conta b { color: #1B2333; }

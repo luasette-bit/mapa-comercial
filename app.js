@@ -362,6 +362,7 @@
     const f = app.querySelector('form[data-acao="lg-salvar"]'); if (!g || !f || (f.dataset.ficha || "") + "|" + (f.dataset.cnpj || "") !== g.chave) return;
     for (const [n, rv, val] of g.v) { const el = rv != null ? f.querySelector(`[name="${n}"][value="${CSS.escape(rv)}"]`) : f.elements[n]; if (!el || el instanceof RadioNodeList) continue; if (el.type === "radio" || el.type === "checkbox") el.checked = val; else el.value = val; }
     f.dataset.sujo = "1"; const d = $("#rg-demo"); if (d) d.hidden = !f.querySelector('[name="res"][value="demo_agendada"]:checked');
+    const c = $("#rg-conta"); if (c) c.innerHTML = avisoContagem(f);
     if (g.foco) document.getElementById(g.foco)?.focus();
   }
   function render() {
@@ -1331,7 +1332,20 @@
     ["demo_realizada", "Demo realizada", "demo_realizada", null],
     ["contrato", "Contrato fechado", "contrato", null],
     ["anotacao", "Só anotação", "anotacao", null],
+    ["sem_contato", "Sem contato", "sem_contato", null],
   ];
+  // o que aparece no formulário: uma escolha só, na ordem do Relatório diário
+  const OPCOES = [["sem_contato", "Sem contato"], ["conversou", "Consegui contato"], ["demo_agendada", "Demo agendada"], ["demo_realizada", "Demo realizada"], ["negativa", "Negativa"]];
+  // aviso ao lado do Salvar: como este contato entra no relatório (mesma regra dos relatórios)
+  function avisoContagem(form) {
+    const k = form.querySelector('[name="res"]:checked')?.value || (form.querySelector('[name="envio"]:checked') ? "conversou" : "");
+    const fid = form.dataset.ficha, f = fid ? S.lg.fichaPorId?.get(fid) : null, nova = !f || !jaLigou(f);
+    if (!k) return "Escolha o que aconteceu.";
+    if (k === "anotacao") return "Só anotação: não conta no relatório.";
+    if (k === "demo_realizada") return "Vai contar como <b>demonstração realizada</b>.";
+    const tipo = nova ? "contato novo" : "follow-up";
+    return k === "sem_contato" ? `Vai contar como <b>${tipo}</b>, sem contato.` : `Vai contar como <b>${tipo}</b>.`;
+  }
   const DETALHE = { nao_atende: "Não atende", caixa_postal: "Caixa postal", numero_invalido: "Número não existe", material_enviado: "Só atende por e-mail / WhatsApp", pediu_retorno: "Pediu para retornar", sem_abertura: "Sem abertura" };
   const CANAL = { ligacao: "Ligação", whatsapp: "WhatsApp", email: "E-mail" };
   const NOME_BOTAO = Object.fromEntries(BOTOES.map(([k, l]) => [k, l]));
@@ -1794,7 +1808,6 @@
   function formLigacao(f, op = {}) {
     const L = S.lg, hj = hojeISO(), existe = !!f?.id;
     const ret = f?.retorno_em ? localSP(f.retorno_em) : "", retDia = ret.slice(0, 10), vence = ret && retDia <= hj;
-    const proxima = !existe ? "Primeiro contato: vai contar como <b>contato novo</b>." : jaLigou(f) ? "Este contato vai contar como <b>follow-up</b>." : "Primeiro contato: vai contar como <b>contato novo</b>.";
     return `<form class="pilha lg-lig" style="gap:14px" data-acao="lg-salvar" autocomplete="off" novalidate ${existe ? `data-ficha="${f.id}"` : ""} ${op.cnpj ? `data-origem="mapa" data-cnpj="${esc(op.cnpj)}"` : ""}>
       <input type="hidden" name="retorno_orig" value="${esc(ret)}">
       <details class="lg-bloco lg-bloco-dados" ${L.dadosAberto ? "open" : ""}><summary><b>Dados da administradora</b><span class="t12 fraco">preencha durante a ligação</span></summary>${camposDados(f, false)}</details>
@@ -1803,15 +1816,15 @@
           <div class="campo" style="min-width:150px"><label for="rg-data">Dia</label><input id="rg-data" name="data" type="date" class="input" value="${hj}" max="${hj}"></div>
           <div class="campo" style="min-width:0"><span class="rotulo">Contato feito por</span><div class="chips">${Object.entries(CANAL).map(([k, l], i) => `<label class="chip-radio"><input type="radio" name="canal" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>
         </div>
-        <span class="rotulo">O que aconteceu <span class="fraco" style="font-weight:500">· pode marcar mais de um</span></span>
-        <div class="chips">${BOTOES.map(([k, l]) => `<label class="chip-radio chip-check"><input type="checkbox" name="res" value="${k}"><span>${l}</span></label>`).join("")}</div>
+        <fieldset class="rg-res"><legend class="rotulo">O que aconteceu</legend>
+          <div class="chips">${OPCOES.map(([k, l]) => `<label class="chip-radio"><input type="radio" name="res" value="${k}"><span>${l}</span></label>`).join("")}</div>
+          <label class="rg-so-anot"><input type="radio" name="res" value="anotacao"><span>Só anotação (não conta no relatório)</span></label></fieldset>
         <span class="rotulo">Enviei a apresentação por</span>
         <div class="linha-flex" style="gap:8px">${Object.entries(ENVIO).map(([k, l]) => `<label class="chip-radio chip-check"><input type="checkbox" name="envio" value="${k}"><span>${k === "email" ? "E-mail" : l}</span></label>`).join("")}
           <span class="linha-flex" style="gap:6px;margin-left:auto"><button type="button" class="mini mini-ok" data-acao="lg-abrir-wpp">Abrir WhatsApp</button><button type="button" class="mini" data-acao="lg-abrir-email">Abrir e-mail</button></span></div>
         <span class="t12 fraco">O número e o e-mail ficam nos campos <b>WhatsApp</b> e <b>E-mail para contato</b> da ficha.</span>
         <div id="rg-demo" class="linha-flex" hidden><div class="campo"><label for="rg-demo-em">Dia e hora da demonstração</label><input id="rg-demo-em" name="rg_demo_em" type="datetime-local" class="input"></div><div class="campo"><label for="rg-formato">Formato</label><select id="rg-formato" name="rg_formato" class="input"><option value="virtual">Virtual</option><option value="presencial">Presencial</option></select></div></div>
         <div class="campo"><label for="rg-texto">Anotação</label><textarea id="rg-texto" name="texto" class="input lg-texto" rows="4" placeholder="Com quem falou, o que disse, próximo passo…"></textarea></div>
-        <span class="t12 fraco">${proxima}</span>
       </div>
       <div class="caixa-cinza"><b>Ligar de novo</b>
         <div class="chips">${[[1, "Amanhã"], [2, "Em 2 dias"], [5, "Em 1 semana"], [10, "Em 2 semanas"]].map(([n, l]) => `<button type="button" class="mini" data-acao="lg-ret" data-d="${n}">${l}</button>`).join("")}<button type="button" class="mini" data-acao="lg-ret" data-d="0">Sem retorno</button></div>
@@ -1823,7 +1836,7 @@
         <span class="t12 fraco">${vence ? `Este retorno é de ${retDia === hj ? "hoje" : ddmm(retDia)}: ao salvar o contato ele sai da agenda. Para marcar outro, mude o dia.` : "Sem hora, o aviso chega às 9h. O retorno aparece na Agenda e você recebe um aviso no horário."}</span>
       </div>
       ${op.cnpj ? `<label class="lg-check"><input type="checkbox" name="proxima" ${L.proxima !== false ? "checked" : ""}> <span>Depois de salvar, abrir a próxima da lista</span></label>` : ""}
-      <div class="linha-flex"><button type="submit" name="modo" value="ligacao" class="btn btn-primario">${existe ? "Salvar contato" : op.cnpj ? "Salvar contato" : "Criar e salvar contato"}</button><button type="submit" name="modo" value="dados" class="btn btn-sec">${existe ? "Salvar só os dados" : op.cnpj ? "Só guardar a ficha" : "Só criar a ficha"}</button></div>
+      <div class="linha-flex rg-salvar"><button type="submit" name="modo" value="ligacao" class="btn btn-primario">${existe ? "Salvar contato" : op.cnpj ? "Salvar contato" : "Criar e salvar contato"}</button><button type="submit" name="modo" value="dados" class="btn btn-sec">${existe ? "Salvar só os dados" : op.cnpj ? "Só guardar a ficha" : "Só criar a ficha"}</button><span class="rg-conta t12" id="rg-conta" aria-live="polite">Escolha o que aconteceu.</span></div>
     </form>`;
   }
 
@@ -2461,9 +2474,9 @@
     if (t.classList.contains("sel-etapa")) { if (t.value) moverEtapaFicha(t.dataset.id, +t.value); return; }
     if (t.id === "vd-resp") { S.vd.resp = t.value; atualizarVendas(); return; }
     { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
-    if (t.name === "res" && t.closest('[data-acao="lg-salvar"]')) {
+    if ((t.name === "res" || t.name === "envio") && t.closest('[data-acao="lg-salvar"]')) {
       const d = $("#rg-demo"); if (d) d.hidden = !t.form.querySelector('[name="res"][value="demo_agendada"]:checked');
-      if (t.checked && t.value === "pediu_retorno" && !$("#rt-data")?.value) $("#rt-data")?.focus();
+      const c = $("#rg-conta"); if (c) c.innerHTML = avisoContagem(t.form);
     }
   });
   app.addEventListener("gaveta-abriu", (ev) => { S.lg.gvAberto = ev.detail; });
