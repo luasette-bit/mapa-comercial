@@ -415,6 +415,7 @@
   }
   // a tela logada: o topo e cada parte que pode mudar sozinha quando chegam dados ficam num "pedaço" (data-pedaco)
   function htmlLogado() {
+    if (S.view !== "concorrencia") S.cc.abertura = false; // ao voltar para a Concorrência, a abertura toca de novo
     const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
     return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${S.voltarAtivo && !(S.view === "adms" && S.lg.sel) ? '<div class="voltar-barra"><button type="button" class="fc-voltar" data-acao="voltar">← Voltar</button></div>' : ""}${tela}</div>`}</main>`;
   }
@@ -2449,7 +2450,7 @@
       <button type="button" class="mini" style="align-self:flex-start" data-acao="cc-descartar" data-id="${e.id}">Descartar</button></article>`;
   }
 
-  // ---- abertura animada da página: o globo da marca passa pelos concorrentes (1 vez por sessão)
+  // ---- abertura animada da página: o globo da marca passa pelos concorrentes (toda vez que entra na página; cobre a tela na hora do clique e depois revela a página)
   const Abertura = (() => {
     let el = null, cv, ctx, raf = 0, fase = "off", t0 = 0, ult = 0, atual = -1, trocar = false, pino = -1, pinoT = 0, S2 = 0, dpr = 1, giro = 0, proj = [], timers = [];
     const N = 220, P = [], A = [], ouro = Math.PI * (3 - Math.sqrt(5));
@@ -2542,8 +2543,7 @@
     function fim() { timers.forEach(clearTimeout); timers = []; if (raf) cancelAnimationFrame(raf); raf = 0; fase = "off"; el?.remove(); el = null; document.removeEventListener("keydown", tecla); }
     const tecla = (e) => { if (e.key === "Escape") sair(true); };
     function abrir() {
-      if (fase !== "off" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      try { if (sessionStorage.getItem("cc-abertura")) return; sessionStorage.setItem("cc-abertura", "1"); } catch (e) { /* sem sessão: mostra */ }
+      if (fase !== "off" || S.view !== "concorrencia" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       montar(); medir(); dados = null; atual = -1; ult = 0; pino = -1; giro = Math.random() * 6; t0 = performance.now(); fase = "entrando";
       document.addEventListener("keydown", tecla);
       timers.push(setTimeout(() => { if (fase !== "off") fim(); }, 12000)); // nunca prende a pessoa
@@ -2571,7 +2571,7 @@
   }
   function telaConcorrencia() {
     const C = S.cc, L = S.lg;
-    if (!C.abertura) { C.abertura = true; setTimeout(Abertura.abrir, 0); }
+    if (!C.abertura) { C.abertura = true; Abertura.abrir(); } // F5 ou Voltar do navegador direto na página: cobre antes de a tela aparecer
     if (!C.carregado) carregarConcorrencia();
     if (!L.carregado && !L.carregando) carregarLig();
     const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Concorrência</h1><p class="fraco" style="margin:0">O sistema testa os portais dos concorrentes a cada 15 minutos e procura notícias a cada 2 horas. Brecha é hora de ligar para quem usa aquele sistema; movimento é para o time ficar sabendo.</p></div>
@@ -2930,7 +2930,7 @@
         C.notas = C.notas.filter((n) => n.id !== +b.dataset.id); render(); break;
       }
       case "cc-lista": C.sel = C.sel === +b.dataset.id ? null : +b.dataset.id; render(); break;
-      case "cc-abrir": C.aba = "brechas"; C.sel = +b.dataset.id; S.view = "concorrencia"; S.voltarAtivo = true; render(); window.scrollTo(0, 0); break;
+      case "cc-abrir": C.aba = "brechas"; C.sel = +b.dataset.id; S.view = "concorrencia"; C.abertura = true; Abertura.abrir(); S.voltarAtivo = true; render(); window.scrollTo(0, 0); break;
       case "cc-descartar": {
         const e = C.eventos.find((x) => x.id === +b.dataset.id); if (!e) break;
         const { error } = await sb.rpc("descartar_evento", { p_id: e.id, p_descartar: true });
@@ -3357,7 +3357,7 @@
         break;
       }
       case "atualizar": S.menu = false; atualizarDados(); render(); break;
-      case "ir": S.voltarAtivo = !b.closest("header"); S.view = b.dataset.view; S.sel = null; S.selRow = null; S.show = 60; render(); if (b.dataset.view === "regiao") localizarPendentes(S.uf); break;
+      case "ir": S.voltarAtivo = !b.closest("header"); S.view = b.dataset.view; if (S.view === "concorrencia") { S.cc.abertura = true; Abertura.abrir(); } S.sel = null; S.selRow = null; S.show = 60; render(); if (b.dataset.view === "regiao") localizarPendentes(S.uf); break;
       case "fechar-msg": S.msg = ""; render(); break;
       case "so-novas": S.soNovas = true; render(); break;
       case "tipo": S.tipo = b.dataset.v; S.show = 60; salvarPreferencias(); render(); break;
