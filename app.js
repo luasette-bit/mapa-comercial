@@ -2312,7 +2312,7 @@
 
 
   /* ---- Concorrência: brechas (atacar hoje) e movimentos (ficar sabendo), vindos do vigia automático e do time */
-  S.cc = { carregado: false, carregando: false, eventos: [], portais: [], regs: [], mapa: [], aba: "brechas", sel: null, form: false, mostrarVelhas: false };
+  S.cc = { carregado: false, carregando: false, eventos: [], portais: [], regs: [], mapa: [], notas: [], pessoas: [], aba: "brechas", sel: null, form: false, mostrarVelhas: false, editando: null, abertura: false };
   const grupoSis = (n) => chaveSis(nomeSistema(n) || n);
   const nomeSis = (n) => (nomeSistema(n) === "Group Software (Condomínio21)" ? "Group Software" : nomeSistema(n) || n);
   const TIPO_EV = { queda: ["Queda", "s-errado"], reclamacoes: ["Reclamações", "s-errado"], noticia: ["Notícia", "s-amarelo"], preco: ["Preço", "s-amarelo"], lancamento: ["Lançamento", "s-roxo"], parceria: ["Parceria", "s-ident"], outro: ["Empresa", "s-vazio"] };
@@ -2323,12 +2323,15 @@
     const C = S.cc; if (C.carregando || (C.carregado && !forcar) || !S.user || !S.perfil?.aprovado) return;
     C.carregando = true;
     try {
-      const [ev, po, rg, mp] = await Promise.all([
+      const [ev, po, rg, mp, nt, pe] = await Promise.all([
         sb.from("concorrencia_eventos").select("*").eq("descartado", false).order("inicio", { ascending: false }).limit(400),
         sb.from("concorrencia_portais").select("sistema,url,ultimo_teste,ultimo_ok,ultimo_status,falhas"),
         sb.from("registros").select("id,ficha_id,usuario_id,tipo,data,brecha_id").not("brecha_id", "is", null).limit(5000),
         sb.from("mapa").select("cnpj,razao_social,nome_fantasia,municipio,uf,telefone1,telefone2,email,sistema,sistema_status,sistema_marcado,removido").or("sistema.not.is.null,sistema_marcado.not.is.null").limit(5000),
+        sb.from("concorrencia_notas").select("*").order("criado_em").limit(3000),
+        sb.from("perfis").select("id,nome").eq("aprovado", true),
       ]);
+      C.notas = nt.data || []; C.pessoas = pe.data || [];
       C.eventos = ev.data || []; C.portais = po.data || []; C.regs = rg.data || []; C.mapa = (mp.data || []).filter((r) => !r.removido);
       C.carregado = true;
     } catch (e) { console.warn(e); }
@@ -2354,23 +2357,6 @@
     }
     return out;
   }
-  function cartaoBrecha(e, grande) {
-    const usa = quemUsa(e.sistema), n = numerosBrecha(e), ativa = brechaAtiva(e), [tl, tc] = TIPO_EV[e.tipo] || TIPO_EV.outro;
-    const feitas = usa.filter((u) => u.ficha && n.fichas.has(u.ficha.id)).length, faltam = usa.length - feitas;
-    const quando = e.tipo === "queda" && !e.fim ? `Desde ${dataHoraBR(e.inicio)}` : ddmmaaaa(localSP(e.inicio).slice(0, 10));
-    const aberto = S.cc.sel === e.id;
-    return `<article class="cc-brecha ${ativa ? (e.tipo === "queda" && !e.fim ? "cc-agora" : "cc-ativa") : "cc-velha"}">
-      <div class="cc-brecha-cab"><div class="pilha" style="gap:4px;min-width:0">
-        <span class="linha-flex" style="gap:6px">${e.tipo === "queda" && !e.fim ? '<span class="selo s-errado">Agora</span>' : ""}<span class="selo ${tc}">${tl}</span><span class="selo s-sis">${esc(nomeSis(e.sistema))}</span></span>
-        <b class="cc-tit">${esc(e.titulo)}</b>
-        <span class="t12 fraco">${esc(quando)} · ${esc(e.fonte || "")}${e.url ? ` · <a href="${esc(e.url)}" target="_blank" rel="noopener">abrir</a>` : ""}${e.detalhe ? ` · ${esc(e.detalhe)}` : ""}</span></div>
-        <span class="t12 fraco cc-prazo">${ativa ? (e.valido_ate ? `Vale até ${ddmm(localSP(e.valido_ate).slice(0, 10))}` : "Em andamento") : "Encerrada"}</span></div>
-      <div class="cc-nums">${[[usa.length, `${usa.length === 1 ? "usa" : "usam"} ${nomeSis(e.sistema)}`], [n.ligacoes, "ligações feitas"], [n.contatos, "contatos"], [n.demos, "demos agendadas"], [n.contratos, "contratos"]].map(([v, l]) => `<div><b class="num">${fmtN(v)}</b><span>${esc(l)}</span></div>`).join("")}</div>
-      <div class="linha-flex" style="gap:8px">${ativa && usa.length ? `<button type="button" class="btn ${grande ? "btn-primario" : "btn-sec"}" data-acao="cc-lista" data-id="${e.id}">${aberto ? "Fechar lista" : feitas ? `Continuar lista (${fmtN(faltam)} ${faltam === 1 ? "restante" : "restantes"})` : "Montar lista de ligação"}</button>` : ""}
-        ${!usa.length ? `<span class="t12 fraco">Nenhuma administradora mapeada usa ${esc(nomeSis(e.sistema))} ainda.</span>` : ""}
-        <button type="button" class="mini" data-acao="cc-descartar" data-id="${e.id}" title="Não é relevante">Descartar</button></div>
-      ${aberto ? listaBrecha(e, usa, n) : ""}</article>`;
-  }
   function listaBrecha(e, usa, n) {
     const ord = [...usa].sort((a, b) => (a.semInt - b.semInt) || ((a.ficha && n.fichas.has(a.ficha.id)) - (b.ficha && n.fichas.has(b.ficha.id))) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
     return `<div class="cc-lista"><div class="cc-lista-cab t12 fraco"><span>Administradora</span><span>Cidade</span><span>Telefone</span><span></span></div>
@@ -2380,6 +2366,193 @@
         <span>${feito ? '<span class="selo s-conf">Já ligou</span>' : `<button type="button" class="mini mini-ok" data-acao="cc-ligar" data-ficha="${u.ficha ? u.ficha.id : ""}" data-cnpj="${u.empresa ? esc(u.empresa.cnpj) : ""}">Ligar e registrar</button>`}</span></div>`; }).join("")}
       <span class="t12 fraco" style="padding:8px 2px 0">Toda ligação para quem usa ${esc(nomeSis(e.sistema))} até o fim do prazo conta para esta brecha, mesmo feita fora desta lista.</span></div>`;
   }
+  // ---- conteúdo de cada evento: textos que o time edita e anotações das ligações
+  const TEXTOS_EV = { resumo: ["Resumo", "Escreva em poucas palavras o que a notícia diz."], roteiro: ["Como usar na ligação", "Ex.: perguntar se tiveram problema para emitir boleto, sem falar mal do concorrente, e oferecer demonstração."], para_vendas: ["Para vendas", "O que o vendedor deve saber ou falar na demonstração."], para_posvenda: ["Para o pós-venda", "Tem risco para os nossos clientes? O que acompanhar."] };
+  function blocoTexto(e, campo, opts = {}) {
+    const [rot, dica] = TEXTOS_EV[campo], C = S.cc, ed = C.editando && C.editando.id === e.id && C.editando.campo === campo, v = e[campo] || "";
+    const quem = e.editado_por && v ? ` · <span class="t11 fraco">editado por ${esc(nomeCC(e.editado_por))}</span>` : "";
+    if (ed) return `<form class="cc-texto ${opts.cls || ""}" data-acao="cc-texto" data-id="${e.id}" data-campo="${campo}"><p class="cc-rot">${rot}</p>
+      <textarea name="texto" class="input" rows="${campo === "roteiro" ? 4 : 3}" maxlength="2000" placeholder="${esc(dica)}">${esc(v)}</textarea>
+      <div class="linha-flex" style="gap:6px"><button type="submit" class="mini mini-ok">Salvar</button><button type="button" class="mini" data-acao="cc-editar" data-id="">Cancelar</button></div></form>`;
+    return `<div class="cc-texto ${opts.cls || ""}"><div class="linha-flex" style="justify-content:space-between;gap:8px"><p class="cc-rot">${rot}${quem}</p><button type="button" class="cc-edit" data-acao="cc-editar" data-id="${e.id}" data-campo="${campo}">${v ? "Editar" : "Escrever"}</button></div>
+      ${v ? `<div class="cc-txt">${esc(v).replace(/\n/g, "<br>")}</div>` : `<p class="t12 fraco" style="margin:0">${opts.vazio || "Ninguém escreveu ainda."}</p>`}</div>`;
+  }
+  const nomeCC = (id) => (id === S.user?.id ? "você" : (S.cc.pessoas.find((p) => p.id === id)?.nome || "alguém do time").split(" ")[0]);
+  function duracaoTxt(ms) { if (ms >= 2 * 86400000) return `${Math.round(ms / 86400000)} dias`; if (ms >= 3600000) { const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000); return `${h}h${m ? String(m).padStart(2, "0") : ""}`; } return `${Math.max(1, Math.round(ms / 60000))} min`; }
+  const horaBR = (iso) => localSP(iso).slice(11, 16).replace(":", "h");
+  function historicoSis(sistema) {
+    const g = grupoSis(sistema), seis = Date.now() - 183 * 86400000;
+    const q = S.cc.eventos.filter((e) => e.tipo === "queda" && grupoSis(e.sistema) === g && new Date(e.inicio).getTime() >= seis);
+    const maior = q.reduce((m, e) => Math.max(m, (e.fim ? new Date(e.fim) : new Date()) - new Date(e.inicio)), 0);
+    return { quedas: q.length, maior, problemas: S.cc.eventos.filter((e) => e.categoria === "brecha" && e.tipo !== "queda" && grupoSis(e.sistema) === g && new Date(e.inicio).getTime() >= seis).length };
+  }
+  function oQueAconteceu(e) {
+    const s = nomeSis(e.sistema);
+    if (e.tipo === "queda") {
+      const ini = new Date(e.inicio), hj = localSP(new Date().toISOString()).slice(0, 10) === localSP(e.inicio).slice(0, 10);
+      if (!e.fim) return `Os portais da ${s} usados pelas administradoras (área do condômino e segunda via de boleto) pararam de responder ${hj ? "hoje" : `em ${ddmm(localSP(e.inicio).slice(0, 10))}`} às ${horaBR(e.inicio)}. O sistema testa a cada 15 minutos e eles ainda não voltaram. Quem usa ${s} pode estar sem emitir boleto e sem acesso dos moradores neste momento.`;
+      return `Os portais da ${s} ficaram fora do ar por cerca de ${duracaoTxt(new Date(e.fim) - ini)}, de ${dataHoraBR(e.inicio)} até ${dataHoraBR(e.fim)}. Nesse período, quem usa ${s} ficou sem portal do condômino e sem segunda via de boleto.`;
+    }
+    return "";
+  }
+  function fatosEvento(e) {
+    const h = historicoSis(e.sistema), f = [];
+    if (e.tipo === "queda") {
+      f.push(["Começou", dataHoraBR(e.inicio)], [e.fim ? "Durou" : "Duração até agora", duracaoTxt((e.fim ? new Date(e.fim) : new Date()) - new Date(e.inicio))], ["Afeta", "Portal e boletos"]);
+    } else {
+      f.push(["Publicada", ddmmaaaa(localSP(e.inicio).slice(0, 10))], ["Fonte", e.fonte || "—"]);
+      if (e.valido_ate) f.push(["Vale até", ddmm(localSP(e.valido_ate).slice(0, 10))]);
+    }
+    f.push(["Quedas em 6 meses", h.quedas ? `${h.quedas}${h.maior ? ` (maior: ${duracaoTxt(h.maior)})` : ""}` : "nenhuma"]);
+    return `<div class="cc-fatos">${f.map(([l, v]) => `<div><span>${esc(l)}</span><b>${esc(v)}</b></div>`).join("")}</div>`;
+  }
+  function notasEvento(e) {
+    const ns = S.cc.notas.filter((n) => n.evento_id === e.id);
+    return `<div class="cc-texto"><p class="cc-rot">O que as administradoras disseram</p>
+      ${ns.length ? `<div class="cc-falas">${ns.map((n) => { const f = n.ficha_id ? S.lg.fichaPorId?.get(n.ficha_id) : null; return `<div class="cc-fala">${f ? `<b class="t13">${esc(f.nome)}${f.cidade ? ` · ${esc(f.cidade)}` : ""}</b>` : ""}<p>${esc(n.texto)}</p><span class="t11 fraco">${esc(nomeCC(n.usuario_id))} · ${esc(dataHoraBR(n.criado_em))}${n.usuario_id === S.user.id ? ` · <button type="button" class="cc-edit" data-acao="cc-nota-apagar" data-id="${n.id}">apagar</button>` : ""}</span></div>`; }).join("")}</div>` : '<p class="t12 fraco" style="margin:0">Nada anotado ainda. Anote aqui o que ouvir nas ligações: vira argumento para o time.</p>'}
+      <form class="cc-nova" data-acao="cc-nota" data-id="${e.id}"><input name="texto" class="input" maxlength="2000" placeholder="Anotar o que ouviu numa ligação…" autocomplete="off"><button type="submit" class="mini">Anotar</button></form></div>`;
+  }
+  function cartaoBrecha(e, grande) {
+    const usa = quemUsa(e.sistema), n = numerosBrecha(e), ativa = brechaAtiva(e), [tl, tc] = TIPO_EV[e.tipo] || TIPO_EV.outro, agora = e.tipo === "queda" && !e.fim;
+    const feitas = usa.filter((u) => u.ficha && n.fichas.has(u.ficha.id)).length, faltam = usa.length - feitas, aberto = S.cc.sel === e.id;
+    const sub = e.tipo === "queda" ? `Detectado pelo teste automático${e.detalhe ? ` · ${e.detalhe}` : ""}` : `${ddmm(localSP(e.inicio).slice(0, 10))} · ${e.fonte || ""}`;
+    const link = e.url_original || e.url;
+    return `<article class="cc-card ${ativa ? (agora ? "cc-agora" : "cc-ativa") : "cc-velha"}">
+      <div class="cc-cab"><div class="pilha" style="gap:6px;min-width:0">
+          <span class="linha-flex" style="gap:6px">${agora ? '<span class="selo s-errado">Agora</span>' : ""}<span class="selo ${tc}">${tl}</span><span class="selo s-sis">${esc(nomeSis(e.sistema))}</span></span>
+          <h2 class="cc-h">${esc(e.titulo)}</h2>
+          <span class="t12 fraco">${esc(sub)}${link && e.tipo !== "queda" ? ` · <a href="${esc(link)}" target="_blank" rel="noopener">abrir a matéria original</a>` : ""}</span></div>
+        <span class="t12 fraco cc-prazo">${ativa ? (e.valido_ate ? `Vale até ${ddmm(localSP(e.valido_ate).slice(0, 10))}` : "Em andamento · vale até 14 dias depois de voltar") : "Encerrada"}</span></div>
+      <div class="cc-corpo"><div class="cc-esq">
+          ${e.tipo === "queda" ? `<div class="cc-texto"><p class="cc-rot">O que aconteceu</p><div class="cc-txt cc-txt-g">${esc(oQueAconteceu(e))}</div></div>` : blocoTexto(e, "resumo", { vazio: e.url ? "Sem resumo ainda. Abra a matéria e escreva em poucas palavras o que ela diz." : "Sem resumo ainda." })}
+          ${fatosEvento(e)}
+          ${blocoTexto(e, "roteiro", { cls: "cc-roteiro", vazio: "Escreva como abordar quem usa este sistema. Fica para todo o time." })}
+          ${notasEvento(e)}
+        </div>
+        <div class="cc-dir"><p class="cc-rot" style="margin:0">Resultado desta brecha</p>
+          <div class="cc-nums">${[[usa.length, `${usa.length === 1 ? "usa" : "usam"} ${nomeSis(e.sistema)}`], [n.ligacoes, n.ligacoes === 1 ? "ligação feita" : "ligações feitas"], [n.contatos, n.contatos === 1 ? "contato" : "contatos"], [n.demos, n.demos === 1 ? "demo agendada" : "demos agendadas"], [n.contratos, n.contratos === 1 ? "contrato" : "contratos"]].map(([v, l]) => `<div><b class="num">${fmtN(v)}</b><span>${esc(l)}</span></div>`).join("")}</div>
+          ${ativa && usa.length ? `<button type="button" class="btn ${grande ? "btn-primario" : "btn-sec"}" data-acao="cc-lista" data-id="${e.id}">${aberto ? "Fechar lista" : feitas ? `Continuar lista (${fmtN(faltam)} ${faltam === 1 ? "restante" : "restantes"})` : "Montar lista de ligação"}</button>` : ""}
+          ${!usa.length ? `<span class="t12 fraco">Nenhuma administradora mapeada usa ${esc(nomeSis(e.sistema))} ainda.</span>` : `<span class="t12 fraco">Toda ligação para quem usa ${esc(nomeSis(e.sistema))} até o fim do prazo conta para esta brecha no relatório.</span>`}
+          <button type="button" class="mini" style="align-self:flex-start" data-acao="cc-descartar" data-id="${e.id}" title="Não é relevante">Descartar</button>
+        </div></div>
+      ${aberto ? listaBrecha(e, usa, n) : ""}</article>`;
+  }
+  function cartaoMovimento(e) {
+    const [tl, tc] = TIPO_EV[e.tipo] || TIPO_EV.outro, link = e.url_original || e.url;
+    return `<article class="cc-mov2"><span class="t12 fraco num" style="font-weight:600">${ddmm(localSP(e.inicio).slice(0, 10))}</span>
+      <div class="pilha" style="gap:10px;min-width:0">
+        <div class="pilha" style="gap:4px"><span class="linha-flex" style="gap:6px"><span class="selo ${tc}">${tl}</span><span class="selo s-sis">${esc(nomeSis(e.sistema))}</span></span>
+          <h3 class="cc-h3">${esc(e.titulo)}</h3><span class="t12 fraco">${esc(e.fonte || "")}${link ? ` · <a href="${esc(link)}" target="_blank" rel="noopener">abrir a matéria original</a>` : ""}</span></div>
+        ${blocoTexto(e, "resumo", { vazio: "Sem resumo ainda." })}
+        <div class="cc-para">${blocoTexto(e, "para_vendas", { vazio: "O que muda na demonstração?" })}${blocoTexto(e, "para_posvenda", { vazio: "Tem risco para os nossos clientes?" })}</div>
+      </div>
+      <button type="button" class="mini" style="align-self:flex-start" data-acao="cc-descartar" data-id="${e.id}">Descartar</button></article>`;
+  }
+
+  // ---- abertura animada da página: o globo da marca passa pelos concorrentes (1 vez por sessão)
+  const Abertura = (() => {
+    let el = null, cv, ctx, raf = 0, fase = "off", t0 = 0, ult = 0, atual = -1, trocar = false, pino = -1, pinoT = 0, S2 = 0, dpr = 1, giro = 0, proj = [], timers = [];
+    const N = 220, P = [], A = [], ouro = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < N; i++) { const y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(1 - y * y), t = ouro * i; P.push({ x: Math.cos(t) * r, y, z: Math.sin(t) * r, g: Math.random() < 0.13, f: Math.random() * 6.3 }); }
+    const vistos = new Set();
+    P.forEach((p, i) => { P.map((q, k) => [k, (p.x - q.x) ** 2 + (p.y - q.y) ** 2 + (p.z - q.z) ** 2]).filter(([k]) => k !== i).sort((a, b) => a[1] - b[1]).slice(0, 4).forEach(([k]) => { const c = i < k ? `${i}-${k}` : `${k}-${i}`; if (!vistos.has(c)) { vistos.add(c); A.push([i, k]); } }); });
+    const mix = (a, b, t) => a + (b - a) * t, cor = (t, a) => `rgba(${Math.round(mix(52, 110, t))},${Math.round(mix(98, 228, t))},${Math.round(mix(196, 255, t))},${a})`;
+    // concorrentes da abertura, com a situação de agora (os que têm brecha ficam mais tempo na tela)
+    function paradas() {
+      const C = S.cc; if (!C.carregado || !S.lg.carregado) return null;
+      const ativas = C.eventos.filter(brechaAtiva), nomes = [...new Set([...C.portais.map((p) => nomeSis(p.sistema)), ...C.eventos.map((e) => nomeSis(e.sistema))])];
+      const lista = nomes.map((s) => {
+        const g = grupoSis(s), br = ativas.filter((e) => grupoSis(e.sistema) === g), ps = C.portais.filter((p) => grupoSis(p.sistema) === g), u = quemUsa(s).length;
+        const fora = ps.length && ps.every((p) => p.falhas >= 2), usaTxt = u ? ` · ${fmtN(u)} ${u === 1 ? "administradora usa" : "administradoras usam"}` : "";
+        return { nome: s, sigla: s.replace(/[^A-Za-zÀ-ú]/g, "").slice(0, 3).toUpperCase(), alerta: br.length > 0, chip: fora ? "fora do ar" : br.length ? "brecha aberta" : ps.length ? "portal no ar" : "ok",
+          txt: (fora ? "Portal fora do ar agora" : br.length ? (br[0].tipo === "queda" ? "Portal ficou fora do ar" : `Notícia: ${br[0].titulo}`) : ps.length ? "Portal no ar" : "Sem novidades") + usaTxt };
+      }).sort((a, b) => (b.alerta - a.alerta) || (a.nome === "Superlógica" ? -1 : b.nome === "Superlógica" ? 1 : 0));
+      const fim = ativas.length ? { nome: `${ativas.length} ${ativas.length === 1 ? "brecha aberta" : "brechas abertas"}`, palavra: "Concorrência", alerta: true, chip: "veja abaixo", txt: [...new Set(ativas.map((e) => nomeSis(e.sistema)))].join(", ") + (ativas.length === 1 ? " com brecha aberta" : " com brechas abertas") }
+        : { nome: "Nenhuma brecha aberta", palavra: "Concorrência", alerta: false, chip: "tudo calmo", txt: "Todos os portais no ar e nenhuma notícia de problema." };
+      return { lista, fim };
+    }
+    function montar() {
+      el = document.createElement("div"); el.className = "ab"; el.setAttribute("aria-hidden", "true");
+      el.innerHTML = `<div class="ab-painel"><div class="ab-dentro"><div class="ab-grade"></div><h2 class="ab-palavra"></h2><canvas></canvas>
+        <p class="ab-chip"><i></i><b></b><span></span></p><p class="ab-nome"></p><ol class="ab-trilho"></ol>
+        <p class="ab-canto ce"><b><i></i>Concorrência</b><span>Mapa Comercial · PRG Software</span></p>
+        <p class="ab-canto cd"><b class="ab-qtd">Conferindo os concorrentes</b><span>Portais testados a cada 15 min</span></p>
+        <p class="ab-canto be"><span>Último teste</span><b class="ab-hora">--:--</b></p>
+        <p class="ab-canto bd"><span>Conferindo a concorrência</span><b class="ab-pct">000%</b></p>
+        <button class="ab-pular" type="button">Pular (Esc)</button></div></div>`;
+      document.body.appendChild(el); cv = el.querySelector("canvas"); ctx = cv.getContext("2d");
+      el.addEventListener("click", () => sair(true));
+    }
+    const q = (s) => el.querySelector(s);
+    function medir() { dpr = Math.min(2, devicePixelRatio || 1); S2 = cv.clientWidth; cv.width = Math.round(S2 * dpr); cv.height = Math.round(S2 * dpr); }
+    function desenhar(agora, dados) {
+      const c = ctx, R = S2 * 0.42, cx = S2 / 2, cy = S2 / 2, foco = R * 3.2, cg = Math.cos(giro), sg = Math.sin(giro), ci = Math.cos(-0.28), si = Math.sin(-0.28);
+      c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, S2, S2);
+      const h = c.createRadialGradient(cx, cy, R * 0.1, cx, cy, R * 1.25); h.addColorStop(0, "rgba(70,120,220,.22)"); h.addColorStop(1, "rgba(70,120,220,0)"); c.fillStyle = h; c.beginPath(); c.arc(cx, cy, R * 1.25, 0, 6.283); c.fill();
+      proj = P.map((p, i) => { const x = p.x * cg + p.z * sg, z = -p.x * sg + p.z * cg, y2 = p.y * ci - z * si, z2 = p.y * si + z * ci, k = foco / (foco - z2 * R); return { i, x: cx + x * R * k, y: cy + y2 * R * k, t: (z2 + 1) / 2, p }; });
+      c.lineWidth = 1;
+      for (const [a, b] of A) { const u = proj[a], v = proj[b], tt = (u.t + v.t) / 2; c.strokeStyle = cor(tt, 0.05 + tt * tt * 0.42); c.beginPath(); c.moveTo(u.x, u.y); c.lineTo(v.x, v.y); c.stroke(); }
+      for (const p of [...proj].sort((a, b) => a.t - b.t)) {
+        const pul = 0.75 + 0.25 * Math.sin(agora * 0.0016 + p.p.f);
+        if (p.p.g) { const rr = 5 + 9 * p.t, g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr); g.addColorStop(0, cor(p.t, (0.1 + 0.28 * p.t) * pul)); g.addColorStop(1, cor(p.t, 0)); c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y, rr, 0, 6.283); c.fill(); }
+        c.fillStyle = cor(p.t, (0.18 + 0.82 * p.t * p.t) * pul); c.beginPath(); c.arc(p.x, p.y, 0.7 + 1.9 * p.t, 0, 6.283); c.fill();
+      }
+      if (pino >= 0 && dados) {
+        const pp = proj[pino], mal = dados.alerta, s = Math.min(1, (agora - pinoT) / 350);
+        c.strokeStyle = mal ? `rgba(255,107,107,${0.9 - s * 0.6})` : `rgba(111,228,255,${0.9 - s * 0.6})`; c.lineWidth = 1.5; c.beginPath(); c.arc(pp.x, pp.y, 6 + s * 16, 0, 6.283); c.stroke();
+        c.fillStyle = mal ? "#FF6B6B" : "#6FE4FF"; c.beginPath(); c.arc(pp.x, pp.y, 4.5, 0, 6.283); c.fill();
+        const chip = q(".ab-chip"), base = cv.getBoundingClientRect(), dentro = chip.parentNode.getBoundingClientRect();
+        const gx = base.left - dentro.left + pp.x * (base.width / S2), gy = base.top - dentro.top + pp.y * (base.height / S2), w = chip.offsetWidth, x = gx + 16 + w > dentro.width - 10 ? gx - 16 - w : gx + 16;
+        chip.style.opacity = 1; chip.style.transform = `translate(${Math.max(10, x).toFixed(1)}px,${(gy - 16).toFixed(1)}px)`;
+      }
+    }
+    function escolherPino() { let m = -1, mt = -1; for (const p of proj) { const t = p.t - Math.abs(p.x - S2 * 0.56) / S2 * 0.8 - Math.abs(p.y - S2 * 0.42) / S2 * 0.8; if (t > mt) { mt = t; m = p.i; } } return m; }
+    function mostrar(d, i, lista) {
+      q(".ab-palavra").textContent = d.palavra || d.nome;
+      const n = q(".ab-nome"); n.innerHTML = ""; const b = document.createElement("b"), s = document.createElement("span"); b.textContent = d.nome; s.textContent = d.txt; if (d.alerta) s.className = "alerta"; n.append(b, s);
+      q(".ab-chip b").textContent = d.palavra ? d.nome : d.nome; q(".ab-chip span").textContent = d.chip; q(".ab-chip i").className = d.alerta ? "ruim" : "";
+      [...q(".ab-trilho").children].forEach((li, k) => { li.className = (k < i ? "foi" : k === i ? "agora" : "") + (lista[k]?.alerta ? " alerta" : ""); });
+    }
+    let dados = null;
+    function quadro(agora) {
+      raf = 0; if (fase === "off") return;
+      const dt = ult ? Math.min(50, agora - ult) : 16; ult = agora;
+      if (fase === "entrando") {
+        if (!dados) { dados = paradas(); if (dados) { const ol = q(".ab-trilho"); ol.innerHTML = dados.lista.map((d) => `<li class="${d.alerta ? "alerta" : ""}">${esc(d.sigla)}</li>`).join(""); q(".ab-qtd").textContent = `${dados.lista.length} concorrentes vigiados`; const ult2 = S.cc.portais.map((p) => p.ultimo_teste).filter(Boolean).sort().pop(); q(".ab-hora").textContent = ult2 ? localSP(ult2).slice(11, 16) : "--:--"; t0 = agora; } }
+        const seg = (agora - t0) / 1000, MIN = 3.2, pr = dados ? Math.min(1, seg / MIN) : Math.min(0.12, seg / 10);
+        if (dados) {
+          const pesos = dados.lista.map((d) => (d.alerta ? 4 : 1)).concat([4]), total = pesos.reduce((a, b) => a + b, 0);
+          let i = dados.lista.length, acc = 0; for (let k = 0; k < pesos.length; k++) { acc += pesos[k]; if (pr * total < acc) { i = k; break; } }
+          if (i !== atual) { atual = i; mostrar(dados.lista[i] || dados.fim, i, dados.lista); trocar = true; }
+          if (pr >= 1) sair(false);
+        } else if (atual !== -2) { atual = -2; const n = q(".ab-nome"); n.innerHTML = "<b>Conferindo a concorrência…</b>"; }
+        const v = Math.round(pr * 100); q(".ab-pct").textContent = `${v < 10 ? "00" : v < 100 ? "0" : ""}${v}%`;
+      }
+      giro += dt * (fase === "entrando" ? 0.0012 : 0.0004);
+      if (S2) { const d = dados && atual >= 0 ? dados.lista[atual] || dados.fim : null; desenhar(agora, d); if (trocar && proj.length) { pino = escolherPino(); pinoT = agora; trocar = false; } }
+      raf = requestAnimationFrame(quadro);
+    }
+    function sair(rapido) { if (fase !== "entrando") return; fase = "saindo"; timers.push(setTimeout(subir, rapido ? 0 : 650)); }
+    function subir() {
+      el.classList.add("saindo");
+      const painel = q(".ab-painel");
+      if (painel.animate) painel.animate([{ transform: "translateY(0)", borderBottomLeftRadius: "50% 0", borderBottomRightRadius: "50% 0" }, { transform: "translateY(-120%)", borderBottomLeftRadius: "50% 26vh", borderBottomRightRadius: "50% 26vh" }], { duration: 1000, easing: "cubic-bezier(.76,0,.24,1)", fill: "forwards" });
+      timers.push(setTimeout(fim, 1050));
+    }
+    function fim() { timers.forEach(clearTimeout); timers = []; if (raf) cancelAnimationFrame(raf); raf = 0; fase = "off"; el?.remove(); el = null; document.removeEventListener("keydown", tecla); }
+    const tecla = (e) => { if (e.key === "Escape") sair(true); };
+    function abrir() {
+      if (fase !== "off" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      try { if (sessionStorage.getItem("cc-abertura")) return; sessionStorage.setItem("cc-abertura", "1"); } catch (e) { /* sem sessão: mostra */ }
+      montar(); medir(); dados = null; atual = -1; ult = 0; pino = -1; giro = Math.random() * 6; t0 = performance.now(); fase = "entrando";
+      document.addEventListener("keydown", tecla);
+      timers.push(setTimeout(() => { if (fase !== "off") fim(); }, 12000)); // nunca prende a pessoa
+      raf = requestAnimationFrame(quadro);
+    }
+    addEventListener("resize", () => { if (fase !== "off") medir(); });
+    return { abrir };
+  })();
+
   function formEventoManual() {
     const lista = sistemasConhecidos().filter((n) => n !== NOSSO && n !== "Sem sistema");
     return `<section class="cartao pad"><form class="pilha" style="gap:12px" data-acao="cc-salvar" autocomplete="off">
@@ -2398,6 +2571,7 @@
   }
   function telaConcorrencia() {
     const C = S.cc, L = S.lg;
+    if (!C.abertura) { C.abertura = true; setTimeout(Abertura.abrir, 0); }
     if (!C.carregado) carregarConcorrencia();
     if (!L.carregado && !L.carregando) carregarLig();
     const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Concorrência</h1><p class="fraco" style="margin:0">O sistema testa os portais dos concorrentes a cada 15 minutos e procura notícias a cada 2 horas. Brecha é hora de ligar para quem usa aquele sistema; movimento é para o time ficar sabendo.</p></div>
@@ -2411,9 +2585,7 @@
       corpo = (ativas.length ? `<div class="pilha" style="gap:14px">${ativas.map((e) => cartaoBrecha(e, true)).join("")}</div>` : `<div class="cartao vazio">Nenhuma brecha aberta agora. Quando um concorrente cair ou sair notícia de problema, aparece aqui e no Início.</div>`)
         + (velhas.length ? `<section class="pilha" style="gap:10px;margin-top:8px"><button type="button" class="mini" style="align-self:flex-start" data-acao="cc-velhas">${C.mostrarVelhas ? "Esconder" : "Ver"} brechas encerradas (${fmtN(velhas.length)})</button>${C.mostrarVelhas ? velhas.map((e) => cartaoBrecha(e, false)).join("") : ""}</section>` : "");
     } else if (C.aba === "movimentos") {
-      corpo = movs.length ? `<section class="cartao" style="overflow:hidden">${movs.map((e) => { const [tl, tc] = TIPO_EV[e.tipo] || TIPO_EV.outro; return `<div class="cc-mov"><span class="t12 fraco num">${ddmm(localSP(e.inicio).slice(0, 10))}</span>
-        <span class="pilha" style="gap:2px;min-width:0"><span class="t13"><b>${esc(nomeSis(e.sistema))}</b> · ${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.titulo)}</a>` : esc(e.titulo)}</span><span class="t11 fraco">${esc(e.fonte || "")}${e.detalhe ? ` · ${esc(e.detalhe)}` : ""}</span></span>
-        <span class="selo ${tc}">${tl}</span><button type="button" class="mini" data-acao="cc-descartar" data-id="${e.id}" aria-label="Descartar">Descartar</button></div>`; }).join("")}</section>`
+      corpo = movs.length ? `<div class="pilha" style="gap:14px">${movs.map(cartaoMovimento).join("")}</div>`
         : `<div class="cartao vazio">Nenhum lançamento, parceria ou mudança registrada ainda.</div>`;
     } else {
       const seis = Date.now() - 183 * 86400000;
@@ -2751,6 +2923,12 @@
       case "cc-aba": C.aba = b.dataset.v; render(); break;
       case "cc-form": C.form = !C.form; render(); break;
       case "cc-velhas": C.mostrarVelhas = !C.mostrarVelhas; render(); break;
+      case "cc-editar": C.editando = b.dataset.id ? { id: +b.dataset.id, campo: b.dataset.campo } : null; render(); if (C.editando) document.querySelector('form[data-acao="cc-texto"] textarea')?.focus(); break;
+      case "cc-nota-apagar": {
+        const { error } = await sb.from("concorrencia_notas").delete().eq("id", +b.dataset.id);
+        if (error) { toast("Não deu para apagar. Tente de novo."); break; }
+        C.notas = C.notas.filter((n) => n.id !== +b.dataset.id); render(); break;
+      }
       case "cc-lista": C.sel = C.sel === +b.dataset.id ? null : +b.dataset.id; render(); break;
       case "cc-abrir": C.aba = "brechas"; C.sel = +b.dataset.id; S.view = "concorrencia"; S.voltarAtivo = true; render(); window.scrollTo(0, 0); break;
       case "cc-descartar": {
@@ -2770,7 +2948,23 @@
     }
   });
   app.addEventListener("submit", async (ev) => {
-    const f = ev.target; if (f.dataset.acao !== "cc-salvar") return;
+    const f = ev.target;
+    if (f.dataset.acao === "cc-texto") {
+      ev.preventDefault();
+      const id = +f.dataset.id, campo = f.dataset.campo, texto = String(new FormData(f).get("texto") || "").trim();
+      const { error } = await sb.rpc("editar_texto_evento", { p_id: id, p_campo: campo, p_texto: texto });
+      if (error) { toast("Não deu para salvar. Tente de novo."); return; }
+      const e = S.cc.eventos.find((x) => x.id === id); if (e) { e[campo] = texto || null; e.editado_por = S.user.id; }
+      S.cc.editando = null; toast("Salvo."); render(); return;
+    }
+    if (f.dataset.acao === "cc-nota") {
+      ev.preventDefault();
+      const inp = f.querySelector("input"), texto = String(inp.value || "").trim(); if (!texto) { inp.focus(); return; }
+      const { data, error } = await sb.from("concorrencia_notas").insert({ evento_id: +f.dataset.id, usuario_id: S.user.id, texto }).select().single();
+      if (error) { toast("Não deu para anotar. Tente de novo."); return; }
+      S.cc.notas.push(data); render(); return;
+    }
+    if (f.dataset.acao !== "cc-salvar") return;
     ev.preventDefault();
     const fd = new FormData(f), [categoria, tipo] = String(fd.get("tipo") || "").split(":");
     const sistema = String(fd.get("sistema") || ""), titulo = String(fd.get("titulo") || "").trim();

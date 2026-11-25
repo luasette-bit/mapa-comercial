@@ -43,3 +43,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Nome oficial dos sistemas garantido no banco (função `nome_oficial_sistema` + gatilhos em fichas, empresas, marcações e concorrência): "Almah" vira "Almah Condos", "Cond21" vira "Group Software (Condomínio21)" etc.
 - **Funções do time**: no cadastro a pessoa escolhe SDR, Vendedor, Pós-vendas ou Gestor (`perfis.funcao`); a Equipe mostra e troca a função. "Papel" continua sendo o acesso (próprios dados ou vê tudo).
 
+## Concorrência completa (v45)
+- Cada brecha mostra: o que aconteceu (texto montado pelo sistema nas quedas; resumo nas notícias), fatos (início, duração, quedas em 6 meses), **Como usar na ligação** (roteiro editável pelo time), **O que as administradoras disseram** (anotações das ligações, tabela `concorrencia_notas`) e o resultado da brecha.
+- Movimentos têm resumo, **Para vendas** e **Para o pós-venda**, editáveis (`editar_texto_evento`).
+- Resumo automático só para links diretos (blog, registros à mão): o vigia guarda a descrição oficial da página (meta description). Os links do Google Notícias não levam direto à matéria; o resumo dessas fica para o time escrever.
+- **Abertura animada** da página (1 vez por sessão, pula com Esc ou clique): o globo da marca passa pelos concorrentes com a situação real de cada um (quem tem brecha fica mais tempo e em vermelho) e termina no total de brechas abertas.
+
