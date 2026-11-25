@@ -13,7 +13,7 @@
   const SOFTWARES = ["Superlógica", "Group Software (Condomínio21)", "Almah", "CondoMob", "uCondo", "TownSq", "CondoPanel", "Condominizar", "Omeupredio (PRG)", "Ahreas", "Winker", "Webware", "Hitecnet"];
   const CNAES = { "6822600": "Gestão e administração da propriedade imobiliária", "6821801": "Corretagem na compra e venda de imóveis", "6821802": "Corretagem no aluguel de imóveis", "6810202": "Aluguel de imóveis próprios", "6920601": "Atividades de contabilidade", "8112500": "Condomínios prediais", "4120400": "Construção de edifícios" };
   const COR_TIPO = { "Administradora": "#2A3F72", "Imobiliária": "#B4410E", "Construtora": "#5B2A86", "Contabilidade": "#1E7A46" };
-  const COLS = "cnpj,cnpj_basico,razao_social,nome_fantasia,matriz,situacao,data_inicio,cnae_principal,cnaes_secundarios,tipo,atividade_principal_condominio,uf,municipio,logradouro,numero,complemento,bairro,cep,telefone1,telefone2,email,porte,referencia_receita,atualizado_em,tel_status,tel_por,tel_em,email_status,qtd_socios,removido,exportada,nova,nota,lat,lon,geo_precisao,nome_condominio,site,site_situacao,sistema,sistema_prova,sistema_em,sistema_status,sistema_por,sistema_marcado,sistema_pista,sistema_pista_url";
+  const COLS = "cnpj,cnpj_basico,razao_social,nome_fantasia,matriz,situacao,data_inicio,cnae_principal,cnaes_secundarios,tipo,atividade_principal_condominio,uf,municipio,logradouro,numero,complemento,bairro,cep,telefone1,telefone2,whatsapp,whatsapp_em,email,porte,referencia_receita,atualizado_em,tel_status,tel_por,tel_em,email_status,qtd_socios,removido,exportada,nova,nota,lat,lon,geo_precisao,nome_condominio,site,site_situacao,sistema,sistema_prova,sistema_em,sistema_status,sistema_por,sistema_marcado,sistema_pista,sistema_pista_url";
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
   const $ = (s, r = document) => r.querySelector(s);
@@ -243,11 +243,86 @@
     if (!s.nome) return `<span class="pilha" style="gap:2px;align-items:flex-start"><span class="selo s-vazio">Não identificado</span><span class="t11 fraco">${esc(motivoSemSistema(r))}</span></span>`;
     return `<span class="pilha" style="gap:2px;align-items:flex-start"><span class="selo s-sis">${esc(s.nome)}</span><span class="t11 ${s.nivel === "provavel" ? "fraco" : "origem-ok"}">${s.nivel === "provavel" ? "provável, pelo site" : s.nivel === "corrigido" ? "corrigido pela equipe" : "confirmado pela equipe"}</span></span>`;
   }
+
+  /* ---- Como falar: números e e-mails com a origem de cada um, botão de WhatsApp e de e-mail */
+  const digitos = (s) => String(s || "").replace(/\D/g, "");
+  // número nacional (DDD + número), sem o 55 do Brasil
+  const nacional = (s) => { let d = digitos(s); if (d.length >= 12 && d.startsWith("55")) d = d.slice(2); return d.length === 10 || d.length === 11 ? d : ""; };
+  const ehCelular = (n) => n.length === 11 && n[2] === "9";
+  const fmtTel = (n) => (n.length === 11 ? `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}` : n.length === 10 ? `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}` : n);
+  const ICO_WPP = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.04 2a9.9 9.9 0 0 0-8.5 14.98L2 22l5.17-1.5A9.93 9.93 0 1 0 12.04 2zm0 18.13a8.2 8.2 0 0 1-4.2-1.15l-.3-.18-3.07.9.92-2.98-.2-.31a8.22 8.22 0 1 1 6.85 3.72zm4.5-6.15c-.25-.12-1.46-.72-1.69-.8-.23-.08-.39-.12-.55.12-.16.25-.63.8-.78.96-.14.17-.29.19-.53.06a6.7 6.7 0 0 1-1.98-1.22 7.43 7.43 0 0 1-1.37-1.7c-.14-.25 0-.38.11-.5l.37-.43c.12-.15.16-.25.25-.41.08-.17.04-.31-.02-.44-.06-.12-.55-1.33-.76-1.82-.2-.48-.4-.41-.55-.42h-.47a.9.9 0 0 0-.65.3 2.74 2.74 0 0 0-.86 2.04 4.76 4.76 0 0 0 1 2.53 10.9 10.9 0 0 0 4.18 3.7c.58.25 1.04.4 1.4.51.58.19 1.12.16 1.54.1.47-.07 1.46-.6 1.66-1.17.2-.58.2-1.07.15-1.17-.06-.1-.22-.17-.47-.29z"/></svg>';
+  const ICO_MAIL = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const ICO_LIGAR = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+  const ASSUNTO_EMAIL = "PRG · Mapa Comercial — contato";
+  // o número do WhatsApp vai inteiro, com o 55 (no celular abre o app)
+  const linkWpp = (n) => `https://wa.me/${digitos(n).length >= 12 ? digitos(n) : "55" + n}`;
+  const botaoWpp = (n, quem, cls = "") => `<a class="bt-wpp ${cls}" href="${linkWpp(n)}" target="_blank" rel="noopener" aria-label="Abrir conversa no WhatsApp${quem ? ` com ${esc(quem)}` : ""} (abre em nova aba)">${ICO_WPP}<span>WhatsApp</span></a>`;
+  const botaoEmail = (email, quem, cls = "") => `<a class="bt-email ${cls}" href="mailto:${encodeURIComponent(email).replace(/%40/g, "@")}?subject=${encodeURIComponent(ASSUNTO_EMAIL)}" aria-label="Enviar e-mail para ${esc(quem || email)}">${ICO_MAIL}<span>Enviar e-mail</span></a>`;
+  const botaoLigar = (n, quem, cls = "") => `<a class="bt-ligar ${cls}" href="tel:+55${n}" aria-label="Ligar para ${esc(quem || fmtTel(n))}">${ICO_LIGAR}<span>Ligar</span></a>`;
+  // WhatsApp de uma empresa (tabela empresas): o do site; se não tiver, o celular do CNPJ. Fixo não conta.
+  function wppEmpresa(e) {
+    if (!e) return null;
+    const site = digitos(e.whatsapp);
+    if (site.length >= 12) return { n: site, origem: "site", rotulo: "WhatsApp do site" };
+    for (const t of [e.telefone1, e.telefone2]) { const n = nacional(t); if (ehCelular(n)) return { n, origem: "cnpj", rotulo: "celular do CNPJ" }; }
+    return null;
+  }
+  // todos os jeitos de falar com a administradora, sem repetir número; cada um com a origem
+  const ORIGEM = {
+    site: ["site", "WhatsApp do site", "Tirado do botão de WhatsApp do site da empresa. Costuma ser o comercial."],
+    contato: ["contato", "Contato cadastrado", ""],
+    ficha: ["ficha", "Anotado na ficha", "Escrito pela equipe na ficha."],
+    resp: ["ficha", "Número do responsável", "Escrito pela equipe na ficha."],
+    cnpj: ["cnpj", "Telefone do CNPJ", "Cadastro da Receita. Às vezes é da contabilidade."],
+  };
+  function canaisDaFicha(f, emp, contatos) {
+    const tels = new Map(), mails = new Map();
+    const cnpjNums = new Set([emp?.telefone1, emp?.telefone2].map(nacional).filter(Boolean));
+    const add = (num, origem, extra = {}) => {
+      const d = digitos(num), n = d.length >= 12 && !d.startsWith("55") ? "" : nacional(num); if (!n) return;
+      const k = n.slice(-10), a = tels.get(k);
+      if (a) { if (extra.wpp) a.wpp = true; if (extra.quem && !a.quem) a.quem = extra.quem; return; }
+      tels.set(k, { n, origem: origem === "ficha" && cnpjNums.has(n) ? "cnpj" : origem, wpp: !!extra.wpp || ehCelular(n), quem: extra.quem || "", cargo: extra.cargo || "", desde: extra.desde || "" });
+    };
+    const site = digitos(emp?.whatsapp);
+    if (site.length >= 12) add(site, "site", { wpp: true, desde: emp.whatsapp_em });
+    for (const c of contatos || []) {
+      for (const t of [c.whatsapp, c.celular, c.telefone]) add(t, "contato", { quem: c.nome, cargo: c.cargo, wpp: t === c.whatsapp && !!t });
+      if (c.email) mails.set(c.email.toLowerCase(), { email: c.email, origem: "contato", quem: c.nome, cargo: c.cargo });
+    }
+    if (f?.whatsapp) add(f.whatsapp, "ficha", { wpp: true });
+    for (const t of String(f?.telefones || "").split(/\s*[|/,;]\s*|\s+e\s+/)) add(t, "ficha");
+    if (f?.numero_responsavel) add(f.numero_responsavel, "resp", { quem: f.responsavel || "" });
+    for (const t of [emp?.telefone1, emp?.telefone2]) add(t, "cnpj");
+    const fe = (f?.email || "").trim(), ee = (emp?.email || "").trim();
+    if (fe && !mails.has(fe.toLowerCase())) mails.set(fe.toLowerCase(), { email: fe, origem: ee && fe.toLowerCase() === ee.toLowerCase() ? "cnpj" : "ficha" });
+    if (ee && !mails.has(ee.toLowerCase())) mails.set(ee.toLowerCase(), { email: ee, origem: "cnpj" });
+    const ordem = { site: 0, contato: 1, ficha: 2, resp: 2, cnpj: 3 };
+    return { cnpjNums, tels: [...tels.values()].sort((a, b) => ordem[a.origem] - ordem[b.origem] || b.wpp - a.wpp), mails: [...mails.values()].sort((a, b) => ordem[a.origem] - ordem[b.origem]) };
+  }
+  function blocoCanais(f, emp, contatos, carregando) {
+    const { tels, mails, cnpjNums } = canaisDaFicha(f, emp, contatos);
+    const selo = (o, mail) => { const [cls, txt0, dica0] = ORIGEM[o], txt = mail && o === "cnpj" ? "E-mail do CNPJ" : txt0, dica = mail && o === "cnpj" ? "Cadastro da Receita. Às vezes é da contabilidade." : dica0; return `<span class="mc-origem mc-origem-${cls}" ${dica ? `title="${esc(dica)}"` : ""}>${txt}</span>`; };
+    const linhaTel = (t) => `<li class="mc-canal"><div class="mc-canal-info"><b class="num">${esc(fmtTel(t.n))}</b>
+        <span class="mc-canal-sub">${selo(t.origem)}${t.quem ? `<span>${esc(t.quem)}${t.cargo ? ` · ${esc(t.cargo)}` : ""}</span>` : ""}${!t.wpp ? `<span>fixo</span>` : ""}${t.origem !== "cnpj" && cnpjNums.has(t.n) ? `<span class="mc-canal-tambem">é o mesmo do CNPJ</span>` : ""}</span>
+        ${t.origem === "cnpj" ? `<span class="mc-canal-aviso">Pode ser da contabilidade</span>` : ""}</div>
+      <div class="mc-canal-acoes">${t.wpp ? botaoWpp(t.n, t.quem || f.nome) : ""}${t.n.length <= 11 ? botaoLigar(t.n, t.quem || f.nome) : ""}</div></li>`;
+    const linhaMail = (m) => `<li class="mc-canal"><div class="mc-canal-info"><b class="mc-mail">${esc(m.email)}</b><span class="mc-canal-sub">${selo(m.origem, true)}${m.quem ? `<span>${esc(m.quem)}${m.cargo ? ` · ${esc(m.cargo)}` : ""}</span>` : ""}</span>
+        ${m.origem === "cnpj" ? `<span class="mc-canal-aviso">Pode ser da contabilidade</span>` : ""}</div><div class="mc-canal-acoes">${botaoEmail(m.email, m.quem || f.nome)}</div></li>`;
+    return `<div class="mc-canais mc-largo-sempre" id="mc-canais-${f.id}"><span class="mc-canais-tit">Como falar${carregando ? '<i class="mc-canais-carr">buscando números do site e dos contatos…</i>' : ""}</span>
+      ${tels.length || mails.length ? `<ul>${tels.map(linhaTel).join("")}${mails.map(linhaMail).join("")}</ul>` : `<p class="fx-vazio">Nenhum número ou e-mail ainda.</p>`}</div>`;
+  }
+  function atualizarCanais(fichaId) {
+    const el = document.getElementById("mc-canais-" + fichaId), f = S.lg.fichaPorId?.get(fichaId), reg = S.fx.cache.get(fichaId);
+    if (el && f && reg) el.outerHTML = blocoCanais(f, reg.emp, reg.contatos, reg.estado === "carregando");
+  }
+
   function linhaEmpresa(r, dist) {
     const soc = S.socios.get(r.cnpj_basico) || [];
     const [tl, tc] = nivelTel(r);
     const [nl, nc, bc] = nivelNota(r.nota || 0);
-    return `<button type="button" class="t-linha" data-acao="sel" data-cnpj="${esc(r.cnpj)}" aria-pressed="${S.sel === r.cnpj}">
+    const wl = wppEmpresa(r);
+    return `<div class="t-item">${wl ? `<div class="t-sobre ${dist != null ? "t-sobre-reg" : ""}"><span class="t-sobre-cel">${botaoWpp(wl.n, nomeEmp(r), "bt-wpp-mini")}</span></div>` : ""}<button type="button" class="t-linha" data-acao="sel" data-cnpj="${esc(r.cnpj)}" aria-pressed="${S.sel === r.cnpj}">
       ${dist != null ? `<span class="num t13"><b>${dist < 1 ? Math.round(dist * 1000) + " m" : dist.toFixed(1).replace(".", ",") + " km"}</b>${r.geo_precisao && r.geo_precisao !== "endereco" ? `<br><span class="t11 fraco">pela ${r.geo_precisao === "bairro" ? "região do bairro" : "rua"}</span>` : ""}</span>` : ""}
       <span class="pilha" style="gap:4px">
         <span class="t-nome">${esc(nomeEmp(r))}</span>
@@ -255,11 +330,11 @@
         <span class="linha-flex" style="gap:5px">${tagsEmpresa(r)}</span>
       </span>
       ${dist == null ? `<span class="t13 num cnpj">${esc(fmtCnpj(r.cnpj))}</span>` : ""}
-      <span class="pilha" style="gap:4px;align-items:flex-start"><span class="t13 num cnpj ${r.tel_status === "errado" ? "riscado" : ""}">${esc(r.telefone1 || "Sem telefone")}</span><span class="selo ${tc}">${tl}</span></span>
+      <span class="pilha" style="gap:4px;align-items:flex-start"><span class="t13 num cnpj ${r.tel_status === "errado" ? "riscado" : ""}">${esc(r.telefone1 || "Sem telefone")}</span><span class="selo ${tc}">${tl}</span>${wl ? `<span class="t11 ${wl.origem === "site" ? "origem-ok" : "fraco"}">${wl.origem === "site" ? "WhatsApp do site" : "celular do CNPJ"}</span>` : ""}</span>
       <span class="pilha" style="gap:2px"><span class="t13 corta2">${esc(soc[0] ? titulo(soc[0].nome) : "Não informado")}</span><span class="t11 fraco">${esc(soc[0] ? (soc[0].qualificacao || "Sócio") + (soc.length > 1 ? ` · +${soc.length - 1}` : "") : "Sem sócio na Receita")}</span></span>
       ${celulaSistema(r)}
       <span class="pilha"><span class="linha-flex t12" style="justify-content:space-between"><span class="${nc}">${nl}</span><span class="fraco num">${r.nota || 0}/99</span></span><span class="barra" style="height:6px"><i class="${bc}" style="width:${r.nota || 0}%"></i></span></span>
-    </button>`;
+    </button></div>`;
   }
 
   /* --------------------------------------------------------------- telas */
@@ -517,6 +592,7 @@
       const src = m ? `<span class="origem ${m.status === "confirmado" ? "origem-ok" : "origem-erro"}">${m.status === "confirmado" ? "Confirmado" : "Marcado como errado"} por ${esc(m.usuario_nome)} em ${esc(fmtData(m.criado_em))}</span>` : `<span class="origem">Origem: Receita Federal (cadastro do CNPJ)${esc(atual)}</span>`;
       return `<div class="campo-ficha"><div class="linha-flex" style="justify-content:space-between"><span class="t12 fraco">${label}</span><span class="selo ${cls}">${lvl}</span></div>
         <span class="valor ${m?.status === "errado" ? "riscado" : ""}">${valor ? esc(valor) : '<span class="fraco">Não informado na Receita</span>'}</span>${src}
+        ${label === "E-mail" && valor && m?.status !== "errado" ? `<span class="linha-flex" style="margin-top:2px">${botaoEmail(valor, nomeEmp(r))}</span>` : ""}
         ${valor ? `<span class="linha-flex" style="margin-top:2px">${m ? `<button type="button" class="mini" data-acao="desfazer" data-campo="${label}">Desfazer</button>` : `<button type="button" class="mini mini-ok" data-acao="marcar" data-campo="${label}" data-status="confirmado">✓ Confirmei</button><button type="button" class="mini mini-erro" data-acao="marcar" data-campo="${label}" data-status="errado">✗ Está errado</button>`}${label === "Telefone" && r.telefone1 && /^\(\d{2}\) 9/.test(r.telefone1) ? `<a class="mini mini-ok" style="display:inline-flex;align-items:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/55${r.telefone1.replace(/\D/g, "")}">WhatsApp</a>` : ""}</span>` : ""}
       </div>`;
     };
@@ -527,6 +603,10 @@
       [!!r.nome_condominio, "O nome indica administração de condomínios"],
     ];
     const grupo = S.grupo.filter((g) => g.cnpj !== r.cnpj);
+    const wE = wppEmpresa(r);
+    const blocoWpp = `<div class="campo-ficha"><div class="linha-flex" style="justify-content:space-between"><span class="t12 fraco">WhatsApp</span><span class="selo ${wE ? "s-conf" : "s-vazio"}">${wE ? (wE.origem === "site" ? "Do site" : "Celular do CNPJ") : "Não encontrado"}</span></div>
+      ${wE ? `<span class="valor num">${esc(fmtTel(nacional(wE.n)))}</span><span class="origem ${wE.origem === "site" ? "origem-ok" : ""}">${wE.origem === "site" ? `Origem: botão de WhatsApp do site da empresa${r.whatsapp_em ? ` (visto em ${esc(fmtData(r.whatsapp_em))})` : ""}. Costuma ser o comercial.` : "Origem: Receita Federal (cadastro do CNPJ). Pode ser da contabilidade."}</span>
+      <span class="linha-flex" style="margin-top:4px">${botaoWpp(nacional(wE.n), nomeEmp(r))}</span>` : `<span class="valor"><span class="fraco">Sem WhatsApp no site e sem celular no CNPJ</span></span>`}</div>`;
     return `<aside class="cartao painel painel-lg" aria-label="Detalhes da empresa">
       <button type="button" class="mini fechar-painel" data-acao="fechar-painel">Fechar ✕</button>
       <div class="pilha">
@@ -541,7 +621,7 @@
       ${blocoLigacaoMapa(r)}
       <details class="lg-bloco" open><summary><b>Dados da Receita</b><span class="t12 fraco">sistema, contato, sócios</span></summary><div class="pilha receita-grade" style="gap:18px;margin-top:10px">
       ${caixaSistema(r)}
-      <div class="pilha" style="gap:10px"><span style="font-size:12px;font-weight:700">Contato</span>${campos.map(campo).join("")}</div>
+      <div class="pilha" style="gap:10px"><span style="font-size:12px;font-weight:700">Contato</span>${campo(campos[0])}${blocoWpp}${campos.slice(1).map(campo).join("")}</div>
       <div class="pilha" style="gap:10px">
         <div class="linha-flex" style="justify-content:space-between"><span style="font-size:12px;font-weight:700">Sócios e administradores</span>${soc.length ? '<span class="selo s-ident">Identificado</span>' : ""}</div>
         <span class="origem">Origem: Receita Federal (quadro societário)</span>
@@ -1716,18 +1796,12 @@
     const conversa = primeiro ? diasEntre(primeiro, hj) : 0;
     const ic = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${d}</svg>`;
     const I = { cidade: ic('<path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>'), pessoa: ic('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'), tel: ic('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>'), email: ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'), fone: ic('<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/>'), relogio: ic('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), wpp: ic('<path d="M21 12a9 9 0 0 1-13.5 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/>'), nota: ic('<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/>'), predio: ic('<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>') };
-    const telLink = (t) => { const n = String(t).replace(/\D/g, ""); return n.length >= 10 ? `<a href="tel:+55${n.slice(-11)}">${esc(t)}</a>` : esc(t); };
-    const wppN = String(f.whatsapp || "").replace(/\D/g, "");
     const dados = [
       ["cidade", "Cidade", [f.cidade, f.uf].filter(Boolean).join(" - ")],
       ["pessoa", "Responsável", f.responsavel],
-      ["tel", "Telefones", f.telefones ? String(f.telefones).split(/\s*[|/,]\s*/).map(telLink).join(" · ") : "", true],
-      ["wpp", "WhatsApp", f.whatsapp ? (wppN.length >= 10 ? `<a target="_blank" rel="noopener" href="https://wa.me/55${wppN.slice(-11)}">${esc(f.whatsapp)}</a>` : esc(f.whatsapp)) : "", true],
-      ["email", "E-mail", f.email ? `<a href="mailto:${esc(f.email)}">${esc(f.email)}</a>` : "", true, true],
       ["fone", "Atendente", f.atendente],
       ["relogio", "Melhor horário", f.melhor_horario],
       ["relogio", "Funcionamento", f.horario_funcionamento],
-      ["tel", "Número do responsável", f.numero_responsavel ? telLink(f.numero_responsavel) : "", true],
       ["predio", "Unidades", f.qtd_unidades ? fmtN(f.qtd_unidades) : ""],
       ["nota", "Informações adicionais", f.observacoes, false, true],
     ].filter((d) => d[2]).map(([i, l, v, html, largo]) => `<div class="mc-dado ${largo ? "mc-largo-sempre" : ""}"><span>${I[i]}${l}</span><b>${html ? v : esc(v)}</b></div>`).join("");
@@ -1765,7 +1839,7 @@
             <div class="mc-numero"><b data-conta="${conversa}">${visto ? conversa : 0}</b><span>${conversa === 1 ? "dia de conversa" : "dias de conversa"}</span></div>
             <div class="mc-numero"><b data-conta="${terceiro[0]}">${visto ? terceiro[0] : 0}</b><span>${terceiro[1]}</span></div>
           </div>
-          <div class="mc-dados">${dados}</div>
+          <div class="mc-dados">${(() => { const reg = garantirFx(f.id); return blocoCanais(f, reg.emp, reg.contatos, reg.estado === "carregando"); })()}${dados}</div>
           ${ro || !S.vd.carregado ? "" : `<label class="mc-etapa">Etapa no funil SCC ${seletorEtapa(f, "")}</label>`}
           ${painelFx(f, ro)}
         </div>
@@ -1895,7 +1969,8 @@
     if (L.dono && L.dono !== S.user.id) { L.dono = null; L.carregado = false; }
     if (!L.carregado) { if (!L.carregando) carregarLig(); return `<div class="caixa-cinza"><span class="t13 fraco">Abrindo a ficha…</span></div>`; }
     const f = fichaDoCnpj(r.cnpj), soc = S.socios.get(r.cnpj_basico) || []; if (f) garantirTextos(f.id);
-    const base = f || { nome: nomeEmp(r), telefones: [r.telefone1, r.telefone2].filter(Boolean).join(" / ") || null, email: r.email || null, cidade: r.municipio ? titulo(r.municipio) : null, uf: r.uf || null, sistema: sistemaDe(r).nome || null, cnpj: r.cnpj };
+    const wB = wppEmpresa(r);
+    const base = f || { nome: nomeEmp(r), telefones: [r.telefone1, r.telefone2].filter(Boolean).join(" / ") || null, whatsapp: wB?.origem === "site" ? fmtTel(nacional(wB.n)) : null, email: r.email || null, cidade: r.municipio ? titulo(r.municipio) : null, uf: r.uf || null, sistema: sistemaDe(r).nome || null, cnpj: r.cnpj };
     const regs = f ? [...(L.porFicha.get(f.id) || [])].reverse() : [];
     const resumo = f ? `<div class="caixa-cinza"><div class="linha-flex" style="justify-content:space-between"><b class="t13">Já está nas suas administradoras</b><button type="button" class="mini" data-acao="lg-abrir" data-id="${f.id}">Ver ficha completa</button></div>
         <span class="linha-flex" style="gap:6px"><span class="selo ${etapaDaFicha(f).cor}">${esc(etapaDaFicha(f).nome)}</span>${f.retorno_em ? celulaRetorno(f) : ""}</span>
@@ -2343,11 +2418,13 @@
     const C = S.fx.cache; if (C.has(fichaId)) return C.get(fichaId);
     const reg = { estado: "carregando", tarefas: [], contatos: [] }; C.set(fichaId, reg);
     if (!S.vd.carregado && !S.vd.carregando) carregarVendas();
+    const cnpj = S.lg.fichaPorId?.get(fichaId)?.cnpj;
     Promise.all([
+      cnpj ? sb.from("empresas").select("cnpj,whatsapp,whatsapp_em,telefone1,telefone2,email").eq("cnpj", cnpj).maybeSingle().then((r) => r.data || null) : null,
       sb.from("tarefas").select(COLS_TAREFA).eq("ficha_id", fichaId).order("prazo", { ascending: true, nullsFirst: false }).then(dados),
       sb.from("contatos").select(COLS_CONTATO).eq("ficha_id", fichaId).order("nome").then(dados),
-    ]).then(([t, c]) => { reg.tarefas = t; reg.contatos = c; reg.estado = "ok"; }, (e) => { console.error(e); reg.estado = "erro"; C.delete(fichaId); })
-      .finally(() => atualizarPainelFx(fichaId));
+    ]).then(([emp, t, c]) => { reg.emp = emp; reg.tarefas = t; reg.contatos = c; reg.estado = "ok"; }, (e) => { console.error(e); reg.estado = "erro"; C.delete(fichaId); })
+      .finally(() => { atualizarPainelFx(fichaId); atualizarCanais(fichaId); });
     return reg;
   }
   const tsTarefa = (t) => (t.prazo ? Date.parse(t.prazo) : Infinity);
@@ -2356,8 +2433,6 @@
     if (!t.prazo) return "Sem prazo";
     const q = quandoTxt(t.prazo); return t.dia_todo ? q.split(" · ")[0] : q;
   }
-  const telA = (n, rot) => { const d = String(n || "").replace(/\D/g, ""); return d.length >= 10 ? `<a href="tel:+${d.length > 11 ? d : "55" + d}">${esc(rot || n)}</a>` : esc(n); };
-  const wppA = (n) => { const d = String(n || "").replace(/\D/g, ""); return d.length >= 10 ? `<a target="_blank" rel="noopener" href="https://wa.me/${d.length > 11 ? d : "55" + d}">WhatsApp</a>` : ""; };
   const ICO_FX = {
     ok: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
     mais: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
@@ -2439,9 +2514,11 @@
     const card = (c) => {
       if (X.form === "contato:" + c.id) return `<li>${formContato(f, c)}</li>`;
       const tel = c.telefone || c.celular, ini = c.nome.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
-      const links = [tel ? telA(tel) : "", wppA(c.whatsapp || (String(tel || "").replace(/\D/g, "").length >= 11 ? tel : "")), c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ""].filter(Boolean);
+      const nt = nacional(tel), nw = nacional(c.whatsapp) || (ehCelular(nacional(c.celular)) ? nacional(c.celular) : ehCelular(nt) ? nt : "");
+      const links = [nt ? `<span class="num">${esc(fmtTel(nt))}</span>` : "", c.email ? `<span>${esc(c.email)}</span>` : ""].filter(Boolean);
+      const botoes = [nw ? botaoWpp(nw, c.nome) : "", nt ? botaoLigar(nt, c.nome) : "", c.email ? botaoEmail(c.email, c.nome) : ""].join("");
       return `<li class="fx-contato"><span class="fx-ini" aria-hidden="true">${esc(ini)}</span><div class="fx-c"><span class="fx-c-cab"><b>${esc(c.nome)}</b>${c.cargo ? `<span>${esc(c.cargo)}</span>` : ""}</span>
-        ${links.length ? `<span class="fx-links">${links.join("")}</span>` : ""}${c.observacoes ? `<span class="fx-texto">${esc(c.observacoes)}</span>` : ""}</div>
+        ${links.length ? `<span class="fx-links">${links.join("")}</span>` : ""}${botoes ? `<span class="mc-canal-acoes">${botoes}</span>` : ""}${c.observacoes ? `<span class="fx-texto">${esc(c.observacoes)}</span>` : ""}</div>
         ${ro ? "" : `<button type="button" class="fx-editar" data-acao="fx-form" data-v="contato:${c.id}">Editar</button>`}</li>`;
     };
     return `${ro ? "" : X.form === "contato" ? formContato(f, null) : `<button type="button" class="fx-novo" data-acao="fx-form" data-v="contato">${ICO_FX.mais}Adicionar contato</button>`}
@@ -2519,7 +2596,7 @@
     const { data, error } = await q;
     if (error) { console.error(error); toast("Não foi possível salvar o contato. Tente de novo."); return; }
     if (reg) { const i = reg.contatos.findIndex((c) => c.id === data.id); if (i >= 0) reg.contatos[i] = data; else reg.contatos.push(data); reg.contatos.sort((a, b) => COLL.compare(a.nome, b.nome)); }
-    S.fx.form = null; atualizarPainelFx(fichaId); toast(id ? "Contato atualizado." : "Contato adicionado.");
+    S.fx.form = null; atualizarPainelFx(fichaId); atualizarCanais(fichaId); toast(id ? "Contato atualizado." : "Contato adicionado.");
   }
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao^='fx-']"); if (!b) return;

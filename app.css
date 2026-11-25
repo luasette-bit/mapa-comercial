@@ -1090,3 +1090,51 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .fx-painel { backdrop-filter: none; -webkit-backdrop-filter: none; background: linear-gradient(160deg, #1a2b66d9, #14205acc); }
 /* histórico: só as 8 primeiras pastas entram animadas */
 .upw-sec-files__item:nth-child(n+9) > .upw-sec-files__folder { animation: none !important; transition-delay: 0s !important; }
+
+/* ---- Botões de WhatsApp, e-mail e ligar */
+.bt-wpp, .bt-email, .bt-ligar { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 0 14px; border-radius: 99px; font-weight: 600; font-size: 13.5px; line-height: 1; font-family: inherit; text-decoration: none; white-space: nowrap; transition: background-color .15s, border-color .15s, color .15s; }
+.bt-wpp svg, .bt-email svg, .bt-ligar svg { width: 17px; height: 17px; flex: none; }
+.bt-wpp { background: #128C4A; color: #fff; border: 1px solid #128C4A; }
+.bt-wpp:hover { background: #0D7038; border-color: #0D7038; color: #fff; }
+.bt-email, .bt-ligar { background: #fff; color: var(--link, #2C63DB); border: 1px solid #C9D4EA; }
+.bt-email:hover, .bt-ligar:hover { border-color: var(--link, #2C63DB); background: #F3F6FD; }
+.bt-wpp:focus-visible, .bt-email:focus-visible, .bt-ligar:focus-visible { outline: 2px solid #39B3F0; outline-offset: 2px; }
+.bt-wpp-mini { width: 32px; min-height: 32px; padding: 0; }
+.bt-wpp-mini span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.bt-wpp-mini svg { width: 18px; height: 18px; }
+
+/* lista do mapeamento: o botão fica por cima da coluna do telefone (link não pode ficar dentro do botão da linha) */
+.t-item { position: relative; }
+.t-sobre { position: absolute; inset: 0; z-index: 1; display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(138px, 1.2fr) minmax(118px, 1.1fr) minmax(0, 1.45fr) minmax(0, 1.1fr) minmax(0, 1.1fr); gap: 14px; padding: 13px 18px; pointer-events: none; }
+.regiao .t-sobre { grid-template-columns: 0.7fr 2.6fr 1.35fr 1.35fr 1.4fr 1.15fr; }
+.t-sobre-cel { grid-column: 3; justify-self: end; align-self: end; pointer-events: auto; }
+
+/* ficha: Como falar */
+.mc-canais { grid-column: 1 / -1; display: grid; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #ffffff0f; border: 1px solid #ffffff1f; }
+.mc-canais-tit { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font: 600 11.5px/1.3 var(--upw-sans); color: var(--upw-muted); }
+.mc-canais-carr { font-style: normal; font-weight: 500; color: #8FA3CC; }
+.mc-canais ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.mc-canal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 9px 10px; border-radius: 10px; background: #06102f59; }
+.mc-canal-info { display: grid; gap: 4px; min-width: 0; }
+.mc-canal-info b { font: 600 15px/1.25 var(--upw-sans); color: var(--upw-ink); overflow-wrap: anywhere; }
+.mc-canal-info .mc-mail { font-size: 14px; }
+.mc-canal-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font: 500 12.5px/1.3 var(--upw-sans); color: #A9BEE6; }
+.mc-origem { padding: 3px 8px; border-radius: 99px; font: 700 11px/1.2 var(--upw-sans); }
+.mc-origem-site { background: #25D36626; color: #7BE8A4; }
+.mc-origem-contato { background: #39B3F026; color: #8FD3F7; }
+.mc-origem-ficha { background: #ffffff1a; color: #DCE6FA; }
+.mc-origem-cnpj { background: #F5B54226; color: #F7CD7E; }
+.mc-canal-aviso { font: 500 12px/1.3 var(--upw-sans); color: #F7CD7E; }
+.mc-canal-acoes { display: flex; flex-wrap: wrap; gap: 6px; }
+.ficha-escura .bt-email, .ficha-escura .bt-ligar { background: transparent; color: #DCE6FA; border-color: #ffffff38; }
+.ficha-escura .bt-email:hover, .ficha-escura .bt-ligar:hover { background: #ffffff14; border-color: #9AD9FF; color: #fff; }
+.ficha-escura .bt-wpp { border-color: #1FA855; background: #128C4A; }
+.fx-contato .mc-canal-acoes { margin-top: 4px; }
+
+.upw-sec-files a.bt-wpp, .upw-sec-files a.bt-email, .upw-sec-files a.bt-ligar { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 14px; border-radius: 99px; font: 600 13.5px/1 var(--upw-sans); text-decoration: none; border: 1px solid #ffffff38; color: #DCE6FA; background: transparent; }
+.upw-sec-files a.bt-wpp, .upw-sec-files a.bt-wpp:hover, .upw-sec-files a.bt-wpp:focus { background: #128C4A; border-color: #1FA855; color: #fff; }
+.upw-sec-files a.bt-wpp:hover { background: #0D7038; }
+.upw-sec-files a.bt-email:hover, .upw-sec-files a.bt-ligar:hover, .upw-sec-files a.bt-email:focus, .upw-sec-files a.bt-ligar:focus { background: #ffffff14; border-color: #9AD9FF; color: #fff; }
+.upw-sec-files a.bt-wpp:focus-visible, .upw-sec-files a.bt-email:focus-visible, .upw-sec-files a.bt-ligar:focus-visible { outline: 2px solid #39B3F0; outline-offset: 2px; }
+.upw-sec-files .mc-canal { background: #06102f80; border: 1px solid #ffffff14; padding: 9px 10px; border-radius: 10px; }
+.mc-canal-tambem { color: #F7CD7E; }
