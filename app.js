@@ -388,7 +388,7 @@
   // a tela logada: o topo e cada parte que pode mudar sozinha quando chegam dados ficam num "pedaço" (data-pedaco)
   function htmlLogado() {
     const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : telaEquipe();
-    return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${tela}</div>`}</main>`;
+    return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${S.voltarAtivo && !(S.view === "adms" && S.lg.sel) ? '<div class="voltar-barra"><button type="button" class="fc-voltar" data-acao="voltar">← Voltar</button></div>' : ""}${tela}</div>`}</main>`;
   }
   const PEDACOS = new Map();
   function guardarPedacos() {
@@ -2014,8 +2014,6 @@
     // histórico longo: os 20 mais recentes, e mais 20 a cada clique
     const visiveis = regs.slice(0, L.gvTodos === f.id ? L.gvMostrar || 20 : 20);
     const aberto = regs.some((r) => r.id === L.gvAberto) && visiveis.some((r) => r.id === L.gvAberto) ? L.gvAberto : visiveis[0]?.id;
-    const nomes = String(f.nome).trim().split(/\s+/);
-    const tit = nomes.length > 1 ? `${esc(nomes.slice(0, Math.ceil(nomes.length / 2)).join(" "))} <em>${esc(nomes.slice(Math.ceil(nomes.length / 2)).join(" "))}</em>` : `<em>${esc(f.nome)}</em>`;
     const ef = etapaDaFicha(f), semInt = ef.ordem === 5 || ef.ordem === 10 || f.funil === "sem_interesse";
     const passo = ef.ordem != null ? (ef.ordem <= 2 ? 0 : ef.ordem <= 5 ? 1 : ef.ordem <= 11 ? 2 : 3) : { mapeamento: 0, indisponivel: 0, contato: 1, follow_semestral: 1, sem_interesse: 1, demonstracao: 2, contrato: 3 }[f.funil || "mapeamento"];
     const passos = ["Mapeamento", "Contato", "Demonstração", "Contrato"].map((l, i) => `<span class="mc-passo ${i < passo || (i === 3 && passo === 3) ? "feito" : i === passo ? "agora" : ""}"><i></i>${i === passo && ef.ordem != null && ![1, 3, 6, 12].includes(ef.ordem) ? esc(ef.nome) : i === 1 && semInt ? "Sem interesse" : l}</span>`).join("");
@@ -2039,52 +2037,57 @@
     const proximo = demoFut ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} ${quandoTxt(demoFut).toLowerCase().replace(" · ", " às ")}.`
       : f.retorno_em ? `${diaDe(f.retorno_em) < hj ? "Retorno atrasado: era" : "Ligar de novo"} ${quandoTxt(f.retorno_em).toLowerCase().replace(" · ", " às ")}${f.retorno_nota ? `. ${f.retorno_nota}` : ""}.`
       : (ef.ordem != null ? ef.negocio?.status === "ganho" || passo === 3 : f.funil === "contrato") ? "Contrato fechado. Agora é com o time de implantação." : "Nenhum próximo passo marcado ainda.";
-    const pastas = visiveis.map((r) => {
+    const atrasado = !demoFut && f.retorno_em && diaDe(f.retorno_em) < hj;
+    const filtro = L.histFiltro?.f === f.id ? L.histFiltro.v : "todas";
+    const itens = visiveis.map((r) => {
       const v = visualReg(r), h = horaReg(r), q = `${ddmm(r.data)}${h ? ` às ${h}` : ""}`;
       const ds = r.detalhes?.length ? r.detalhes : r.detalhe ? [r.detalhe] : [];
       const chips = [r.canal ? CANAL[r.canal] : r.tipo === "anotacao" ? "" : CANAL.ligacao, ...ds.map((k) => NOME_BOTAO[k] || k), ...(r.envio || []).map((k) => `Apresentação por ${ENVIO[k] || k}`)];
       const meta = [contaComoContato(r) ? (r.nova ? "Contato novo" : "Follow-up") : { sem_contato: "Sem contato", demo_realizada: "Demonstração", contrato: "Contrato", anotacao: "Anotação" }[r.tipo] || "Registro", L.dono === "todos" ? nomePessoa(r.usuario_id) : ""].filter(Boolean).join(" · ");
-      return `<li class="upw-sec-files__item" data-cat="${v.cat}" data-cor="${v.cor}" data-id="${r.id}" data-num="${regs.length - regs.indexOf(r)}" data-quando="${esc(q)}" data-carimbo="${esc(v.selo)}" ${r.id === aberto ? "data-aberto" : ""}><div class="upw-sec-files__folder">
-        <h3><button type="button" class="upw-sec-files__q"><span class="upw-sec-files__tab">${ddmm(r.data)} · ${esc(v.curto)}</span><span class="upw-sec-files__qt">${r.texto === undefined ? `<span class="mc-esq-tit" data-texto="${r.id}"></span>` : esc(tituloReg(r))}</span></button></h3>
-        <div class="upw-sec-files__a"><div class="upw-sec-files__in"><div class="upw-sec-files__paper">
-          <div class="mc-chips">${chips.filter(Boolean).map((c) => `<span class="mc-chip">${esc(c)}</span>`).join("")}</div>
+      return `<li class="fc-reg" data-cat="${v.cat}" data-cor="${v.cor}" ${filtro !== "todas" && filtro !== v.cat ? "hidden" : ""}><details ${r.id === aberto ? "open" : ""} data-id="${r.id}">
+        <summary><span class="fc-reg-quando">${esc(q)}</span><span class="fc-reg-tit">${r.texto === undefined ? `<span class="mc-esq-tit" data-texto="${r.id}"></span>` : esc(tituloReg(r))}</span><span class="fc-reg-selo">${esc(v.selo)}</span></summary>
+        <div class="fc-reg-corpo"><div class="mc-chips">${chips.filter(Boolean).map((c) => `<span class="mc-chip">${esc(c)}</span>`).join("")}</div>
           <span class="mc-meta">${esc(meta)}</span>
           ${r.texto === undefined ? TEXTO_CARREGANDO(r.id) : textoReg(r)}
-          ${ro ? "" : `<div class="mc-rodape"><span></span><button type="button" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar" : "Apagar"}</button></div>`}
-        </div></div></div>
-      </div></li>`;
+          ${ro ? "" : `<div class="mc-rodape"><button type="button" class="fc-apagar" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar: apagar este registro" : "Apagar"}</button></div>`}</div>
+      </details></li>`;
     }).join("");
-    const filtros = [["todas", "Todos", ""], ["conversa", "Conversas", "azul"], ["sem", "Sem contato", "vermelho"], ["demo", "Demos", "roxo"]].map(([k, l, c]) => `<button type="button" class="upw-sec-files__f" data-filter="${k}" ${c ? `data-cor="${c}"` : ""} aria-pressed="${k === "todas"}">${l}</button>`).join("");
-    const visto = L.gvVisto === f.id; L.gvVisto = f.id;
-    if (!visto) L.gvInicio = performance.now();
-    const fase = `--mc-t:-${((performance.now() - (L.gvInicio || 0)) / 1000).toFixed(2)}s`;
-    return `<section class="upw-sec-files ${visto ? "is-in mc-sem-entrada" : ""}" ${visto ? "data-visto" : ""} style="${fase}" aria-label="Ficha de ${esc(f.nome)}"><div class="mc-aurora" aria-hidden="true"><i></i><i></i><i></i></div><div class="mc-estrelas" aria-hidden="true"></div>
-      <div class="upw-sec-files__wrap">
-        <div class="upw-sec-files__head">
-          <p class="upw-sec-files__eyebrow">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</p>
-          <h2 class="upw-sec-files__title">${tit}</h2>
-          <div class="mc-selos"><span class="mc-selo etapa">${esc(ef.nome)}</span>${ef.negocio?.valor ? `<span class="mc-selo">${moeda(ef.negocio.valor)}</span>` : ""}${f.sistema ? `<span class="mc-selo">${esc(f.sistema)}</span>` : ""}${f.qtd_condominios ? `<span class="mc-selo">${fmtN(f.qtd_condominios)} condomínios</span>` : ""}${fezDemo(f) && f.funil !== "demonstracao" ? '<span class="mc-selo">Fez demonstração</span>' : ""}</div>
-          <div class="mc-jornada" style="--mc-passo: ${passo}" aria-label="Etapa atual: ${esc(ef.nome)}">${passos}</div>
-          <div class="mc-numeros">
-            <div class="mc-numero"><b data-conta="${lig.length}">${visto ? lig.length : 0}</b><span>${lig.length === 1 ? "contato" : "contatos"}</span></div>
-            <div class="mc-numero"><b data-conta="${conversa}">${visto ? conversa : 0}</b><span>${conversa === 1 ? "dia de conversa" : "dias de conversa"}</span></div>
-            <div class="mc-numero"><b data-conta="${terceiro[0]}">${visto ? terceiro[0] : 0}</b><span>${terceiro[1]}</span></div>
-          </div>
-          <div class="mc-dados">${(() => { const reg = garantirFx(f.id); return blocoCanais(f, reg.emp, reg.contatos, reg.estado === "carregando"); })()}${dados}</div>
-          ${ro || !S.vd.carregado ? "" : `<label class="mc-etapa">Etapa no funil SCC ${seletorEtapa(f, "")}</label>`}
+    const filtros = [["todas", "Todos"], ["conversa", "Conversas"], ["sem", "Sem contato"], ["demo", "Demos"]].map(([k, l]) => `<button type="button" class="fc-filtro" data-acao="fc-filtro" data-v="${k}" data-ficha="${f.id}" aria-pressed="${k === filtro}">${l}</button>`).join("");
+    L.gvVisto = f.id;
+    return `<section class="fc" aria-label="Ficha de ${esc(f.nome)}">
+      <div class="fc-barra"><button type="button" class="fc-voltar" data-acao="voltar">← Voltar</button></div>
+      <header class="fc-cab">
+        <div class="fc-id">
+          <p class="fc-olho">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</p>
+          <h2 class="fc-nome">${esc(f.nome)}</h2>
+          <div class="fc-selos"><span class="fc-selo fc-selo-etapa">${esc(ef.nome)}</span>${f.cidade ? `<span class="fc-selo">${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}</span>` : ""}${ef.negocio?.valor ? `<span class="fc-selo">${moeda(ef.negocio.valor)}</span>` : ""}${f.sistema ? `<span class="fc-selo">${esc(f.sistema)}</span>` : ""}${f.qtd_condominios ? `<span class="fc-selo">${fmtN(f.qtd_condominios)} condomínios</span>` : ""}${fezDemo(f) && f.funil !== "demonstracao" ? '<span class="fc-selo">Fez demonstração</span>' : ""}</div>
+        </div>
+        <div class="fc-prox ${atrasado ? "fc-prox-atrasado" : ""}">
+          <span class="fc-prox-k">Próximo passo</span>
+          <p class="fc-prox-t">${esc(proximo)}</p>
+          ${ro ? "" : `<div class="fc-prox-acoes"><button type="button" class="btn btn-primario" data-acao="lg-registrar">Registrar contato</button><button type="button" class="btn btn-sec" data-acao="lg-registrar" data-v="dados">Editar dados</button></div>`}
+        </div>
+      </header>
+      <div class="fc-faixa">
+        <div class="mc-jornada" style="--mc-passo: ${passo}" aria-label="Etapa atual: ${esc(ef.nome)}">${passos}</div>
+        <div class="fc-numeros">
+          <div><b>${lig.length}</b><span>${lig.length === 1 ? "contato" : "contatos"}</span></div>
+          <div><b>${conversa}</b><span>${conversa === 1 ? "dia de conversa" : "dias de conversa"}</span></div>
+          <div><b>${terceiro[0]}</b><span>${terceiro[1]}</span></div>
+        </div>
+        ${ro || !S.vd.carregado ? "" : `<label class="fc-etapa">Etapa no funil SCC ${seletorEtapa(f, "")}</label>`}
+      </div>
+      <div class="fc-grade">
+        <div class="fc-col">
+          ${(() => { const reg = garantirFx(f.id); return blocoCanais(f, reg.emp, reg.contatos, reg.estado === "carregando"); })()}
+          ${dados ? `<div class="fc-cartao"><h3 class="fc-tit">Dados</h3><div class="mc-dados">${dados}</div></div>` : ""}
           ${painelFx(f, ro)}
         </div>
-        <div class="upw-sec-files__drawer">
-          ${regs.length ? `<div class="upw-sec-files__filters" role="group" aria-label="Filtrar contatos">${filtros}</div>
-          <div class="upw-sec-files__box">${regs.length > visiveis.length ? `<button type="button" class="mc-antigos" data-acao="lg-gv-todos" data-id="${f.id}">Ver mais ${fmtN(Math.min(20, regs.length - visiveis.length))} contatos antigos (faltam ${fmtN(regs.length - visiveis.length)})</button>` : ""}<ol class="upw-sec-files__list">${pastas}</ol></div>
-          <div class="upw-sec-files__front"><p class="upw-sec-files__label"><span class="upw-sec-files__lt">Histórico completo</span> <span class="upw-sec-files__lc"></span></p><span class="upw-sec-files__handle" aria-hidden="true"></span></div>`
-          : `<div class="mc-vazio-gaveta">Nenhum contato registrado ainda.<br>Quando você registrar, cada contato vira um cartão aqui.</div>`}
-        </div>
-        <div class="upw-sec-files__help">
-          <p class="upw-sec-files__help-k">Próximo passo</p>
-          <p class="upw-sec-files__help-t">${esc(proximo)}</p>
-          ${ro ? "" : `<div class="mc-acoes"><button type="button" class="mc-cta" data-acao="lg-registrar">Registrar novo contato <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button><button type="button" class="mc-sec" data-acao="lg-registrar" data-v="dados">Editar dados</button></div>`}
-        </div>
+        <section class="fc-cartao fc-hist" aria-label="Histórico de contatos">
+          <div class="fc-hist-cab"><h3 class="fc-tit">Histórico</h3>${regs.length ? `<div class="fc-filtros" role="group" aria-label="Filtrar contatos">${filtros}</div>` : ""}</div>
+          ${regs.length ? `<ol class="fc-lista">${itens}</ol>${regs.length > visiveis.length ? `<button type="button" class="fc-mais" data-acao="lg-gv-todos" data-id="${f.id}">Ver mais ${fmtN(Math.min(20, regs.length - visiveis.length))} contatos antigos (faltam ${fmtN(regs.length - visiveis.length)})</button>` : ""}`
+          : `<p class="fc-vazio">Nenhum contato registrado ainda. Cada contato que você registrar aparece aqui.</p>`}
+        </section>
       </div></section>`;
   }
   function painelFicha() {
@@ -2093,7 +2096,7 @@
     const f = L.sel && L.fichaPorId.get(L.sel);
     if (!f) return `<aside class="cartao painel painel-lg" data-vazio="true"><div class="painel-vazio"><span class="painel-vazio-icone">${ICONE.busca}</span><b>Nenhuma administradora aberta</b><span class="fraco t13">Clique numa administradora da lista para ver a ficha, o histórico e registrar um contato.</span></div></aside>`;
     const ro = f.usuario_id !== S.user.id;
-    if (L.registrar !== f.id) return `<aside class="cartao painel painel-lg ficha-escura" aria-label="Ficha da administradora"><button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>${fichaGaveta(f, ro)}</aside>`;
+    if (L.registrar !== f.id) return `<aside class="cartao painel painel-lg ficha-clara" aria-label="Ficha da administradora"><button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>${fichaGaveta(f, ro)}</aside>`;
     const regs = [...(L.porFicha.get(f.id) || [])].reverse();
     const { nome: el, cor: ec } = etapaDaFicha(f);
     const tels = String(f.telefones || "").split(/[|,/]| e /).map((t) => t.trim()).filter((t) => t.replace(/\D/g, "").length >= 10);
@@ -2245,6 +2248,7 @@
     return `<div class="pilha" style="gap:12px">${resumo}${formLigacao(base, { cnpj: r.cnpj })}</div>`;
   }
   async function abrirFicha(id, dono) {
+    S.voltarAtivo = true;
     const L = S.lg;
     if (dono && dono !== S.user.id) { if (L.dono !== "todos" && L.dono !== dono) { L.dono = "todos"; L.carregado = false; } }
     else if (L.dono && L.dono !== S.user.id && !L.fichaPorId?.get(id)) { L.dono = null; L.carregado = false; }
@@ -2583,8 +2587,8 @@
         if (!e.includes("@")) { toast("Preencha o e-mail para contato na ficha."); $("#fx-email")?.focus(); break; }
         window.open(`mailto:${encodeURIComponent(e)}`, "_blank"); const c = b.closest("form")?.querySelector('[name="envio"][value="email"]'); if (c) { c.checked = true; c.form.dataset.sujo = "1"; } break;
       }
-      case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } L.sel = b.dataset.id; L.novo = false; L.registrar = null; L.gvAberto = null; L.gvTodos = null; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
-      case "lg-fechar": L.sel = null; L.novo = false; L.registrar = null; L.passo = null; render(); break;
+      case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } S.voltarAtivo = true; L.sel = b.dataset.id; L.novo = false; L.registrar = null; L.gvAberto = null; L.gvTodos = null; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
+      case "lg-fechar": if (S.voltarAtivo && history.state?.voltar) { history.back(); break; } L.sel = null; L.novo = false; L.registrar = null; L.passo = null; render(); break;
       case "lg-nova": L.novo = true; L.sel = null; L.passo = null; render(); $("#fx-nome")?.focus(); break;
       case "lg-etapa": L.etapa = b.dataset.v; L.mostrar = 100; render(); break;
       case "lg-aba": L.aba = b.dataset.v; L.mostrar = 100; render(); break;
@@ -2664,6 +2668,7 @@
     }
   });
   app.addEventListener("gaveta-abriu", (ev) => { S.lg.gvAberto = ev.detail; });
+  app.addEventListener("toggle", (ev) => { const d = ev.target; if (d.matches?.(".fc-reg > details") && d.open) S.lg.gvAberto = d.dataset.id; }, true);
   // depois de um redesenho a ficha fica sem animação de entrada; ao mexer nela, as animações voltam para as próximas pastas
   const reativarEntrada = (ev) => { const sec = ev.target.closest?.(".mc-sem-entrada"); if (sec) sec.classList.remove("mc-sem-entrada"); };
   app.addEventListener("pointerdown", reativarEntrada, true);
@@ -2772,7 +2777,7 @@
         <fieldset class="fx-campo"><legend>Produtos</legend><div class="fx-prods">${prods.map((p) => `<label><input type="checkbox" name="produto" value="${p.id}"><span>${esc(p.nome)}</span></label>`).join("")}</div></fieldset>
         <div class="fx-botoes"><button type="submit" class="fx-salvar">Criar negócio</button><button type="button" class="fx-cancelar" data-acao="fx-form" data-v="">Cancelar</button></div></form>`;
     }
-    return `${ro ? "" : form || `<button type="button" class="fx-novo" data-acao="fx-form" data-v="negocio">${ICO_FX.mais}Novo negócio</button>`}
+    return `${ro ? "" : form || `<button type="button" class="fx-link-novo" data-acao="fx-form" data-v="negocio">+ novo negócio</button>`}
       ${negs.length ? `<ul class="fx-lista">${negs.map(card).join("")}</ul>` : `<p class="fx-vazio">Nenhum negócio nesta administradora.</p>`}`;
   }
   function formContato(f, c) {
@@ -2815,7 +2820,7 @@
   }
   // "Próximo passo" e o número de dias mudam com o retorno: refaz só esse pedaço
   function atualizarCabecaFicha(fichaId) {
-    const f = fichaLocal(fichaId), el = document.querySelector(".upw-sec-files__help-t"); if (!f || !el) return;
+    const f = fichaLocal(fichaId), el = document.querySelector(".fc-prox-t"); if (!f || !el) return;
     const hj = hojeISO();
     el.textContent = f.retorno_em ? `${diaDe(f.retorno_em) < hj ? "Retorno atrasado: era" : "Ligar de novo"} ${quandoTxt(f.retorno_em).toLowerCase().replace(" · ", " às ")}${f.retorno_nota ? `. ${f.retorno_nota}` : ""}.` : "Nenhum próximo passo marcado ainda.";
   }
@@ -2880,7 +2885,7 @@
       case "fx-form": X.form = b.dataset.v || null; X.novoFunil = null; atualizarPainelFx(fichaId); if (X.form) document.querySelector(`#fx-${fichaId} .fx-form input:not([type=radio]):not([type=checkbox]), #fx-${fichaId} .fx-form select`)?.focus(); break;
       case "fx-feitas": X.verFeitas = !X.verFeitas; atualizarPainelFx(fichaId); break;
       case "fx-concluir": b.disabled = true; await concluirTarefa(b.dataset.id, b.closest("li")); break;
-      case "fx-ver-funil": { const n = S.vd.negocios.find((x) => x.id === b.dataset.id); if (!n) break; S.vd.funil = n.funil; S.vd.status = n.status; S.vd.busca = n.empresa; S.vd.resp = "todos"; S.lg.sel = null; S.view = "vendas"; render(); window.scrollTo(0, 0); break; }
+      case "fx-ver-funil": { const n = S.vd.negocios.find((x) => x.id === b.dataset.id); if (!n) break; S.voltarAtivo = true; S.vd.funil = n.funil; S.vd.status = n.status; S.vd.busca = n.empresa; S.vd.resp = "todos"; S.lg.sel = null; S.view = "vendas"; render(); window.scrollTo(0, 0); break; }
     }
   });
   app.addEventListener("submit", async (ev) => {
@@ -2913,8 +2918,16 @@
     switch (a) {
       case "menu": S.menu = !S.menu; render(); break;
       case "sair": await sb.auth.signOut(); break;
+      case "voltar": voltarTela(); break;
+      case "fc-filtro": {
+        const v = b.dataset.v; S.lg.histFiltro = { f: b.dataset.ficha, v };
+        const sec = b.closest(".fc-hist");
+        sec.querySelectorAll(".fc-filtro").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        sec.querySelectorAll(".fc-reg").forEach((li) => { li.hidden = v !== "todas" && li.dataset.cat !== v; });
+        break;
+      }
       case "atualizar": S.menu = false; atualizarDados(); render(); break;
-      case "ir": S.view = b.dataset.view; S.sel = null; S.selRow = null; S.show = 60; render(); if (b.dataset.view === "regiao") localizarPendentes(S.uf); break;
+      case "ir": S.voltarAtivo = !b.closest("header"); S.view = b.dataset.view; S.sel = null; S.selRow = null; S.show = 60; render(); if (b.dataset.view === "regiao") localizarPendentes(S.uf); break;
       case "fechar-msg": S.msg = ""; render(); break;
       case "so-novas": S.soNovas = true; render(); break;
       case "tipo": S.tipo = b.dataset.v; S.show = 60; salvarPreferencias(); render(); break;
@@ -3047,7 +3060,8 @@
     if (aplicandoRota || !S.user || !S.perfil?.aprovado) return;
     const h = rotaAtual(); if (h === location.hash) return;
     const url = location.pathname + location.search + h;
-    if (location.hash && lugarDa(h) !== lugarDa(location.hash)) history.pushState(null, "", url); else history.replaceState(null, "", url);
+    const estado = { voltar: !!S.voltarAtivo };
+    if (location.hash && lugarDa(h) !== lugarDa(location.hash)) history.pushState(estado, "", url); else history.replaceState({ voltar: !!history.state?.voltar || estado.voltar && !location.hash }, "", url);
   }
   function aplicarRota(h) {
     const [v, q = ""] = String(h || "").replace(/^#\/?/, "").split("?");
@@ -3068,7 +3082,7 @@
   }
   window.addEventListener("popstate", () => {
     if (!S.user || !S.perfil?.aprovado) return;
-    aplicandoRota = true;
+    aplicandoRota = true; S.voltarAtivo = !!history.state?.voltar;
     if (!aplicarRota(location.hash)) aplicarRota("#/inicio");
     render(); aplicandoRota = false;
     if (S.rotaEmp) { selecionar(S.rotaEmp); S.rotaEmp = null; }
@@ -3098,6 +3112,13 @@
   conferirVersao(true);
   setInterval(() => conferirVersao(false), 30 * 60e3);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") conferirVersao(false); });
+  function voltarTela() {
+    const L = S.lg;
+    if (L.registrar) { L.registrar = null; L.passo = null; render(); return; }
+    if (S.voltarAtivo && history.state?.voltar) { history.back(); return; }
+    if (S.view === "adms" && L.sel) { L.sel = null; L.novo = false; render(); return; }
+    S.voltarAtivo = false; S.view = "inicio"; render();
+  }
   let iniciando = null;
   function iniciar() { if (!iniciando) iniciando = iniciarAgora().finally(() => { iniciando = null; }); return iniciando; }
   async function iniciarAgora() {
@@ -3108,7 +3129,7 @@
     S.perfilP = carregarPerfil();
     carregarLig(); carregarVendas(); const mapeando = carregarMapeamento();
     await S.perfilP;
-    if (S.perfil?.aprovado && location.hash) { aplicandoRota = true; aplicarRota(location.hash); }
+    if (S.perfil?.aprovado && location.hash) { aplicandoRota = true; aplicarRota(location.hash); S.voltarAtivo = !!history.state?.voltar; }
     render(); aplicandoRota = false;
     if (!S.perfil.aprovado) return;
     if (S.rotaEmp) { selecionar(S.rotaEmp); S.rotaEmp = null; }
