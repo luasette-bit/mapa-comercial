@@ -257,7 +257,7 @@
   // o número do WhatsApp vai inteiro, com o 55 (no celular abre o app)
   const linkWpp = (n) => `https://wa.me/${digitos(n).length >= 12 ? digitos(n) : "55" + n}`;
   const botaoWpp = (n, quem, cls = "") => `<a class="bt-wpp ${cls}" href="${linkWpp(n)}" target="_blank" rel="noopener" aria-label="Abrir conversa no WhatsApp${quem ? ` com ${esc(quem)}` : ""} (abre em nova aba)">${ICO_WPP}<span>WhatsApp</span></a>`;
-  const botaoEmail = (email, quem, cls = "") => `<a class="bt-email ${cls}" href="mailto:${encodeURIComponent(email).replace(/%40/g, "@")}?subject=${encodeURIComponent(ASSUNTO_EMAIL)}" aria-label="Enviar e-mail para ${esc(quem || email)}">${ICO_MAIL}<span>Enviar e-mail</span></a>`;
+  const botaoEmail = (email, quem, cls = "") => `<a class="bt-email ${cls}" href="mailto:${encodeURIComponent(email).replace(/%40/g, "@")}?subject=${encodeURIComponent(ASSUNTO_EMAIL)}" aria-label="Enviar e-mail para ${esc(quem || email)}">${ICO_MAIL}<span>E-mail</span></a>`;
   const botaoLigar = (n, quem, cls = "") => `<a class="bt-ligar ${cls}" href="tel:+55${n}" aria-label="Ligar para ${esc(quem || fmtTel(n))}">${ICO_LIGAR}<span>Ligar</span></a>`;
   // WhatsApp de uma empresa (tabela empresas): o do site; se não tiver, o celular do CNPJ. Fixo não conta.
   function wppEmpresa(e) {
@@ -267,14 +267,6 @@
     for (const t of [e.telefone1, e.telefone2]) { const n = nacional(t); if (ehCelular(n)) return { n, origem: "cnpj", rotulo: "celular do CNPJ" }; }
     return null;
   }
-  // todos os jeitos de falar com a administradora, sem repetir número; cada um com a origem
-  const ORIGEM = {
-    site: ["site", "WhatsApp do site", "Tirado do botão de WhatsApp do site da empresa. Costuma ser o comercial."],
-    contato: ["contato", "Contato cadastrado", ""],
-    ficha: ["ficha", "Anotado na ficha", "Escrito pela equipe na ficha."],
-    resp: ["ficha", "Número do responsável", "Escrito pela equipe na ficha."],
-    cnpj: ["cnpj", "Telefone do CNPJ", "Cadastro da Receita. Às vezes é da contabilidade."],
-  };
   function canaisDaFicha(f, emp, contatos) {
     const tels = new Map(), mails = new Map();
     const cnpjNums = new Set([emp?.telefone1, emp?.telefone2].map(nacional).filter(Boolean));
@@ -301,16 +293,23 @@
     return { cnpjNums, tels: [...tels.values()].sort((a, b) => ordem[a.origem] - ordem[b.origem] || b.wpp - a.wpp), mails: [...mails.values()].sort((a, b) => ordem[a.origem] - ordem[b.origem]) };
   }
   function blocoCanais(f, emp, contatos, carregando) {
-    const { tels, mails, cnpjNums } = canaisDaFicha(f, emp, contatos);
-    const selo = (o, mail) => { const [cls, txt0, dica0] = ORIGEM[o], txt = mail && o === "cnpj" ? "E-mail do CNPJ" : txt0, dica = mail && o === "cnpj" ? "Cadastro da Receita. Às vezes é da contabilidade." : dica0; return `<span class="mc-origem mc-origem-${cls}" ${dica ? `title="${esc(dica)}"` : ""}>${txt}</span>`; };
-    const linhaTel = (t) => `<li class="mc-canal"><div class="mc-canal-info"><b class="num">${esc(fmtTel(t.n))}</b>
-        <span class="mc-canal-sub">${selo(t.origem)}${t.quem ? `<span>${esc(t.quem)}${t.cargo ? ` · ${esc(t.cargo)}` : ""}</span>` : ""}${!t.wpp ? `<span>fixo</span>` : ""}${t.origem !== "cnpj" && cnpjNums.has(t.n) ? `<span class="mc-canal-tambem">é o mesmo do CNPJ</span>` : ""}</span>
-        ${t.origem === "cnpj" ? `<span class="mc-canal-aviso">Pode ser da contabilidade</span>` : ""}</div>
-      <div class="mc-canal-acoes">${t.wpp ? botaoWpp(t.n, t.quem || f.nome) : ""}${t.n.length <= 11 ? botaoLigar(t.n, t.quem || f.nome) : ""}</div></li>`;
-    const linhaMail = (m) => `<li class="mc-canal"><div class="mc-canal-info"><b class="mc-mail">${esc(m.email)}</b><span class="mc-canal-sub">${selo(m.origem, true)}${m.quem ? `<span>${esc(m.quem)}${m.cargo ? ` · ${esc(m.cargo)}` : ""}</span>` : ""}</span>
-        ${m.origem === "cnpj" ? `<span class="mc-canal-aviso">Pode ser da contabilidade</span>` : ""}</div><div class="mc-canal-acoes">${botaoEmail(m.email, m.quem || f.nome)}</div></li>`;
-    return `<div class="mc-canais mc-largo-sempre" id="mc-canais-${f.id}"><span class="mc-canais-tit">Como falar${carregando ? '<i class="mc-canais-carr">buscando números do site e dos contatos…</i>' : ""}</span>
-      ${tels.length || mails.length ? `<ul>${tels.map(linhaTel).join("")}${mails.map(linhaMail).join("")}</ul>` : `<p class="fx-vazio">Nenhum número ou e-mail ainda.</p>`}</div>`;
+    const { tels, mails } = canaisDaFicha(f, emp, contatos);
+    const tag = (o, mail) => `<span class="ct-tag">${o === "site" ? "site" : o === "contato" ? "contato" : o === "cnpj" ? "CNPJ" : o === "resp" ? "responsável" : "ficha"}</span>`;
+    const vazio = '<span class="ct-slot" aria-hidden="true"></span>';
+    const quem = (x) => (x.quem ? `<span class="ct-quem">${esc(x.quem)}${x.cargo ? ` · ${esc(x.cargo)}` : ""}</span>` : "");
+    // cada linha: valor e etiqueta à esquerda; dois lugares fixos de botão à direita (WhatsApp | Ligar ou E-mail)
+    const linhaTel = (t) => `<li class="ct-linha"><span class="ct-valor"><b class="num">${esc(fmtTel(t.n))}</b>${t.origem === "cnpj" ? "" : tag(t.origem)}${quem(t)}</span>
+      <span class="ct-acoes">${t.wpp ? botaoWpp(t.n, t.quem || f.nome, "ct-bt") : vazio}${botaoLigar(t.n, t.quem || f.nome, "ct-bt")}</span></li>`;
+    const linhaMail = (m) => `<li class="ct-linha"><span class="ct-valor"><b class="ct-mail">${esc(m.email)}</b>${m.origem === "cnpj" ? "" : tag(m.origem, true)}${quem(m)}</span>
+      <span class="ct-acoes">${botaoEmail(m.email, m.quem || f.nome, "ct-bt")}</span></li>`;
+    const ehCnpj = (x) => x.origem === "cnpj";
+    const prim = [...tels.filter((t) => !ehCnpj(t)).map(linhaTel), ...mails.filter((m) => !ehCnpj(m)).map(linhaMail)];
+    const cnpj = [...tels.filter(ehCnpj).map(linhaTel), ...mails.filter(ehCnpj).map(linhaMail)];
+    return `<div class="ct mc-largo-sempre" id="mc-canais-${f.id}">
+      <div class="ct-cab"><span>Como falar</span>${carregando ? '<i>buscando números…</i>' : ""}</div>
+      ${prim.length ? `<ul class="ct-lista">${prim.join("")}</ul>` : ""}
+      ${cnpj.length ? `<div class="ct-grupo"><span>Cadastro do CNPJ</span><i>pode ser da contabilidade</i></div><ul class="ct-lista">${cnpj.join("")}</ul>` : ""}
+      ${!prim.length && !cnpj.length ? `<p class="ct-nada">Nenhum número ou e-mail ainda.</p>` : ""}</div>`;
   }
   function atualizarCanais(fichaId) {
     const el = document.getElementById("mc-canais-" + fichaId), f = S.lg.fichaPorId?.get(fichaId), reg = S.fx.cache.get(fichaId);
@@ -330,7 +329,7 @@
         <span class="linha-flex" style="gap:5px">${tagsEmpresa(r)}</span>
       </span>
       ${dist == null ? `<span class="t13 num cnpj">${esc(fmtCnpj(r.cnpj))}</span>` : ""}
-      <span class="pilha" style="gap:4px;align-items:flex-start"><span class="t13 num cnpj ${r.tel_status === "errado" ? "riscado" : ""}">${esc(r.telefone1 || "Sem telefone")}</span><span class="selo ${tc}">${tl}</span>${wl ? `<span class="t11 ${wl.origem === "site" ? "origem-ok" : "fraco"}">${wl.origem === "site" ? "WhatsApp do site" : "celular do CNPJ"}</span>` : ""}</span>
+      <span class="pilha" style="gap:4px;align-items:flex-start"><span class="t13 num cnpj ${r.tel_status === "errado" ? "riscado" : ""}">${esc(r.telefone1 || "Sem telefone")}</span><span class="selo ${tc}">${tl}</span>${wl ? `<span class="ct-tag" title="WhatsApp ${wl.origem === "site" ? "do site da empresa" : "do celular do CNPJ"}">WhatsApp · ${wl.origem === "site" ? "site" : "CNPJ"}</span>` : ""}</span>
       <span class="pilha" style="gap:2px"><span class="t13 corta2">${esc(soc[0] ? titulo(soc[0].nome) : "Não informado")}</span><span class="t11 fraco">${esc(soc[0] ? (soc[0].qualificacao || "Sócio") + (soc.length > 1 ? ` · +${soc.length - 1}` : "") : "Sem sócio na Receita")}</span></span>
       ${celulaSistema(r)}
       <span class="pilha"><span class="linha-flex t12" style="justify-content:space-between"><span class="${nc}">${nl}</span><span class="fraco num">${r.nota || 0}/99</span></span><span class="barra" style="height:6px"><i class="${bc}" style="width:${r.nota || 0}%"></i></span></span>
@@ -592,7 +591,7 @@
       const src = m ? `<span class="origem ${m.status === "confirmado" ? "origem-ok" : "origem-erro"}">${m.status === "confirmado" ? "Confirmado" : "Marcado como errado"} por ${esc(m.usuario_nome)} em ${esc(fmtData(m.criado_em))}</span>` : `<span class="origem">Origem: Receita Federal (cadastro do CNPJ)${esc(atual)}</span>`;
       return `<div class="campo-ficha"><div class="linha-flex" style="justify-content:space-between"><span class="t12 fraco">${label}</span><span class="selo ${cls}">${lvl}</span></div>
         <span class="valor ${m?.status === "errado" ? "riscado" : ""}">${valor ? esc(valor) : '<span class="fraco">Não informado na Receita</span>'}</span>${src}
-        ${label === "E-mail" && valor && m?.status !== "errado" ? `<span class="linha-flex" style="margin-top:2px">${botaoEmail(valor, nomeEmp(r))}</span>` : ""}
+        ${label === "E-mail" && valor && m?.status !== "errado" ? `<span class="ct-acoes ct-sozinho">${botaoEmail(valor, nomeEmp(r), "ct-bt")}</span>` : ""}
         ${valor ? `<span class="linha-flex" style="margin-top:2px">${m ? `<button type="button" class="mini" data-acao="desfazer" data-campo="${label}">Desfazer</button>` : `<button type="button" class="mini mini-ok" data-acao="marcar" data-campo="${label}" data-status="confirmado">✓ Confirmei</button><button type="button" class="mini mini-erro" data-acao="marcar" data-campo="${label}" data-status="errado">✗ Está errado</button>`}${label === "Telefone" && r.telefone1 && /^\(\d{2}\) 9/.test(r.telefone1) ? `<a class="mini mini-ok" style="display:inline-flex;align-items:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/55${r.telefone1.replace(/\D/g, "")}">WhatsApp</a>` : ""}</span>` : ""}
       </div>`;
     };
@@ -604,9 +603,8 @@
     ];
     const grupo = S.grupo.filter((g) => g.cnpj !== r.cnpj);
     const wE = wppEmpresa(r);
-    const blocoWpp = `<div class="campo-ficha"><div class="linha-flex" style="justify-content:space-between"><span class="t12 fraco">WhatsApp</span><span class="selo ${wE ? "s-conf" : "s-vazio"}">${wE ? (wE.origem === "site" ? "Do site" : "Celular do CNPJ") : "Não encontrado"}</span></div>
-      ${wE ? `<span class="valor num">${esc(fmtTel(nacional(wE.n)))}</span><span class="origem ${wE.origem === "site" ? "origem-ok" : ""}">${wE.origem === "site" ? `Origem: botão de WhatsApp do site da empresa${r.whatsapp_em ? ` (visto em ${esc(fmtData(r.whatsapp_em))})` : ""}. Costuma ser o comercial.` : "Origem: Receita Federal (cadastro do CNPJ). Pode ser da contabilidade."}</span>
-      <span class="linha-flex" style="margin-top:4px">${botaoWpp(nacional(wE.n), nomeEmp(r))}</span>` : `<span class="valor"><span class="fraco">Sem WhatsApp no site e sem celular no CNPJ</span></span>`}</div>`;
+    const blocoWpp = `<div class="campo-ficha"><span class="t12 fraco">WhatsApp</span>
+      ${wE ? `<div class="ct-linha ct-claro" title="${wE.origem === "site" ? `Do botão de WhatsApp do site da empresa${r.whatsapp_em ? `, visto em ${esc(fmtData(r.whatsapp_em))}` : ""}` : "Celular do cadastro do CNPJ"}"><span class="ct-valor"><b class="num">${esc(fmtTel(nacional(wE.n)))}</b><span class="ct-tag">${wE.origem === "site" ? "site" : "CNPJ"}</span></span><span class="ct-acoes">${botaoWpp(nacional(wE.n), nomeEmp(r), "ct-bt")}</span></div>` : `<span class="valor"><span class="fraco">Não encontrado</span></span>`}</div>`;
     return `<aside class="cartao painel painel-lg" aria-label="Detalhes da empresa">
       <button type="button" class="mini fechar-painel" data-acao="fechar-painel">Fechar ✕</button>
       <div class="pilha">
@@ -2516,9 +2514,9 @@
       const tel = c.telefone || c.celular, ini = c.nome.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
       const nt = nacional(tel), nw = nacional(c.whatsapp) || (ehCelular(nacional(c.celular)) ? nacional(c.celular) : ehCelular(nt) ? nt : "");
       const links = [nt ? `<span class="num">${esc(fmtTel(nt))}</span>` : "", c.email ? `<span>${esc(c.email)}</span>` : ""].filter(Boolean);
-      const botoes = [nw ? botaoWpp(nw, c.nome) : "", nt ? botaoLigar(nt, c.nome) : "", c.email ? botaoEmail(c.email, c.nome) : ""].join("");
+      const botoes = [nw ? botaoWpp(nw, c.nome, "ct-bt") : "", nt ? botaoLigar(nt, c.nome, "ct-bt") : "", c.email ? botaoEmail(c.email, c.nome, "ct-bt") : ""].join("");
       return `<li class="fx-contato"><span class="fx-ini" aria-hidden="true">${esc(ini)}</span><div class="fx-c"><span class="fx-c-cab"><b>${esc(c.nome)}</b>${c.cargo ? `<span>${esc(c.cargo)}</span>` : ""}</span>
-        ${links.length ? `<span class="fx-links">${links.join("")}</span>` : ""}${botoes ? `<span class="mc-canal-acoes">${botoes}</span>` : ""}${c.observacoes ? `<span class="fx-texto">${esc(c.observacoes)}</span>` : ""}</div>
+        ${links.length ? `<span class="fx-links">${links.join("")}</span>` : ""}${botoes ? `<span class="ct-acoes ct-contato">${botoes}</span>` : ""}${c.observacoes ? `<span class="fx-texto">${esc(c.observacoes)}</span>` : ""}</div>
         ${ro ? "" : `<button type="button" class="fx-editar" data-acao="fx-form" data-v="contato:${c.id}">Editar</button>`}</li>`;
     };
     return `${ro ? "" : X.form === "contato" ? formContato(f, null) : `<button type="button" class="fx-novo" data-acao="fx-form" data-v="contato">${ICO_FX.mais}Adicionar contato</button>`}
