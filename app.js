@@ -361,7 +361,7 @@
   function devolverForm(g) {
     const f = app.querySelector('form[data-acao="lg-salvar"]'); if (!g || !f || (f.dataset.ficha || "") + "|" + (f.dataset.cnpj || "") !== g.chave) return;
     for (const [n, rv, val] of g.v) { const el = rv != null ? f.querySelector(`[name="${n}"][value="${CSS.escape(rv)}"]`) : f.elements[n]; if (!el || el instanceof RadioNodeList) continue; if (el.type === "radio" || el.type === "checkbox") el.checked = val; else el.value = val; }
-    f.dataset.sujo = "1"; atualizarBlocoDemo(f, false);
+    f.dataset.sujo = "1"; atualizarBlocoDemo(f, false); atualizarNegativa(f);
     const c = $("#rg-conta"); if (c) c.innerHTML = avisoContagem(f);
     if (g.foco) document.getElementById(g.foco)?.focus();
   }
@@ -1358,13 +1358,13 @@
     const lbl = form.querySelector('label[for="rg-demo-em"]'); if (lbl) lbl.textContent = res === "demo_realizada" ? "Dia e hora em que a demonstração foi feita" : "Dia e hora da demonstração";
     const p = $("#rg-painel"); if (!p) return;
     p.hidden = res !== "demo_realizada"; if (p.hidden) return;
-    if (abrir) { const det = form.querySelector(".lg-bloco-dados"); if (det && !det.open) { det.open = true; S.lg.dadosAberto = true; } const dm = form.elements.rg_demo_em; if (dm && !dm.value) { const a = localSP(new Date().toISOString()); dm.value = a.slice(0, 14) + "00"; } }
+    if (abrir) { const dm = form.elements.rg_demo_em; if (dm && !dm.value) { const a = localSP(new Date().toISOString()); dm.value = a.slice(0, 14) + "00"; } }
     const d = dadosDoForm(form), linha = (l, v) => `<span>${l}: ${v ? esc(v) : '<i class="rg-falta">falta preencher</i>'}</span>`;
     const dt = d.demo ? `${d.demo.slice(8, 10)} de ${MESES[+d.demo.slice(5, 7) - 1]} às ${d.demo.slice(11, 16)}` : "";
     p.innerHTML = `<span class="rg-painel-tit">Vai entrar assim no Painel de Demonstrações Realizadas</span>
       <div class="rel-card"><b class="rel-card-nome">${esc(d.nome || "—")}</b><b class="t12">Demonstração ${d.formato === "presencial" ? "presencial" : "virtual"} realizada: ${dt ? esc(dt) : '<i class="rg-falta">falta o dia e a hora</i>'}</b>
       ${linha("Sistema usado", d.sistema)}${linha("Quantos condomínios atende", d.qtd_condominios ? `${fmtN(+d.qtd_condominios)} ${+d.qtd_condominios === 1 ? "condomínio" : "condomínios"}${d.qtd_unidades ? ` | ${fmtN(+d.qtd_unidades)} unidades` : ""}` : "")}${linha("Nome do responsável", d.responsavel)}${linha("Cidade", d.cidade && d.uf ? `${d.cidade} - ${d.uf}` : d.cidade && !d.uf ? "" : "")}</div>
-      <span class="t12 fraco">Os dados vêm de "Dados da administradora", logo acima. Todos são obrigatórios para a demonstração.</span>`;
+      <span class="t12 fraco">Os dados vêm do Cadastro (etapa 1). Todos são obrigatórios para a demonstração.</span>${DADOS_DEMO.some(([k]) => !d[k]) ? '<button type="button" class="mini" data-acao="lg-passo" data-v="dados" style="align-self:flex-start">Completar no cadastro</button>' : ""}`;
   }
   // aviso ao lado do Salvar: como este contato entra no relatório (mesma regra dos relatórios)
   function avisoContagem(form) {
@@ -1405,12 +1405,16 @@
   // quem fechou contrato também fez demonstração: entra nas duas contagens
   function filtrosAdms() {
     const V = S.vd, out = [["todas", "Todas"]];
-    if (V.carregado) for (const e of V.etapas.filter((x) => x.funil === V.scc)) if (S.lg.fichas.some((f) => V.porFicha.get(f.id)?.etapa === e.id)) out.push(["e:" + e.id, e.nome]);
+    if (V.carregado) for (const e of V.etapas.filter((x) => x.funil === V.scc && x.ordem !== 5)) if (S.lg.fichas.some((f) => V.porFicha.get(f.id)?.etapa === e.id)) out.push(["e:" + e.id, e.nome]);
     if (V.carregado) out.push(["sem_negocio", "Sem negócio"]);
     out.push(["fez_demo", "Fizeram demonstração"], ["retorno", "Com retorno marcado"]);
     return out;
   }
   const fezDemo = (f) => f.funil === "contrato" || (etapaSCC(f)?.ordem || 0) >= 6 || ["demo_realizada", "contrato"].includes(f.etapa) || (S.lg.porFicha.get(f.id) || []).some((r) => r.tipo === "demo_realizada");
+  // Sem interesse fica numa aba própria, fora das listas de trabalho
+  const ehSemInteresse = (f) => { const e = etapaSCC(f); return e ? e.ordem === 5 : f.funil === "sem_interesse"; };
+  const semInteresseDesde = (f) => { const n = S.vd.porFicha.get(f.id); return localSP((n && n.desde) || f.atualizado_em || f.criado_em).slice(0, 10); };
+  const retomarEm = (f) => { const d = semInteresseDesde(f); return d ? somaDias(d, 365) : ""; };
   function naEtapa(f, k) {
     if (k === "todas") return true;
     if (k === "retorno") return !!f.retorno_em;
@@ -1422,11 +1426,12 @@
     return (f.funil || "mapeamento") === k;
   }
   function fichasFiltradas() {
-    const L = S.lg, chave = `${S.dv}|${L.etapa}|${L.busca}`;
+    const L = S.lg, si = L.aba === "sem_interesse", chave = `${S.dv}|${si ? "si" : L.etapa}|${L.busca}`;
     if (L.ff && L.ffChave === chave) return L.ff;
     const palavras = norm(L.busca).split(/\s+/).filter(Boolean);
     L.ff = L.fichas.filter((f) => {
-      if (!naEtapa(f, L.etapa)) return false;
+      if (ehSemInteresse(f) !== si) return false;
+      if (!si && !naEtapa(f, L.etapa)) return false;
       if (!palavras.length) return true;
       const t = L.idx.get(f.id) || ""; return palavras.every((p) => t.includes(p));
     }).map((f) => [ultimaDe(f)?.data || (f.criado_em || "").slice(0, 10), f.atualizado_em || "", f])
@@ -1438,7 +1443,7 @@
     const L = S.lg, chave = `${S.dv}|${chips.map((c) => c[0]).join(",")}`;
     if (L.cc && L.ccChave === chave) return L.cc;
     const c = new Map(chips.map(([k]) => [k, 0]));
-    for (const f of L.fichas) for (const [k] of chips) if (naEtapa(f, k)) c.set(k, c.get(k) + 1);
+    for (const f of L.fichas) if (!ehSemInteresse(f)) for (const [k] of chips) if (naEtapa(f, k)) c.set(k, c.get(k) + 1);
     L.cc = c; L.ccChave = chave; return c;
   }
   function celulaRetorno(f) {
@@ -1446,7 +1451,23 @@
     const atr = diaDe(f.retorno_em) < hojeISO();
     return `<span class="selo ${atr ? "s-errado" : diaDe(f.retorno_em) === hojeISO() ? "s-nao" : "s-ident"}">${atr ? "Atrasado · " : ""}${esc(quandoTxt(f.retorno_em))}</span>`;
   }
+  function linhasSemInteresse() {
+    const hj = hojeISO(), ro = !souDono();
+    const lista = fichasFiltradas().map((f) => [retomarEm(f), f]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    if (!lista.length) return `<div class="vazio">${S.lg.busca ? "Nenhuma administradora sem interesse com essa busca." : "Nenhuma administradora sem interesse. Quando você marcar uma negativa como Sem interesse, ela aparece aqui."}</div>`;
+    return lista.slice(0, S.lg.mostrar).map(([ret, f]) => {
+      const pronta = ret && ret <= hj, u = ultimaDe(f);
+      return `<div class="si-linha ${pronta ? "si-pronta" : ""}">
+        <button type="button" class="si-nome" data-acao="lg-sel" data-id="${f.id}"><span class="t-nome">${esc(f.nome)}</span><span class="t12 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "Cidade não informada")}${f.sistema ? ` · ${esc(f.sistema)}` : ""}${S.lg.dono === "todos" ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span></button>
+        <span class="t12"><span class="fraco">Sem interesse desde</span><br><b class="num">${ddmmaaaa(semInteresseDesde(f))}</b></span>
+        <span class="t12">${u ? `<span class="fraco">Último contato</span><br>${ddmm(u.data)} · ${esc(rotuloReg(u))}` : '<span class="fraco">Sem contato registrado</span>'}</span>
+        <span>${pronta ? '<span class="selo s-conf">Pronta para retomar</span>' : `<span class="t12 fraco">Pode retomar em</span><br><b class="t12 num">${ddmmaaaa(ret)}</b>`}</span>
+        <span>${ro ? "" : `<button type="button" class="mini ${pronta ? "mini-ok" : ""}" data-acao="lg-retomar" data-id="${f.id}">Retomar contato</button>`}</span>
+      </div>`;
+    }).join("") + (lista.length > S.lg.mostrar ? `<div style="padding:14px 18px"><button type="button" class="mini" data-acao="lg-mais">Mostrar mais (${fmtN(lista.length - S.lg.mostrar)})</button></div>` : "");
+  }
   function linhasFichas() {
+    if (S.lg.aba === "sem_interesse") return linhasSemInteresse();
     const lista = fichasFiltradas();
     if (!lista.length) return `<div class="vazio">${S.lg.fichas.length ? "Nenhuma administradora com essa busca." : "Nenhuma administradora ainda. Clique em <b>+ Nova administradora</b> ou, no Mapeamento, abra uma empresa e clique em <b>Registrar ligação</b>."}</div>`;
     return lista.slice(0, S.lg.mostrar).map((f) => {
@@ -1471,13 +1492,15 @@
     return cab + `
       <section class="cartao" style="overflow:hidden"><div class="lista-cab"><b>Hoje, ${DIAS[isoData(hoje).getUTCDay()]} ${ddmm(hoje)}</b><button type="button" class="mini" data-acao="lg-rel-dia">Ver relatório do dia →</button></div>
         <div class="resumo resumo6">${ind(m.ligacoes, "Contatos", m.ligacoes ? ` com ${fmtN(m.pessoas)} administradora${m.pessoas === 1 ? "" : "s"}` : "")}${ind(m.primeira_ligacao, "Contatos novos")}${ind(m.follow_up, "Follow-ups")}${ind(m.sem_contato, "Sem contato")}${ind(m.negativa, "Negativas")}${ind(m.demo_agendada, "Demos agendadas")}</div></section>
+      ${(() => { let at = 0, si = 0, pr = 0; const hj = hojeISO(); for (const f of L.fichas) { if (ehSemInteresse(f)) { si++; if (retomarEm(f) <= hj) pr++; } else at++; }
+        return `<div class="si-abas" role="tablist" aria-label="Listas"><button type="button" role="tab" data-acao="lg-aba" data-v="ativas" aria-selected="${L.aba !== "sem_interesse"}">Em prospecção <b>${fmtN(at)}</b></button><button type="button" role="tab" data-acao="lg-aba" data-v="sem_interesse" aria-selected="${L.aba === "sem_interesse"}">Sem interesse <b>${fmtN(si)}</b>${pr ? `<span class="si-prontas">${fmtN(pr)} ${pr === 1 ? "pronta" : "prontas"} para retomar</span>` : ""}</button></div>`; })()}
       <section class="cartao filtros"><div class="linha-filtros">
         <div class="campo" style="flex:1 1 300px"><label for="lg-busca">Procurar</label><input id="lg-busca" class="input" type="search" value="${esc(L.busca)}" placeholder="Nome, cidade, responsável, e-mail, anotação…" autocomplete="off"></div>
       </div>
-      <div class="campo"><span class="rotulo">Mostrar <span class="fraco" style="font-weight:500">· etapa do negócio no funil SCC</span></span><div class="chips">${(() => { const ch = filtrosAdms(), n = contagensChips(ch); return ch.map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${esc(l)}<b>${fmtN(n.get(k))}</b></button>`).join(""); })()}</div></div>
+      ${L.aba === "sem_interesse" ? '<span class="t13 fraco">Administradoras que disseram não. Ficam fora das listas de ligação; depois de 1 ano aparecem como prontas para retomar, mas só voltam quando você clicar em <b>Retomar contato</b>.</span>' : `<div class="campo"><span class="rotulo">Mostrar <span class="fraco" style="font-weight:500">· etapa do negócio no funil SCC</span></span><div class="chips">${(() => { const ch = filtrosAdms(), n = contagensChips(ch); return ch.map(([k, l]) => `<button type="button" class="chip" data-acao="lg-etapa" data-v="${k}" aria-pressed="${L.etapa === k}">${esc(l)}<b>${fmtN(n.get(k))}</b></button>`).join(""); })()}</div></div>`}
       </section>
-        <section class="cartao lista"><div class="lista-cab"><b>Administradoras</b><span class="t12 fraco">o contato mais recente primeiro</span></div>
-          <div class="rolagem"><div class="lg-tabela"><div class="lg-cab"><span>Administradora</span><span>Sistema</span><span>Etapa</span><span>Último contato</span><span>Ligar de novo</span></div><div id="lg-lista">${linhasFichas()}</div></div></div></section>
+        <section class="cartao lista"><div class="lista-cab"><b>${L.aba === "sem_interesse" ? "Sem interesse" : "Administradoras"}</b><span class="t12 fraco">${L.aba === "sem_interesse" ? "as prontas para retomar primeiro" : "o contato mais recente primeiro"}</span></div>
+          <div class="rolagem"><div class="lg-tabela">${L.aba === "sem_interesse" ? "" : '<div class="lg-cab"><span>Administradora</span><span>Sistema</span><span>Etapa</span><span>Último contato</span><span>Ligar de novo</span></div>'}<div id="lg-lista">${linhasFichas()}</div></div></div></section>
       ${L.sel || L.novo ? gaveta(painelFicha(), "lg-fechar") : ""}`;
   }
 
@@ -1685,6 +1708,14 @@
     const e = V.etapaPorId.get(etapaId); toast(`${f.nome} foi para ${e?.nome}.`);
     if (e && norm(e.nome) === "follow-up semestral") retornoSemestral(fichaId);
   }
+  // depois de uma negativa: a ficha vai para a etapa que ela escolheu (Follow-up semestral ou Sem interesse)
+  async function destinoNegativa(fichaId, dest) {
+    const V = S.vd; if (!V.carregado) return;
+    const alvo = V.etapas.find((e) => e.funil === V.scc && e.ordem === (dest === "follow" ? 4 : 5)); if (!alvo) return;
+    const n = V.porFicha.get(fichaId);
+    if (n && n.etapa === alvo.id && n.status === "em_andamento") return;
+    await moverEtapaFicha(fichaId, alvo.id);
+  }
   function seletorEtapa(f, cls, id) {
     const V = S.vd; if (!V.carregado) return "";
     const n = V.porFicha.get(f.id), etapas = V.etapas.filter((e) => e.funil === V.scc);
@@ -1822,9 +1853,19 @@
     const tipo = k.startsWith("qtd_") ? 'type="number" min="0"' : k === "email" ? 'type="email"' : "";
     return `<div class="campo ${["nome", "telefones", "melhor_horario"].includes(k) ? "campo-largo" : ""}"><label for="fx-${k}">${label}</label><input id="fx-${k}" name="${k}" class="input" ${tipo} value="${esc(v)}" ${k === "nome" ? "required maxlength=\"200\"" : ""} ${dis}></div>`;
   }
-  function camposDados(f, ro) {
+  // no cadastro os campos vêm agrupados por assunto, na ordem em que a conversa costuma acontecer
+  const GRUPOS_CADASTRO = [
+    ["A administradora", ["nome", "cnpj", "sistema", "cidade", "uf", "qtd_condominios", "qtd_unidades", "horario_funcionamento"]],
+    ["Quem atende", ["atendente", "responsavel", "numero_responsavel", "melhor_horario"]],
+    ["Como falar", ["telefones", "whatsapp", "email"]],
+  ];
+  function camposAgrupados(f) {
+    const rot = Object.fromEntries(CAMPOS);
+    return GRUPOS_CADASTRO.map(([t, ks]) => `<div class="rg-grupo campo-largo"><span class="rg-grupo-t">${t}</span><div class="rg-grupo-campos">${ks.map((k) => campoFicha(k, rot[k], f, false).replace('class="campo campo-largo"', `class="campo ${["nome", "telefones"].includes(k) ? "rg-duplo" : ""}"`)).join("")}</div></div>`).join("");
+  }
+  function camposDados(f, ro, agrupado) {
     return `<div class="lg-form">
-      ${CAMPOS.map(([k, l]) => campoFicha(k, l, f, ro)).join("")}
+      ${agrupado ? camposAgrupados(f) : CAMPOS.map(([k, l]) => campoFicha(k, l, f, ro)).join("")}
       <div class="campo campo-largo"><label for="fx-observacoes">Informações adicionais</label><textarea id="fx-observacoes" name="observacoes" class="input lg-texto" rows="2" maxlength="4000" placeholder="O que vale para a administradora toda (ex.: 2 unidades, uma em Maringá e outra em Cascavel)" ${ro ? "disabled" : ""}>${esc(f?.observacoes || "")}</textarea></div>
       <details class="lg-dados campo-largo"><summary>Demonstração e contrato</summary><div class="lg-form">
         <div class="campo"><label for="fx-demo">Demonstração (data e hora)</label><input id="fx-demo" name="demo_em" type="datetime-local" class="input" value="${esc(localSP(f?.demo_em))}" ${ro ? "disabled" : ""}></div>
@@ -1835,40 +1876,110 @@
       <datalist id="lg-sistemas">${SOFTWARES.map((s) => `<option value="${esc(s)}">`).join("")}<option value="Sem sistema"></datalist>
     </div>`;
   }
+  // a ficha abre no cadastro enquanto ninguém atendeu de verdade; depois, direto no registro do contato
+  const primeiraConversa = (f) => !f?.id || !(jaLigou(f) || (etapaSCC(f)?.ordem || 0) >= 3 || ["contato", "follow_semestral", "sem_interesse", "demonstracao", "contrato"].includes(f.funil));
+  function passoDoForm(f, op) {
+    const L = S.lg, chave = f?.id || op.cnpj || "novo";
+    if (L.passo && L.passo.k === chave) return L.passo.v;
+    return primeiraConversa(f) ? "dados" : "contato";
+  }
+  // retorno do follow-up semestral: daqui a 6 meses, em dia útil
+  function diaSemestral() {
+    const d = isoData(hojeISO()); d.setUTCMonth(d.getUTCMonth() + 6); let dia = d.toISOString().slice(0, 10);
+    while ([0, 6].includes(isoData(dia).getUTCDay())) dia = somaDias(dia, 1);
+    return dia;
+  }
+  function resumoCadastro(d) {
+    const item = (l, v) => `<div class="rg-res-item"><span>${l}</span><b>${v ? esc(v) : '<i class="fraco">não informado</i>'}</b></div>`;
+    return `<div class="rg-res-cab"><b>Cadastro</b><button type="button" class="mini" data-acao="lg-passo" data-v="dados">Editar cadastro</button></div>
+      <div class="rg-res-grade">${item("Responsável", d.responsavel)}${item("Quem atendeu", d.atendente)}${item("Telefones", d.telefones)}${item("WhatsApp", d.whatsapp)}${item("E-mail", d.email)}${item("Melhor horário", d.melhor_horario)}${item("Sistema", d.sistema)}${item("Condomínios", d.qtd_condominios ? fmtN(+d.qtd_condominios) : "")}</div>`;
+  }
+  function ultimosContatos(f) {
+    const regs = f?.id ? [...(S.lg.porFicha.get(f.id) || [])].reverse().slice(0, 4) : [];
+    if (!regs.length) return `<div class="rg-ult"><b>Últimos contatos</b><span class="t12 fraco">Primeiro contato com esta administradora.</span></div>`;
+    return `<div class="rg-ult"><b>Últimos contatos</b>${regs.map((r) => `<div class="rg-ult-item"><span class="t12 fraco num">${ddmmaaaa(r.data)}</span><span class="t13">${esc(rotuloReg(r))}</span>${r.texto ? `<span class="t12 fraco">${esc(r.texto.length > 120 ? r.texto.slice(0, 120) + "…" : r.texto)}</span>` : ""}</div>`).join("")}</div>`;
+  }
   function formLigacao(f, op = {}) {
     const L = S.lg, hj = hojeISO(), existe = !!f?.id;
     const ret = f?.retorno_em ? localSP(f.retorno_em) : "", retDia = ret.slice(0, 10), vence = ret && retDia <= hj;
-    return `<form class="pilha lg-lig" style="gap:14px" data-acao="lg-salvar" autocomplete="off" novalidate ${existe ? `data-ficha="${f.id}"` : ""} ${op.cnpj ? `data-origem="mapa" data-cnpj="${esc(op.cnpj)}"` : ""}>
+    const passo = passoDoForm(f, op), editar = passo === "editar", noCadastro = passo !== "contato";
+    const semestral = diaSemestral();
+    return `<form class="pilha lg-lig" style="gap:16px" data-acao="lg-salvar" autocomplete="off" novalidate ${existe ? `data-ficha="${f.id}"` : ""} ${op.cnpj ? `data-origem="mapa" data-cnpj="${esc(op.cnpj)}"` : ""} data-chave="${esc(f?.id || op.cnpj || "novo")}">
       <input type="hidden" name="retorno_orig" value="${esc(ret)}">
-      <details class="lg-bloco lg-bloco-dados" ${L.dadosAberto ? "open" : ""}><summary><b>Dados da administradora</b><span class="t12 fraco">preencha durante a ligação</span></summary>${camposDados(f, false)}</details>
-      <div class="caixa-cinza"><b>Registrar contato</b>
-        <div class="linha-flex" style="align-items:flex-end;gap:12px">
-          <div class="campo" style="min-width:150px"><label for="rg-data">Dia</label><input id="rg-data" name="data" type="date" class="input" value="${hj}" max="${hj}"></div>
-          <div class="campo" style="min-width:0"><span class="rotulo">Contato feito por</span><div class="chips">${Object.entries(CANAL).map(([k, l], i) => `<label class="chip-radio"><input type="radio" name="canal" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>
+      ${editar ? "" : `<div class="rg-etapas" role="tablist" aria-label="Etapas">
+        <button type="button" class="rg-etapa" data-acao="lg-passo" data-v="dados" role="tab" aria-selected="${noCadastro}"><i>1</i>Cadastro</button>
+        <span class="rg-etapa-linha" aria-hidden="true"></span>
+        <button type="button" class="rg-etapa" data-acao="lg-passo" data-v="contato" role="tab" aria-selected="${!noCadastro}"><i>2</i>Registrar contato</button>
+      </div>`}
+
+      <section class="rg-passo rg-cadastro" data-passo="dados" ${noCadastro ? "" : "hidden"}>
+        <div class="rg-passo-cab"><b>${editar ? "Editar cadastro" : "Cadastro da administradora"}</b><span class="t12 fraco">${editar ? "Mude o que precisar e salve." : "Preencha enquanto conversa. Depois ele fica só para consulta."}</span></div>
+        ${camposDados(f, false, true)}
+        <div class="rg-rodape">${editar
+          ? `<button type="button" class="btn btn-sec" data-acao="lg-voltar-ficha">Cancelar</button><button type="submit" name="modo" value="dados" class="btn btn-primario">Salvar cadastro</button>`
+          : `<button type="submit" name="modo" value="dados" class="btn btn-sec">${existe ? "Salvar só o cadastro" : op.cnpj ? "Só guardar a ficha" : "Só criar a ficha"}</button><button type="button" class="btn btn-primario" data-acao="lg-passo" data-v="contato">Registrar contato →</button>`}
+          ${editar ? "" : '<span class="t12 fraco rg-rodape-nota">O cadastro é salvo junto com o contato.</span>'}</div>
+      </section>
+
+      <section class="rg-passo rg-registro" data-passo="contato" ${noCadastro ? "hidden" : ""}>
+        <div class="rg-grade">
+          <div class="pilha" style="gap:14px;min-width:0">
+            <div class="caixa-cinza rg-caixa"><b>Registrar contato</b>
+              <div class="rg-linha2">
+                <div class="campo"><label for="rg-data">Dia</label><input id="rg-data" name="data" type="date" class="input" value="${hj}" max="${hj}"></div>
+                <div class="campo" style="min-width:0"><span class="rotulo">Contato feito por</span><div class="chips">${Object.entries(CANAL).map(([k, l], i) => `<label class="chip-radio"><input type="radio" name="canal" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>
+              </div>
+              <fieldset class="rg-res"><legend class="rotulo">O que aconteceu</legend>
+                <div class="rg-opcoes">${OPCOES.map(([k, l]) => `<label class="chip-radio"><input type="radio" name="res" value="${k}"><span>${l}</span></label>`).join("")}</div>
+                <label class="rg-so-anot"><input type="radio" name="res" value="anotacao"><span>Só anotação (não conta no relatório)</span></label></fieldset>
+              <div id="rg-neg" class="rg-neg" hidden>
+                <span class="rotulo">Para onde vai essa negativa?</span>
+                <div class="rg-opcoes rg-opcoes2"><label class="chip-radio"><input type="radio" name="neg_destino" value="follow"><span>Follow-up semestral</span></label><label class="chip-radio"><input type="radio" name="neg_destino" value="sem"><span>Sem interesse</span></label></div>
+                <div id="rg-neg-follow" class="linha-flex" style="align-items:flex-end;gap:12px" hidden><div class="campo" style="min-width:160px"><label for="rg-neg-data">Próximo contato</label><input id="rg-neg-data" name="neg_retorno" type="date" class="input" value="${semestral}" min="${hj}"></div><span class="t12 fraco" style="padding-bottom:10px">Daqui a 6 meses. Se quiser, mude a data.</span></div>
+                <span id="rg-neg-sem" class="t12 fraco" hidden>Sai das listas de ligação e vai para a aba <b>Sem interesse</b>. Depois de 1 ano ela fica marcada como pronta para retomar, mas só volta quando você clicar em <b>Retomar contato</b>.</span>
+              </div>
+              <span class="rotulo">Enviei a apresentação por</span>
+              <div class="linha-flex" style="gap:8px">${Object.entries(ENVIO).map(([k, l]) => `<label class="chip-radio chip-check"><input type="checkbox" name="envio" value="${k}"><span>${k === "email" ? "E-mail" : l}</span></label>`).join("")}
+                <span class="linha-flex" style="gap:6px;margin-left:auto"><button type="button" class="mini mini-ok" data-acao="lg-abrir-wpp">Abrir WhatsApp</button><button type="button" class="mini" data-acao="lg-abrir-email">Abrir e-mail</button></span></div>
+              <div id="rg-demo" class="linha-flex" hidden><div class="campo"><label for="rg-demo-em">Dia e hora da demonstração</label><input id="rg-demo-em" name="rg_demo_em" type="datetime-local" class="input" value="${esc(f?.demo_em ? localSP(f.demo_em) : "")}" max="${esc(localSP(new Date().toISOString()).slice(0, 10))}T23:59"></div><div class="campo"><label for="rg-formato">Formato</label><select id="rg-formato" name="rg_formato" class="input"><option value="virtual">Virtual</option><option value="presencial" ${f?.demo_formato === "presencial" ? "selected" : ""}>Presencial</option></select></div></div>
+              <div id="rg-painel" class="rg-painel" hidden></div>
+              <div class="campo"><label for="rg-texto">Anotação</label><textarea id="rg-texto" name="texto" class="input lg-texto" rows="3" placeholder="Com quem falou, o que disse, próximo passo…"></textarea></div>
+            </div>
+            <div class="caixa-cinza" id="rg-ligar"><b>Ligar de novo</b>
+              <div class="chips">${[[1, "Amanhã"], [2, "Em 2 dias"], [5, "Em 1 semana"], [10, "Em 2 semanas"]].map(([n, l]) => `<button type="button" class="mini" data-acao="lg-ret" data-d="${n}">${l}</button>`).join("")}<button type="button" class="mini" data-acao="lg-ret" data-d="0">Sem retorno</button></div>
+              <div class="linha-flex" style="align-items:flex-end;gap:12px">
+                <div class="campo" style="min-width:150px"><label for="rt-data">Dia</label><input id="rt-data" name="retorno_data" type="date" class="input" value="${esc(retDia)}" min="${vence ? retDia : hj}"></div>
+                <div class="campo" style="min-width:110px"><label for="rt-hora">Hora</label><input id="rt-hora" name="retorno_hora" type="time" class="input" value="${esc(ret.slice(11, 16))}"></div>
+                <div class="campo" style="flex:1 1 200px"><label for="rt-nota">Lembrete</label><input id="rt-nota" name="retorno_nota" class="input" maxlength="300" value="${esc(f?.retorno_nota || "")}" placeholder="Ex.: falar com a Isabeli"></div>
+              </div>
+              <span class="t12 fraco">${vence ? `Este retorno é de ${retDia === hj ? "hoje" : ddmm(retDia)}: ao salvar o contato ele sai da agenda. Para marcar outro, mude o dia.` : "Sem hora, o aviso chega às 9h. O retorno aparece na Agenda e você recebe um aviso no horário."}</span>
+            </div>
+            ${op.cnpj ? `<label class="lg-check"><input type="checkbox" name="proxima" ${L.proxima !== false ? "checked" : ""}> <span>Depois de salvar, abrir a próxima da lista</span></label>` : ""}
+            <div class="linha-flex rg-salvar"><button type="submit" name="modo" value="ligacao" class="btn btn-primario">${existe ? "Salvar contato" : op.cnpj ? "Salvar contato" : "Criar e salvar contato"}</button><span class="rg-conta t12" id="rg-conta" aria-live="polite">Escolha o que aconteceu.</span></div>
+          </div>
+          <aside class="rg-lado"><div class="rg-resumo" id="rg-resumo">${resumoCadastro(f || {})}</div>${ultimosContatos(f)}</aside>
         </div>
-        <fieldset class="rg-res"><legend class="rotulo">O que aconteceu</legend>
-          <div class="chips">${OPCOES.map(([k, l]) => `<label class="chip-radio"><input type="radio" name="res" value="${k}"><span>${l}</span></label>`).join("")}</div>
-          <label class="rg-so-anot"><input type="radio" name="res" value="anotacao"><span>Só anotação (não conta no relatório)</span></label></fieldset>
-        <span class="rotulo">Enviei a apresentação por</span>
-        <div class="linha-flex" style="gap:8px">${Object.entries(ENVIO).map(([k, l]) => `<label class="chip-radio chip-check"><input type="checkbox" name="envio" value="${k}"><span>${k === "email" ? "E-mail" : l}</span></label>`).join("")}
-          <span class="linha-flex" style="gap:6px;margin-left:auto"><button type="button" class="mini mini-ok" data-acao="lg-abrir-wpp">Abrir WhatsApp</button><button type="button" class="mini" data-acao="lg-abrir-email">Abrir e-mail</button></span></div>
-        <span class="t12 fraco">O número e o e-mail ficam nos campos <b>WhatsApp</b> e <b>E-mail para contato</b> da ficha.</span>
-        <div id="rg-demo" class="linha-flex" hidden><div class="campo"><label for="rg-demo-em">Dia e hora da demonstração</label><input id="rg-demo-em" name="rg_demo_em" type="datetime-local" class="input" value="${esc(f?.demo_em ? localSP(f.demo_em) : "")}" max="${esc(localSP(new Date().toISOString()).slice(0, 10))}T23:59"></div><div class="campo"><label for="rg-formato">Formato</label><select id="rg-formato" name="rg_formato" class="input"><option value="virtual">Virtual</option><option value="presencial" ${f?.demo_formato === "presencial" ? "selected" : ""}>Presencial</option></select></div></div>
-        <div id="rg-painel" class="rg-painel" hidden></div>
-        <div class="campo"><label for="rg-texto">Anotação</label><textarea id="rg-texto" name="texto" class="input lg-texto" rows="4" placeholder="Com quem falou, o que disse, próximo passo…"></textarea></div>
-      </div>
-      <div class="caixa-cinza"><b>Ligar de novo</b>
-        <div class="chips">${[[1, "Amanhã"], [2, "Em 2 dias"], [5, "Em 1 semana"], [10, "Em 2 semanas"]].map(([n, l]) => `<button type="button" class="mini" data-acao="lg-ret" data-d="${n}">${l}</button>`).join("")}<button type="button" class="mini" data-acao="lg-ret" data-d="0">Sem retorno</button></div>
-        <div class="linha-flex" style="align-items:flex-end;gap:12px">
-          <div class="campo" style="min-width:150px"><label for="rt-data">Dia</label><input id="rt-data" name="retorno_data" type="date" class="input" value="${esc(retDia)}" min="${vence ? retDia : hj}"></div>
-          <div class="campo" style="min-width:110px"><label for="rt-hora">Hora</label><input id="rt-hora" name="retorno_hora" type="time" class="input" value="${esc(ret.slice(11, 16))}"></div>
-          <div class="campo" style="flex:1 1 200px"><label for="rt-nota">Lembrete</label><input id="rt-nota" name="retorno_nota" class="input" maxlength="300" value="${esc(f?.retorno_nota || "")}" placeholder="Ex.: falar com a Isabeli"></div>
-        </div>
-        <span class="t12 fraco">${vence ? `Este retorno é de ${retDia === hj ? "hoje" : ddmm(retDia)}: ao salvar o contato ele sai da agenda. Para marcar outro, mude o dia.` : "Sem hora, o aviso chega às 9h. O retorno aparece na Agenda e você recebe um aviso no horário."}</span>
-      </div>
-      ${op.cnpj ? `<label class="lg-check"><input type="checkbox" name="proxima" ${L.proxima !== false ? "checked" : ""}> <span>Depois de salvar, abrir a próxima da lista</span></label>` : ""}
-      <div class="linha-flex rg-salvar"><button type="submit" name="modo" value="ligacao" class="btn btn-primario">${existe ? "Salvar contato" : op.cnpj ? "Salvar contato" : "Criar e salvar contato"}</button><button type="submit" name="modo" value="dados" class="btn btn-sec">${existe ? "Salvar só os dados" : op.cnpj ? "Só guardar a ficha" : "Só criar a ficha"}</button><span class="rg-conta t12" id="rg-conta" aria-live="polite">Escolha o que aconteceu.</span></div>
+      </section>
     </form>`;
+  }
+  // troca de etapa sem redesenhar: o que foi digitado fica no formulário
+  function irPasso(form, v, silencioso) {
+    if (!form) return;
+    if (v === "contato" && !String(form.elements.nome?.value || "").trim()) { toast("Informe o nome da administradora."); form.elements.nome?.focus(); return; }
+    S.lg.passo = { k: form.dataset.chave, v };
+    form.querySelectorAll(".rg-passo").forEach((s) => (s.hidden = s.dataset.passo !== v));
+    form.querySelectorAll(".rg-etapa").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.v === v)));
+    if (v === "contato") { const r = form.querySelector("#rg-resumo"); if (r) r.innerHTML = resumoCadastro(Object.fromEntries(CAMPOS.map(([k]) => [k, String(form.elements[k]?.value ?? "").trim()]))); }
+    if (!silencioso) { (form.closest(".painel") || form).scrollIntoView?.({ block: "start" }); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); }
+  }
+  function atualizarNegativa(form) {
+    const neg = form.querySelector('[name="res"]:checked')?.value === "negativa", dest = form.querySelector('[name="neg_destino"]:checked')?.value;
+    const b = form.querySelector("#rg-neg"); if (!b) return;
+    b.hidden = !neg;
+    form.querySelector("#rg-neg-follow").hidden = !(neg && dest === "follow");
+    form.querySelector("#rg-neg-sem").hidden = !(neg && dest === "sem");
+    // a negativa decide o próximo contato: o "Ligar de novo" sai de cena
+    const lig = form.querySelector("#rg-ligar"); if (lig) lig.hidden = neg;
   }
 
   /* ---- ficha da administradora: pilha de contatos (visual de gaveta.js) */
@@ -1988,21 +2099,27 @@
     const tels = String(f.telefones || "").split(/[|,/]| e /).map((t) => t.trim()).filter((t) => t.replace(/\D/g, "").length >= 10);
     const wpp = String(f.whatsapp || "").replace(/\D/g, "");
     const links = (wpp.length >= 10 ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${wpp.slice(-11)}">WhatsApp ${esc(f.whatsapp)}</a>` : "") + tels.slice(0, 3).map((t) => { const n = t.replace(/\D/g, ""); return `<a class="mini" href="tel:+55${n}">Ligar ${esc(t.replace(/\s*(wpp|whats.*|google)\s*$/i, ""))}</a>${/^\d{2}9/.test(n) ? `<a class="mini mini-ok" target="_blank" rel="noopener" href="https://wa.me/55${n}">WhatsApp</a>` : ""}`; }).join("");
-    return `<aside class="cartao painel painel-lg" aria-label="Ficha da administradora">
+    if (ro) return `<aside class="cartao painel painel-lg" aria-label="Ficha da administradora">
       <button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>
       <button type="button" class="mini mc-voltar" data-acao="lg-voltar-ficha">← Voltar à ficha</button>
-      <div class="pilha"><span class="t11 fraco" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ficha da administradora${ro ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span>
-        <h2>${esc(f.nome)}</h2><span class="t13 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}${f.horario_funcionamento ? ` · ${esc(f.horario_funcionamento)}` : ""}</span>
-        <span class="linha-flex" style="gap:6px">${ro ? `<span class="selo ${ec}">${el}</span>` : ""}${f.sistema ? `<span class="selo s-sis">${esc(f.sistema)}</span>` : ""}${f.demo_em ? `<span class="selo s-roxo">Demo ${esc(dataHoraBR(f.demo_em))}</span>` : ""}${f.retorno_em ? celulaRetorno(f) : ""}</span>
-        ${f.retorno_nota && f.retorno_em ? `<span class="t13">Lembrete: ${esc(f.retorno_nota)}</span>` : ""}
-        ${ro || !S.vd.carregado ? "" : `<div class="campo" style="max-width:300px;margin-top:4px"><label for="fx-etapa">Etapa no funil SCC</label>${seletorEtapa(f, "input", "fx-etapa")}</div>`}
-        ${links ? `<span class="linha-flex" style="gap:6px;margin-top:4px">${links}</span>` : ""}
+      <div class="pilha"><span class="t11 fraco" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ficha da administradora · ${esc(nomePessoa(f.usuario_id))}</span><h2>${esc(f.nome)}</h2><span class="linha-flex" style="gap:6px"><span class="selo ${ec}">${el}</span></span></div>
+      <details class="lg-bloco" open><summary><b>Dados da administradora</b></summary>${camposDados(f, true)}</details>
+    </aside>`;
+    return `<aside class="cartao painel painel-lg rg-painel-lg" aria-label="Ficha da administradora">
+      <button type="button" class="mini fechar-painel" data-acao="lg-fechar">Fechar ✕</button>
+      <div class="rg-cab">
+        <div class="pilha" style="gap:6px;min-width:0">
+          <button type="button" class="rg-voltar" data-acao="lg-voltar-ficha">← Ficha da administradora</button>
+          <h2>${esc(f.nome)}</h2>
+          <span class="linha-flex" style="gap:6px;align-items:center"><span class="t13 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "Cidade não informada")}</span>${f.sistema ? `<span class="selo s-sis">${esc(f.sistema)}</span>` : ""}${f.demo_em ? `<span class="selo s-roxo">Demo ${esc(dataHoraBR(f.demo_em))}</span>` : ""}${f.retorno_em ? celulaRetorno(f) : ""}${f.retorno_nota && f.retorno_em ? `<span class="t12 fraco">${esc(f.retorno_nota)}</span>` : ""}</span>
+        </div>
+        <div class="rg-cab-dir">
+          ${links ? `<span class="linha-flex" style="gap:6px;justify-content:flex-end">${links}</span>` : ""}
+          ${S.vd.carregado ? `<label class="rg-etapa-sel"><span>Etapa no funil SCC</span>${seletorEtapa(f, "input", "fx-etapa")}</label>` : ""}
+        </div>
       </div>
-      ${ro ? `<details class="lg-bloco" open><summary><b>Dados da administradora</b></summary>${camposDados(f, true)}</details>` : formLigacao(f)}
-      <div class="pilha" style="gap:8px"><span style="font-size:12px;font-weight:700">Histórico · ${regs.length} ${regs.length === 1 ? "registro" : "registros"}</span>
-        ${regs.length ? regs.map((r) => { const h = horaReg(r); return `<div class="lg-reg"><div class="linha-flex" style="justify-content:space-between"><span class="linha-flex" style="gap:6px"><b class="num t13">${ddmmaaaa(r.data)}${h ? ` <span class="fraco" style="font-weight:500">${h}</span>` : ""}</b><span class="selo ${RES[r.tipo]?.c || "s-neutro"}">${esc(rotuloReg(r))}</span>${contaComoContato(r) ? `<span class="selo ${r.nova ? "s-novo" : "s-neutro"}">${r.nova ? "Contato novo" : "Follow-up"}</span>` : ""}</span>${ro ? "" : `<button type="button" class="mini lg-x" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar" : "Apagar"}</button>`}</div>${r.texto ? `<span class="t13 lg-txt">${esc(r.texto)}</span>` : ""}</div>`; }).join("") : '<span class="t13 fraco">Nenhum contato registrado ainda.</span>'}
-      </div>
-      ${ro ? "" : `<div class="acoes-painel"><button type="button" class="btn btn-perigo" data-acao="lg-apagar-ficha" data-id="${f.id}">${L.apagar === f.id ? "Clique de novo para apagar" : "Apagar ficha"}</button></div>`}
+      ${formLigacao(f)}
+      <div class="acoes-painel"><button type="button" class="btn btn-perigo" data-acao="lg-apagar-ficha" data-id="${f.id}">${L.apagar === f.id ? "Clique de novo para apagar" : "Apagar ficha"}</button></div>
     </aside>`;
   }
 
@@ -2019,7 +2136,7 @@
     const rd = String(fd.get("retorno_data") || ""), rh = String(fd.get("retorno_hora") || "");
     d.retorno_em = rd ? tsSP(rd, rh) : null;
     d.retorno_nota = rd ? (String(fd.get("retorno_nota") || "").trim() || null) : null;
-    if (!d.nome) { toast("Informe o nome da administradora."); L.dadosAberto = true; form.querySelector(".lg-bloco").open = true; $("#fx-nome")?.focus(); return; }
+    if (!d.nome) { toast("Informe o nome da administradora."); irPasso(form, "dados", true); $("#fx-nome")?.focus(); return; }
 
     const marcados = modo === "ligacao" ? fd.getAll("res").map(String) : [];
     const envio = modo === "ligacao" ? fd.getAll("envio").map(String) : [];
@@ -2039,10 +2156,20 @@
       if (escolhidos.some((b) => b[2] === "demo_agendada") && fd.get("rg_demo_em")) { d.demo_em = fd.get("rg_demo_em") + ":00-03:00"; d.demo_formato = fd.get("rg_formato") || "virtual"; }
       if (escolhidos.some((b) => b[2] === "demo_realizada")) {
         const falta = faltaDemo(form);
-        if (falta.length) { toast(`Para a demonstração entrar no painel, preencha: ${falta.map((x) => x[1]).join(", ")}.`); const det = form.querySelector(".lg-bloco-dados"); if (det) det.open = true; (form.elements[falta[0][0]] || form.querySelector(`#fx-${falta[0][0]}`))?.focus?.(); return; }
+        if (falta.length) { toast(`Para a demonstração entrar no painel, preencha: ${falta.map((x) => x[1]).join(", ")}.`); if (falta[0][0] !== "rg_demo_em") irPasso(form, "dados", true); (form.elements[falta[0][0]] || form.querySelector(`#fx-${falta[0][0]}`))?.focus?.(); return; }
         const dm = String(fd.get("rg_demo_em")); d.demo_em = dm + ":00-03:00"; d.demo_formato = fd.get("rg_formato") || "virtual";
         demoDia = dm.slice(0, 10);
       }
+    }
+    // negativa: ela escolhe o destino; o follow-up semestral marca o próximo contato
+    const negDest = modo === "ligacao" && res?.[2] === "negativa" ? String(fd.get("neg_destino") || "") : "";
+    if (modo === "ligacao" && res?.[2] === "negativa") {
+      if (!negDest) { toast("Escolha para onde vai a negativa: Follow-up semestral ou Sem interesse."); form.querySelector('[name="neg_destino"]')?.focus(); return; }
+      if (negDest === "follow") {
+        const nd = String(fd.get("neg_retorno") || "");
+        if (!nd || nd < hojeISO()) { toast("Escolha a data do próximo contato."); $("#rg-neg-data")?.focus(); return; }
+        d.retorno_em = tsSP(nd, "09:00"); d.retorno_nota = "Follow-up semestral";
+      } else { d.retorno_em = null; d.retorno_nota = null; }
     }
     if (d.retorno_em && modo === "dados" && diaDe(d.retorno_em) < hojeISO() && !(f && igual("retorno_em", f.retorno_em, d.retorno_em))) { toast("O dia de ligar de novo já passou. Escolha hoje ou outro dia."); $("#rt-data")?.focus(); return; }
     if (!f) {
@@ -2067,6 +2194,7 @@
       const { data: nf } = await sb.from("fichas").select(COLS_FICHA).eq("id", id).single();
       if (nf) L.fichas[L.fichas.findIndex((x) => x.id === nf.id)] = nf;
       if (!mapa) { L.novo = false; L.sel = id; L.registrar = null; if (novo) L.gvAberto = novo.id; }
+      L.passo = null;
       derivar(); form.dataset.sujo = "";
       const salvo = novo && L.regs.find((x) => x.id === novo.id);
       toast(salvo ? (contaComoContato(salvo) ? `Salvo como ${salvo.nova ? "contato novo" : "follow-up"}${nf?.retorno_em ? ` · ligar de novo ${quandoTxt(nf.retorno_em).toLowerCase()}` : ""}.` : salvo.tipo === "sem_contato" ? "Salvo como sem contato." : "Registro salvo.") : f ? "Dados salvos." : "Ficha criada.");
@@ -2082,7 +2210,7 @@
         toast(`Demonstração registrada. Agora são ${fmtN(total)} demonstrações realizadas.`);
         return;
       }
-      recarregarNegociosDaFicha(id).then(() => render());
+      recarregarNegociosDaFicha(id).then(async () => { if (negDest) await destinoNegativa(id, negDest); render(); });
       if (mapa) {
         L.proxima = fd.get("proxima") === "on";
         const prox = L.proxima && modo === "ligacao" ? proximaEmpresa(form.dataset.cnpj) : null;
@@ -2120,7 +2248,7 @@
     const L = S.lg;
     if (dono && dono !== S.user.id) { if (L.dono !== "todos" && L.dono !== dono) { L.dono = "todos"; L.carregado = false; } }
     else if (L.dono && L.dono !== S.user.id && !L.fichaPorId?.get(id)) { L.dono = null; L.carregado = false; }
-    S.view = "adms"; S.sel = null; S.selRow = null; L.sel = id; L.novo = false; L.busca = ""; L.etapa = "todas"; L.registrar = null; L.gvAberto = null; L.gvTodos = null;
+    S.view = "adms"; S.sel = null; S.selRow = null; L.sel = id; L.novo = false; L.busca = ""; L.etapa = "todas"; L.registrar = null; L.passo = null; L.gvAberto = null; L.gvTodos = null;
     if (!L.carregado) await carregarLig(); else render();
     window.scrollTo(0, 0);
   }
@@ -2435,8 +2563,9 @@
       case "vd-perdido": S.vd.perder = b.dataset.id; render(); break;
       case "vd-perda-cancelar": S.vd.perder = null; render(); break;
       case "vd-reabrir": await reabrirNegocio(b.dataset.id); break;
-      case "lg-registrar": L.registrar = L.sel; L.dadosAberto = b.dataset.v === "dados" || L.dadosAberto; render(); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); if (b.dataset.v === "dados") $("#fx-nome")?.focus(); else document.querySelector('.gaveta [name="res"]')?.focus(); break;
-      case "lg-voltar-ficha": L.registrar = null; render(); break;
+      case "lg-registrar": L.registrar = L.sel; L.passo = b.dataset.v === "dados" ? { k: L.sel, v: "editar" } : null; render(); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); if (b.dataset.v === "dados") $("#fx-nome")?.focus(); else document.querySelector('.gaveta [name="res"]')?.focus(); break;
+      case "lg-voltar-ficha": L.registrar = null; L.passo = null; render(); break;
+      case "lg-passo": irPasso(b.closest("form"), b.dataset.v); if (b.dataset.v === "contato") document.querySelector('.gaveta [name="res"]')?.focus(); break;
       case "lg-gv-todos": L.gvMostrar = L.gvTodos === b.dataset.id ? (L.gvMostrar || 20) + 20 : 40; L.gvTodos = b.dataset.id; render(); break;
       case "in-continuar": {
         S.view = "mapeamento"; render(); window.scrollTo(0, 0);
@@ -2455,9 +2584,11 @@
         window.open(`mailto:${encodeURIComponent(e)}`, "_blank"); const c = b.closest("form")?.querySelector('[name="envio"][value="email"]'); if (c) { c.checked = true; c.form.dataset.sujo = "1"; } break;
       }
       case "lg-sel": if (L.arrastou) { L.arrastou = false; break; } L.sel = b.dataset.id; L.novo = false; L.registrar = null; L.gvAberto = null; L.gvTodos = null; render(); if (window.innerWidth > 900) document.querySelector(".painel-lg")?.scrollIntoView({ block: "nearest" }); break;
-      case "lg-fechar": L.sel = null; L.novo = false; L.registrar = null; render(); break;
-      case "lg-nova": L.novo = true; L.sel = null; L.dadosAberto = true; render(); $("#fx-nome")?.focus(); break;
+      case "lg-fechar": L.sel = null; L.novo = false; L.registrar = null; L.passo = null; render(); break;
+      case "lg-nova": L.novo = true; L.sel = null; L.passo = null; render(); $("#fx-nome")?.focus(); break;
       case "lg-etapa": L.etapa = b.dataset.v; L.mostrar = 100; render(); break;
+      case "lg-aba": L.aba = b.dataset.v; L.mostrar = 100; render(); break;
+      case "lg-retomar": { const e = S.vd.etapas.find((x) => x.funil === S.vd.scc && x.ordem === 3); if (e) moverEtapaFicha(b.dataset.id, e.id); break; }
       case "lg-mais": L.mostrar += 100; { const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); } break;
       case "lg-rel-dia": S.view = "relatorios"; R.periodo = "dia"; R.ref = hojeISO(); render(); break;
       case "lg-ret": {
@@ -2526,6 +2657,7 @@
     if (t.id === "vd-resp") { S.vd.resp = t.value; atualizarVendas(); return; }
     { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
     if (t.closest?.('[data-acao="lg-salvar"]') && !$("#rg-painel")?.hidden && t.name !== "res") atualizarBlocoDemo(t.form, false);
+    if ((t.name === "res" || t.name === "neg_destino") && t.closest('[data-acao="lg-salvar"]')) atualizarNegativa(t.form);
     if ((t.name === "res" || t.name === "envio") && t.closest('[data-acao="lg-salvar"]')) {
       atualizarBlocoDemo(t.form, t.name === "res" && t.value === "demo_realizada");
       const c = $("#rg-conta"); if (c) c.innerHTML = avisoContagem(t.form);
