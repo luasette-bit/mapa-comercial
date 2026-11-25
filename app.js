@@ -361,7 +361,7 @@
   function devolverForm(g) {
     const f = app.querySelector('form[data-acao="lg-salvar"]'); if (!g || !f || (f.dataset.ficha || "") + "|" + (f.dataset.cnpj || "") !== g.chave) return;
     for (const [n, rv, val] of g.v) { const el = rv != null ? f.querySelector(`[name="${n}"][value="${CSS.escape(rv)}"]`) : f.elements[n]; if (!el || el instanceof RadioNodeList) continue; if (el.type === "radio" || el.type === "checkbox") el.checked = val; else el.value = val; }
-    f.dataset.sujo = "1"; const d = $("#rg-demo"); if (d) d.hidden = !f.querySelector('[name="res"][value="demo_agendada"]:checked');
+    f.dataset.sujo = "1"; atualizarBlocoDemo(f, false);
     const c = $("#rg-conta"); if (c) c.innerHTML = avisoContagem(f);
     if (g.foco) document.getElementById(g.foco)?.focus();
   }
@@ -1340,6 +1340,32 @@
   ];
   // o que aparece no formulário: uma escolha só, na ordem do Relatório diário
   const OPCOES = [["sem_contato", "Sem contato"], ["conversou", "Consegui contato"], ["demo_agendada", "Demo agendada"], ["demo_realizada", "Demo realizada"], ["negativa", "Negativa"]];
+  // Demo realizada: os dados do cartão do Painel de Demonstrações Realizadas (todos obrigatórios)
+  const DADOS_DEMO = [["sistema", "Sistema usado"], ["qtd_condominios", "Quantos condomínios atende"], ["responsavel", "Nome do responsável"], ["cidade", "Cidade"], ["uf", "UF"]];
+  function dadosDoForm(form) {
+    const v = (n) => String(form.elements[n]?.value ?? "").trim();
+    const dt = v("rg_demo_em");
+    return { nome: v("nome") || form.dataset.nome || "", sistema: v("sistema"), qtd_condominios: v("qtd_condominios").replace(/\D/g, ""), responsavel: v("responsavel"), cidade: v("cidade"), uf: v("uf"), demo: dt, formato: v("rg_formato") || "virtual" };
+  }
+  function faltaDemo(form) {
+    const d = dadosDoForm(form), falta = DADOS_DEMO.filter(([k]) => !d[k]).map(([k, l]) => [k, l]);
+    if (!d.demo) falta.unshift(["rg_demo_em", "Dia e hora da demonstração"]);
+    return falta;
+  }
+  function atualizarBlocoDemo(form, abrir) {
+    const res = form.querySelector('[name="res"]:checked')?.value, demo = res === "demo_agendada" || res === "demo_realizada";
+    const bloco = $("#rg-demo"); if (bloco) bloco.hidden = !demo;
+    const lbl = form.querySelector('label[for="rg-demo-em"]'); if (lbl) lbl.textContent = res === "demo_realizada" ? "Dia e hora em que a demonstração foi feita" : "Dia e hora da demonstração";
+    const p = $("#rg-painel"); if (!p) return;
+    p.hidden = res !== "demo_realizada"; if (p.hidden) return;
+    if (abrir) { const det = form.querySelector(".lg-bloco-dados"); if (det && !det.open) { det.open = true; S.lg.dadosAberto = true; } const dm = form.elements.rg_demo_em; if (dm && !dm.value) { const a = localSP(new Date().toISOString()); dm.value = a.slice(0, 14) + "00"; } }
+    const d = dadosDoForm(form), linha = (l, v) => `<span>${l}: ${v ? esc(v) : '<i class="rg-falta">falta preencher</i>'}</span>`;
+    const dt = d.demo ? `${d.demo.slice(8, 10)} de ${MESES[+d.demo.slice(5, 7) - 1]} às ${d.demo.slice(11, 16)}` : "";
+    p.innerHTML = `<span class="rg-painel-tit">Vai entrar assim no Painel de Demonstrações Realizadas</span>
+      <div class="rel-card"><b class="rel-card-nome">${esc(d.nome || "—")}</b><b class="t12">Demonstração ${d.formato === "presencial" ? "presencial" : "virtual"} realizada: ${dt ? esc(dt) : '<i class="rg-falta">falta o dia e a hora</i>'}</b>
+      ${linha("Sistema usado", d.sistema)}${linha("Quantos condomínios atende", d.qtd_condominios ? `${fmtN(+d.qtd_condominios)} ${+d.qtd_condominios === 1 ? "condomínio" : "condomínios"}` : "")}${linha("Nome do responsável", d.responsavel)}${linha("Cidade", d.cidade && d.uf ? `${d.cidade} - ${d.uf}` : d.cidade && !d.uf ? "" : "")}</div>
+      <span class="t12 fraco">Os dados vêm de "Dados da administradora", logo acima. Todos são obrigatórios para a demonstração.</span>`;
+  }
   // aviso ao lado do Salvar: como este contato entra no relatório (mesma regra dos relatórios)
   function avisoContagem(form) {
     const k = form.querySelector('[name="res"]:checked')?.value || (form.querySelector('[name="envio"]:checked') ? "conversou" : "");
@@ -1827,7 +1853,8 @@
         <div class="linha-flex" style="gap:8px">${Object.entries(ENVIO).map(([k, l]) => `<label class="chip-radio chip-check"><input type="checkbox" name="envio" value="${k}"><span>${k === "email" ? "E-mail" : l}</span></label>`).join("")}
           <span class="linha-flex" style="gap:6px;margin-left:auto"><button type="button" class="mini mini-ok" data-acao="lg-abrir-wpp">Abrir WhatsApp</button><button type="button" class="mini" data-acao="lg-abrir-email">Abrir e-mail</button></span></div>
         <span class="t12 fraco">O número e o e-mail ficam nos campos <b>WhatsApp</b> e <b>E-mail para contato</b> da ficha.</span>
-        <div id="rg-demo" class="linha-flex" hidden><div class="campo"><label for="rg-demo-em">Dia e hora da demonstração</label><input id="rg-demo-em" name="rg_demo_em" type="datetime-local" class="input"></div><div class="campo"><label for="rg-formato">Formato</label><select id="rg-formato" name="rg_formato" class="input"><option value="virtual">Virtual</option><option value="presencial">Presencial</option></select></div></div>
+        <div id="rg-demo" class="linha-flex" hidden><div class="campo"><label for="rg-demo-em">Dia e hora da demonstração</label><input id="rg-demo-em" name="rg_demo_em" type="datetime-local" class="input" value="${esc(f?.demo_em ? localSP(f.demo_em) : "")}" max="${esc(localSP(new Date().toISOString()).slice(0, 10))}T23:59"></div><div class="campo"><label for="rg-formato">Formato</label><select id="rg-formato" name="rg_formato" class="input"><option value="virtual">Virtual</option><option value="presencial" ${f?.demo_formato === "presencial" ? "selected" : ""}>Presencial</option></select></div></div>
+        <div id="rg-painel" class="rg-painel" hidden></div>
         <div class="campo"><label for="rg-texto">Anotação</label><textarea id="rg-texto" name="texto" class="input lg-texto" rows="4" placeholder="Com quem falou, o que disse, próximo passo…"></textarea></div>
       </div>
       <div class="caixa-cinza"><b>Ligar de novo</b>
@@ -2000,7 +2027,8 @@
     if (envio.length && !marcados.length) marcados.push("conversou");
     const escolhidos = BOTOES.filter((b) => marcados.includes(b[0]));
     const res = escolhidos.length ? [...escolhidos].sort((a, b) => PRIORIDADE.indexOf(a[2]) - PRIORIDADE.indexOf(b[2]))[0] : null;
-    const data = String(fd.get("data") || "") || hojeISO(), texto = String(fd.get("texto") || "").trim() || null;
+    let demoDia = null;
+    const data0 = String(fd.get("data") || "") || hojeISO(), texto = String(fd.get("texto") || "").trim() || null;
     if (modo === "ligacao") {
       if (!res) { toast("Escolha o que aconteceu no contato."); form.querySelector('[name="res"]')?.focus(); return; }
       if (escolhidos.length === 1 && res[0] === "anotacao" && !texto) { toast("Escreva a anotação."); $("#rg-texto")?.focus(); return; }
@@ -2009,7 +2037,12 @@
       const orig = String(fd.get("retorno_orig") || "");
       if (orig && rd && localSP(d.retorno_em) === orig && orig.slice(0, 10) <= hojeISO()) { d.retorno_em = null; d.retorno_nota = null; }
       if (escolhidos.some((b) => b[2] === "demo_agendada") && fd.get("rg_demo_em")) { d.demo_em = fd.get("rg_demo_em") + ":00-03:00"; d.demo_formato = fd.get("rg_formato") || "virtual"; }
-      if (escolhidos.some((b) => b[2] === "demo_realizada") && !d.demo_em) d.demo_em = data + "T12:00:00-03:00";
+      if (escolhidos.some((b) => b[2] === "demo_realizada")) {
+        const falta = faltaDemo(form);
+        if (falta.length) { toast(`Para a demonstração entrar no painel, preencha: ${falta.map((x) => x[1]).join(", ")}.`); const det = form.querySelector(".lg-bloco-dados"); if (det) det.open = true; (form.elements[falta[0][0]] || form.querySelector(`#fx-${falta[0][0]}`))?.focus?.(); return; }
+        const dm = String(fd.get("rg_demo_em")); d.demo_em = dm + ":00-03:00"; d.demo_formato = fd.get("rg_formato") || "virtual";
+        demoDia = dm.slice(0, 10);
+      }
     }
     if (d.retorno_em && modo === "dados" && diaDe(d.retorno_em) < hojeISO() && !(f && igual("retorno_em", f.retorno_em, d.retorno_em))) { toast("O dia de ligar de novo já passou. Escolha hoje ou outro dia."); $("#rt-data")?.focus(); return; }
     if (!f) {
@@ -2028,7 +2061,7 @@
       }
       let novo = null;
       if (res) {
-        const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data, tipo: res[2], detalhe: escolhidos.length === 1 ? res[3] : null, detalhes: escolhidos.map((b) => b[0]), envio: envio.length ? envio : null, canal: fd.get("canal") || "ligacao", texto }).select().single(); if (error) throw error;
+        const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data: res[2] === "demo_realizada" && demoDia && demoDia <= hojeISO() ? demoDia : data0, tipo: res[2], detalhe: escolhidos.length === 1 ? res[3] : null, detalhes: escolhidos.map((b) => b[0]), envio: envio.length ? envio : null, canal: fd.get("canal") || "ligacao", texto }).select().single(); if (error) throw error;
         L.regs.push(r); novo = r;
       }
       const { data: nf } = await sb.from("fichas").select(COLS_FICHA).eq("id", id).single();
@@ -2037,7 +2070,19 @@
       derivar(); form.dataset.sujo = "";
       const salvo = novo && L.regs.find((x) => x.id === novo.id);
       toast(salvo ? (contaComoContato(salvo) ? `Salvo como ${salvo.nova ? "contato novo" : "follow-up"}${nf?.retorno_em ? ` · ligar de novo ${quandoTxt(nf.retorno_em).toLowerCase()}` : ""}.` : salvo.tipo === "sem_contato" ? "Salvo como sem contato." : "Registro salvo.") : f ? "Dados salvos." : "Ficha criada.");
-      carregarAgenda(); recarregarNegociosDaFicha(id).then(() => render());
+      carregarAgenda();
+      // demonstração realizada: vai direto para o Painel de Demonstrações Realizadas, com o cartão novo em destaque
+      if (salvo?.tipo === "demo_realizada") {
+        recarregarNegociosDaFicha(id);
+        const total = acumulado(hojeISO()).demos.length;
+        S.view = "relatorios"; S.rl.periodo = "semana"; S.rl.ref = hojeISO(); L.sel = null; L.registrar = null; S.sel = null; S.selRow = null;
+        render();
+        const card = document.querySelector(`.rel-painel-demos [data-ficha="${id}"]`);
+        if (card) { card.classList.add("rel-card-novo"); card.scrollIntoView({ behavior: "smooth", block: "center" }); }
+        toast(`Demonstração registrada. Agora são ${fmtN(total)} demonstrações realizadas.`);
+        return;
+      }
+      recarregarNegociosDaFicha(id).then(() => render());
       if (mapa) {
         L.proxima = fd.get("proxima") === "on";
         const prox = L.proxima && modo === "ligacao" ? proximaEmpresa(form.dataset.cnpj) : null;
@@ -2267,13 +2312,14 @@
   }
   const relDe = (p, ini) => S.lg.rels.find((r) => r.usuario_id === donoAtual() && r.periodo === p && r.inicio === ini);
   function horaDe(r, f) {
+    if (f.demo_em && localSP(f.demo_em).slice(0, 10) === r.data && localSP(f.demo_em).slice(11, 16) !== "12:00") return localSP(f.demo_em).slice(11, 16);
     const m = (r.texto || "").match(/às (\d{1,2}[:h]\d{2})/); if (m) return m[1].replace("h", ":");
     if (f.demo_em && localSP(f.demo_em).slice(0, 10) === r.data) return localSP(f.demo_em).slice(11, 16);
     return "";
   }
   function cartaoDemo(f, linha, extra = "") {
-    const qtd = f.qtd_condominios != null ? `${fmtN(f.qtd_condominios)} condomínios${f.qtd_unidades ? ` | ${fmtN(f.qtd_unidades)} unidades` : ""}` : "—";
-    return `<div class="rel-card"><b class="rel-card-nome">${esc(f.nome)}</b><b class="t12">${linha}</b>
+    const qtd = f.qtd_condominios != null && f.qtd_condominios !== "" ? `${fmtN(f.qtd_condominios)} ${+f.qtd_condominios === 1 ? "condomínio" : "condomínios"}` : "—";
+    return `<div class="rel-card" data-ficha="${f.id}"><b class="rel-card-nome">${esc(f.nome)}</b><b class="t12">${linha}</b>
       <span>Sistema usado: ${esc(f.sistema || "—")}</span><span>Quantos condomínios atende: ${esc(qtd)}</span><span>Nome do responsável: ${esc(f.responsavel || "—")}</span><span>Cidade: ${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "—")}</span>${extra}</div>`;
   }
   function barrasSvg(itens) {
@@ -2341,7 +2387,7 @@
       resto = `<section class="rel-pg"><h2 class="rel-h">Acumulado até ${ddmm(fimTxt)}</h2><div class="rel-acum">${barrasSvg([["Tentativas", A.tentativas], ["Administradoras", A.prospectadas], ["Demonstrações", A.demos.length], ["Contratos", A.contratos.length]])}
         <div class="pilha" style="gap:12px"><b class="rel-sub2">Destaques do período</b><p style="margin:0">Com <b>${fmtN(A.tentativas)} tentativas de contato</b> e <b>${fmtN(A.prospectadas)} administradoras prospectadas</b>, o período acumulado resultou em <b>${fmtN(A.demos.length)} demonstrações realizadas</b> e <b>${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "contrato fechado" : "contratos fechados"}</b>.${listaUf ? ` Os atendimentos abrangeram administradoras em <b>${esc(listaUf)}</b>, com diferentes sistemas de gestão em uso.` : ""}</p>
         ${top.length ? `<div class="rel-info">As demonstrações contemplaram administradoras com rotinas e plataformas variadas, incluindo ${esc(top.join(", "))} e outros sistemas de administração.</div>` : ""}</div></div></section>
-        <section class="rel-pg"><div class="rel-painel-cab"><h2 class="rel-h">Painel de Demonstrações Realizadas</h2><b class="t13">TOTAL: ${fmtN(A.demos.length)} ${A.demos.length === 1 ? "Demonstração" : "Demonstrações"}</b></div>
+        <section class="rel-pg rel-painel-demos"><div class="rel-painel-cab"><h2 class="rel-h">Painel de Demonstrações Realizadas</h2><b class="t13">TOTAL: ${fmtN(A.demos.length)} ${A.demos.length === 1 ? "Demonstração" : "Demonstrações"}</b></div>
           ${A.demos.length ? `<div class="rel-cards">${ordDemo(A.demos).map(({ f, r }) => cartaoDemo(f, `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} realizada: ${extenso(r.data, horaDe(r, f))}`)).join("")}</div>` : '<p class="fraco">Nenhuma demonstração ainda.</p>'}</section>
         <section class="rel-pg"><div class="rel-painel-cab"><h2 class="rel-h">Painel de Contratos Fechados</h2><b class="t13">TOTAL: ${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "Contrato" : "Contratos"}</b></div>
           ${A.contratos.length ? `<div class="rel-cards">${A.contratos.map((f) => { const d = (L.porFicha.get(f.id) || []).find((x) => x.tipo === "demo_realizada"); return cartaoDemo(f, d ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} realizada: ${extenso(d.data, horaDe(d, f))}` : "", `<b class="t12">Contrato fechado dia ${ddmmaaaa(f.contrato_em || (L.porFicha.get(f.id) || []).find((x) => x.tipo === "contrato")?.data || "")}</b>`); }).join("")}</div>` : '<p class="fraco">Nenhum contrato fechado ainda.</p>'}</section>`;
@@ -2468,7 +2514,7 @@
     if (a === "rl-aj") { const fd = new FormData(f), aj = {}; for (const [k, v] of fd) if (String(v).trim() !== "") aj[k] = Math.max(0, parseInt(v, 10) || 0); if (await salvarRel({ ajustes: aj })) { S.rl.editAj = false; toast(Object.keys(aj).length ? "Números corrigidos." : "Números voltaram a ser contados pelo sistema."); render(); } }
   });
   app.addEventListener("input", (ev) => {
-    const fm = ev.target.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1";
+    const fm = ev.target.closest?.('form[data-acao="lg-salvar"]'); if (fm) { fm.dataset.sujo = "1"; if (!$("#rg-painel")?.hidden) atualizarBlocoDemo(fm, false); }
     if (ev.target.id === "vd-busca") { const v = ev.target.value; clearTimeout(S.vd.espera); S.vd.espera = setTimeout(() => { const a = $("#vd-busca"); if (!a) return; S.vd.busca = a.value; atualizarVendas(); }, 200); void v; return; }
     if (ev.target.id === "lg-busca") { clearTimeout(S.lg.espera); S.lg.espera = setTimeout(() => { const a = $("#lg-busca"); if (!a) return; S.lg.busca = a.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); sincronizarRota(); }, 200); }
   });
@@ -2478,8 +2524,9 @@
     if (t.classList.contains("sel-etapa")) { if (t.value) moverEtapaFicha(t.dataset.id, +t.value); return; }
     if (t.id === "vd-resp") { S.vd.resp = t.value; atualizarVendas(); return; }
     { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
+    if (t.closest?.('[data-acao="lg-salvar"]') && !$("#rg-painel")?.hidden && t.name !== "res") atualizarBlocoDemo(t.form, false);
     if ((t.name === "res" || t.name === "envio") && t.closest('[data-acao="lg-salvar"]')) {
-      const d = $("#rg-demo"); if (d) d.hidden = !t.form.querySelector('[name="res"][value="demo_agendada"]:checked');
+      atualizarBlocoDemo(t.form, t.name === "res" && t.value === "demo_realizada");
       const c = $("#rg-conta"); if (c) c.innerHTML = avisoContagem(t.form);
     }
   });

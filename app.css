@@ -1191,3 +1191,12 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .rg-salvar { align-items: center; }
 .rg-conta { color: #4A5468; }
 .rg-conta b { color: #1B2333; }
+
+/* ---- Demo realizada: prévia do cartão do painel dentro do formulário */
+.rg-painel { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: #fff; border: 1px dashed #C9D4EA; }
+.rg-painel[hidden] { display: none; }
+.rg-painel-tit { font-size: 12.5px; font-weight: 600; color: #4A5468; }
+.rg-painel .rel-card { margin: 0; }
+.rg-falta { font-style: normal; color: #B42318; font-weight: 600; }
+.rel-card-novo { outline: 3px solid #39B3F0; outline-offset: 3px; animation: rel-novo 1.6s ease-out 2; }
+@keyframes rel-novo { 50% { outline-color: transparent; } }
