@@ -30,3 +30,15 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Banco: 13 empresas e 1 marcação renomeadas de "Omeupredio (PRG)" para "SCC Online (PRG)"; as 442 empresas cujo site não tinha link de sistema voltaram para a fila de verificação.
 - Campo "Sistema" da ficha virou lista de escolha (com "Outro sistema…"). Nomes diferentes para o mesmo sistema viram o nome oficial (ex.: "Cond21" e "Group" → "Group Software (Condomínio21)"), então não há concorrente repetido. Entraram ApControle, BR Condomínios, Datadigitos, Icondev, Syndkos, Systemar e Sem sistema. As 14 fichas que estavam escritas de outro jeito foram padronizadas no banco; quando havia dois sistemas no mesmo texto, o detalhe foi para "Informações adicionais".
 
+## Concorrência (v43)
+- Aba **Concorrência**: brechas (atacar hoje), movimentos (ficar sabendo) e um resumo por concorrente (portal no ar ou não, quedas em 6 meses, notícias).
+- **Vigia automático** (função `vigiar-concorrencia`, agendada no pg_cron a cada 15 minutos):
+  - testa os portais dos concorrentes (até 3 endereços por sistema, tirados dos links reais dos sites das administradoras); sem resposta em 2 testes seguidos = brecha "portal fora do ar"; quando volta, a brecha fecha e vale por mais 14 dias;
+  - a cada 2 horas procura notícias no Google Notícias: problema (instabilidade, apagão, vazamento, reajuste...) = brecha; lançamento, parceria, mudança na empresa = movimento;
+  - a cada 6 horas lê o blog da Almah (único concorrente com feed aberto).
+- O Reclame Aqui bloqueia leitura automática; o que aparecer lá entra pelo botão "Registrar à mão".
+- **Lista de ligação da brecha**: fichas e empresas do mapeamento que usam aquele sistema, com "Ligar e registrar" (abre a ficha já no registro; empresa sem ficha ganha ficha na hora).
+- **Marcação no banco** (gatilho `registro_marca_brecha`): todo contato com administradora que usa o sistema da brecha, dentro do prazo, ganha `registros.brecha_id`; demonstração e contrato até 60 dias depois herdam a brecha do contato que abriu a conversa. O relatório (semana/mês) mostra uma seção "Brechas da concorrência".
+- **Início**: card de alerta quando há brecha aberta; sem brecha, mostra a última novidade.
+- **Funções do time**: no cadastro a pessoa escolhe SDR, Vendedor, Pós-vendas ou Gestor (`perfis.funcao`); a Equipe mostra e troca a função. "Papel" continua sendo o acesso (próprios dados ou vê tudo).
+

@@ -13,6 +13,9 @@
   const SOFTWARES = ["Superlógica", "Group Software (Condomínio21)", "Almah", "CondoMob", "uCondo", "TownSq", "CondoPanel", "Condominizar", "Seu Condomínio", "Alterdata", "Ahreas", "Winker", "Webware", "Hitecnet", "SCC Online (PRG)"];
   // o nosso sistema: quem usa já é cliente (o app Omeupredio vem junto com ele)
   const NOSSO = "SCC Online (PRG)";
+  // função de cada pessoa no time (o acesso continua sendo o "papel": SDR ou administrador)
+  const FUNCOES = [["sdr", "SDR"], ["vendedor", "Vendedor"], ["pos_vendas", "Pós-vendas"], ["gestor", "Gestor"]];
+  const rotuloFuncao = (f) => (FUNCOES.find(([k]) => k === f) || [, "SDR"])[1];
   // sistemas que o time já anotou nas ligações (não aparecem no site, mas existem)
   const OUTROS_SISTEMAS = ["ApControle", "BR Condomínios", "Datadigitos", "Icondev", "Syndkos", "Systemar", "Sem sistema"];
   // nomes diferentes para o mesmo sistema: tudo vira o nome oficial, para não contar duas vezes
@@ -87,10 +90,10 @@
   /* ----------------------------------------------------------------- dados */
   async function carregarPerfil() {
     const [{ data }, pend] = await Promise.all([
-      sb.from("perfis").select("nome,papel,aprovado").eq("id", S.user.id).maybeSingle(),
+      sb.from("perfis").select("nome,papel,aprovado,funcao").eq("id", S.user.id).maybeSingle(),
       sb.from("perfis").select("id", { count: "exact", head: true }).eq("aprovado", false),
     ]);
-    S.perfil = data || { nome: (S.user.email || "").split("@")[0], papel: "sdr", aprovado: false };
+    S.perfil = data || { nome: (S.user.email || "").split("@")[0], papel: "sdr", funcao: "sdr", aprovado: false };
     S.pendentes = S.perfil.aprovado && S.perfil.papel === "admin" ? pend.count || 0 : 0;
   }
   let buscandoPessoas = null;
@@ -412,7 +415,7 @@
   }
   // a tela logada: o topo e cada parte que pode mudar sozinha quando chegam dados ficam num "pedaço" (data-pedaco)
   function htmlLogado() {
-    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : telaEquipe();
+    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
     return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${S.voltarAtivo && !(S.view === "adms" && S.lg.sel) ? '<div class="voltar-barra"><button type="button" class="fc-voltar" data-acao="voltar">← Voltar</button></div>' : ""}${tela}</div>`}</main>`;
   }
   const PEDACOS = new Map();
@@ -448,13 +451,13 @@
 
   function topo() {
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
-    const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["listas", "Listas exportadas"]];
+    const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["concorrencia", (() => { const n = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0; return n ? `Concorrência <span class="contador">${n}</span>` : "Concorrência"; })()], ["listas", "Listas"]];
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
       <nav aria-label="Menu principal">${nav.map(([k, l]) => `<button type="button" data-acao="ir" data-view="${k}" ${k === "agenda" ? 'id="nav-agenda"' : ""} ${S.view === k ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>
       <div class="usuario"><button type="button" data-acao="menu" aria-expanded="${S.menu}"><span>${esc(S.perfil?.nome || "")}</span><span class="avatar">${esc(ini(S.perfil?.nome))}</span></button>
-        ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${S.perfil?.papel === "admin" ? "Administradora" : "SDR"}</span><button type="button" data-acao="atualizar">Atualizar dados</button><span class="menu-versao">Versão ${VERSAO}</span><button type="button" data-acao="sair">Sair</button></div>` : ""}
+        ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${esc(rotuloFuncao(S.perfil?.funcao))}${S.perfil?.papel === "admin" ? " · vê tudo" : ""}</span><button type="button" data-acao="atualizar">Atualizar dados</button><span class="menu-versao">Versão ${VERSAO}</span><button type="button" data-acao="sair">Sair</button></div>` : ""}
       </div>
     </header>`;
   }
@@ -908,20 +911,21 @@
     const cel = (c) => { const d = String(c || "").replace(/\D/g, ""); return d.length >= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, -4)}-${d.slice(-4)}` : ""; };
     return `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Equipe</h1><p class="fraco" style="margin:0">Quem pode entrar no Mapa Comercial. Cada pessoa cria a própria conta na tela de entrada e só entra depois que uma administradora aprova aqui. Você também troca o papel, gera senha nova ou desativa quem saiu da equipe.</p></div></div>
       ${pend.length ? `<section class="cartao pendentes" style="overflow:hidden"><div class="lista-cab"><b>Aguardando sua aprovação · ${pend.length}</b><span class="t12 fraco">Só aprove quem é da equipe.</span></div>
-        ${pend.map((u) => `<div class="pendente"><div class="pilha" style="gap:2px"><b>${esc(u.nome)}</b><span class="t13">${esc(u.email)}${u.celular ? ` · ${esc(cel(u.celular))}` : ""}</span><span class="t12 fraco">pediu acesso em ${esc(fmtData(u.criado_em))}</span></div>
+        ${pend.map((u) => `<div class="pendente"><div class="pilha" style="gap:2px"><b>${esc(u.nome)}</b><span class="t13">${esc(u.email)}${u.celular ? ` · ${esc(cel(u.celular))}` : ""}</span><span class="t12 fraco">${esc(rotuloFuncao(u.funcao))} · pediu acesso em ${esc(fmtData(u.criado_em))}</span></div>
           <div class="linha-flex"><button type="button" class="btn btn-primario" data-acao="usuario" data-op="aprovar" data-papel="sdr" data-id="${u.id}">Aprovar como SDR</button><button type="button" class="btn btn-sec" data-acao="usuario" data-op="aprovar" data-papel="admin" data-id="${u.id}">Aprovar como administradora</button><button type="button" class="btn btn-perigo" data-acao="usuario" data-op="recusar" data-id="${u.id}">Recusar</button></div></div>`).join("")}</section>` : ""}
       <section class="cartao pad pilha" style="gap:12px"><b>Adicionar pessoa você mesma</b>
         <form class="form-grade" data-acao="criar-usuario" autocomplete="off">
           <div class="campo"><label for="u-nome">Nome</label><input id="u-nome" class="input" required maxlength="60"></div>
           <div class="campo"><label for="u-email">E-mail</label><input id="u-email" class="input" type="email" required></div>
           <div class="campo"><label for="u-senha">Senha inicial (mín. 8)</label><input id="u-senha" class="input" type="text" minlength="8" required></div>
-          <div class="campo"><label for="u-papel">Papel</label><select id="u-papel" class="input"><option value="sdr">SDR</option><option value="admin">Administrador</option></select></div>
+          <div class="campo"><label for="u-funcao">Função</label><select id="u-funcao" class="input">${FUNCOES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
+          <div class="campo"><label for="u-papel">Acesso</label><select id="u-papel" class="input"><option value="sdr">Só os próprios dados</option><option value="admin">Vê tudo (administrador)</option></select></div>
           <button type="submit" class="btn btn-primario">Adicionar</button>
         </form>
         <span class="t12 fraco">Passe a senha inicial para a pessoa por fora (WhatsApp, por exemplo). Ela pode trocar depois em "Esqueci a senha".</span>
       </section>
-      <section class="cartao" style="overflow:hidden"><div class="rolagem"><table class="tab-simples"><thead><tr><th>Nome</th><th>E-mail</th><th>Celular</th><th>Papel</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>
-        ${ok.map((u) => `<tr><td><b>${esc(u.nome)}</b>${u.ativo ? "" : ' <span class="selo s-errado">Desativado</span>'}</td><td>${esc(u.email)}</td><td class="num">${esc(cel(u.celular))}</td><td>${u.papel === "admin" ? "Administrador" : "SDR"}</td><td class="num">${u.ultimo_acesso ? esc(fmtData(u.ultimo_acesso)) : "nunca entrou"}</td>
+      <section class="cartao" style="overflow:hidden"><div class="rolagem"><table class="tab-simples"><thead><tr><th>Nome</th><th>E-mail</th><th>Celular</th><th>Função</th><th>Acesso</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>
+        ${ok.map((u) => `<tr><td><b>${esc(u.nome)}</b>${u.ativo ? "" : ' <span class="selo s-errado">Desativado</span>'}</td><td>${esc(u.email)}</td><td class="num">${esc(cel(u.celular))}</td><td><select class="input" style="height:32px;min-width:120px" data-funcao-de="${u.id}" aria-label="Função de ${esc(u.nome)}">${FUNCOES.map(([k, l]) => `<option value="${k}" ${u.funcao === k ? "selected" : ""}>${l}</option>`).join("")}</select></td><td>${u.papel === "admin" ? "Vê tudo" : "Próprios dados"}</td><td class="num">${u.ultimo_acesso ? esc(fmtData(u.ultimo_acesso)) : "nunca entrou"}</td>
           <td><div class="linha-flex">${u.id === S.user.id ? '<span class="t12 fraco">você</span>' : `<button type="button" class="mini" data-acao="usuario" data-op="${u.ativo ? "desativar" : "reativar"}" data-id="${u.id}">${u.ativo ? "Desativar" : "Reativar"}</button><button type="button" class="mini" data-acao="usuario" data-op="papel" data-papel="${u.papel === "admin" ? "sdr" : "admin"}" data-id="${u.id}">${u.papel === "admin" ? "Tornar SDR" : "Tornar administrador"}</button>`}<button type="button" class="mini" data-acao="nova-senha" data-id="${u.id}" data-nome="${esc(u.nome)}">Nova senha</button></div></td></tr>`).join("")}
       </tbody></table></div></section>`;
   }
@@ -965,6 +969,7 @@
       <label for="c-nome">Nome completo</label><input id="c-nome" autocomplete="name" maxlength="60" required value="${esc(v.nome || "")}">
       <label for="c-email">E-mail</label><input id="c-email" type="email" autocomplete="email" required value="${esc(v.email || "")}">
       <label for="c-cel">Celular (WhatsApp)</label><input id="c-cel" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="(13) 99999-9999" required value="${esc(v.celular || "")}">
+      <label for="c-funcao">Sua função no time</label><select id="c-funcao" required><option value="">Escolha</option>${FUNCOES.map(([k, l]) => `<option value="${k}" ${v.funcao === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <label for="c-senha">Senha</label><input id="c-senha" type="password" autocomplete="new-password" minlength="8" required placeholder="Pelo menos 8 caracteres">
       ${erro ? `<p class="erro-txt" role="alert">${esc(erro)}</p>` : ""}
       <button type="submit" class="btn btn-primario">Criar minha conta</button>
@@ -978,12 +983,13 @@
     $("#c-entrar").onclick = () => { S.cadastro = false; render(); };
     $("#form-cadastro").onsubmit = async (e) => {
       e.preventDefault();
-      const dados = { nome: $("#c-nome").value.trim(), email: $("#c-email").value.trim().toLowerCase(), celular: cel.value, senha: $("#c-senha").value };
-      S.cadastroDados = { nome: dados.nome, email: dados.email, celular: dados.celular };
+      const dados = { nome: $("#c-nome").value.trim(), email: $("#c-email").value.trim().toLowerCase(), celular: cel.value, funcao: $("#c-funcao").value, senha: $("#c-senha").value };
+      S.cadastroDados = { nome: dados.nome, email: dados.email, celular: dados.celular, funcao: dados.funcao };
       if (dados.nome.length < 2) return renderCadastro("Digite seu nome.");
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dados.email)) return renderCadastro("Digite um e-mail válido.");
       const dig = dados.celular.replace(/\D/g, "");
       if (dig.length < 10 || dig.length > 11) return renderCadastro("Digite o celular com DDD.");
+      if (!dados.funcao) return renderCadastro("Escolha a sua função no time.");
       if (dados.senha.length < 8) return renderCadastro("A senha precisa ter pelo menos 8 caracteres.");
       const b = e.target.querySelector("button[type=submit]"); b.disabled = true; b.textContent = "Criando sua conta…";
       const r = await chamar("criar-conta", dados);
@@ -1265,7 +1271,7 @@
     if (chave) try { localStorage.setItem("mc-tam-" + chave, String(out.length)); } catch { /* sem armazenamento */ }
     return out;
   }
-  const COLS_REG = "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,envio,canal,criado_em";
+  const COLS_REG = "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,envio,canal,criado_em,brecha_id";
   const COLS_FICHA = "id,usuario_id,cnpj,nome,telefones,whatsapp,horario_funcionamento,cidade,uf,sistema,qtd_condominios,qtd_unidades,atendente,email,numero_responsavel,melhor_horario,responsavel,etapa,funil,demo_em,demo_formato,contrato_em,criado_em,atualizado_em,contato_anterior,retorno_em,retorno_nota,observacoes";
   // busca as anotações de uma ficha (as importadas do Agendor não vêm na abertura do sistema)
   async function garantirTextos(fichaId) {
@@ -1854,6 +1860,7 @@
         </div>
       </div></section>
     <div class="in-cartoes ${S.mesmaTela ? "ja-visto" : ""} ${S.inicio.doEsqueleto ? "de-esq" : ""}">
+      ${cartaoConcorrenciaInicio()}
       <section class="in-cartao" data-pedaco="agenda"><div class="in-cab"><h2>Sua agenda de hoje</h2><button type="button" class="in-link" data-acao="ir" data-view="agenda">Ver agenda →</button></div>
         <div class="in-nums">${ind(hojeRet.length, hojeRet.length === 1 ? "retorno" : "retornos", "in-azul")}${ind(atr.length, atr.length === 1 ? "atrasado" : "atrasados", "in-verm")}${ind(hojeDemo.length, hojeDemo.length === 1 ? "demo" : "demos", "in-roxo")}</div>
         ${proximos.length ? `${lista.length ? "" : '<span class="t12 fraco">Nada para hoje. Os próximos:</span>'}<div class="pilha" style="gap:8px">${proximos.map(itemAg).join("")}</div>` : '<span class="t13 fraco">Nenhum retorno marcado. Quando marcar "Ligar de novo" numa ficha, ele aparece aqui.</span>'}
@@ -2303,6 +2310,159 @@
     S.view = "adms"; S.sel = null; S.selRow = null; L.sel = f.id; L.novo = false; L.busca = ""; L.etapa = "todas"; L.dadosAberto = true; render(); window.scrollTo(0, 0);
   }
 
+
+  /* ---- Concorrência: brechas (atacar hoje) e movimentos (ficar sabendo), vindos do vigia automático e do time */
+  S.cc = { carregado: false, carregando: false, eventos: [], portais: [], regs: [], mapa: [], aba: "brechas", sel: null, form: false, mostrarVelhas: false };
+  const grupoSis = (n) => chaveSis(nomeSistema(n) || n);
+  const nomeSis = (n) => (nomeSistema(n) === "Group Software (Condomínio21)" ? "Group Software" : nomeSistema(n) || n);
+  const TIPO_EV = { queda: ["Queda", "s-errado"], reclamacoes: ["Reclamações", "s-errado"], noticia: ["Notícia", "s-amarelo"], preco: ["Preço", "s-amarelo"], lancamento: ["Lançamento", "s-roxo"], parceria: ["Parceria", "s-ident"], outro: ["Empresa", "s-vazio"] };
+  const CONTATO_REAL = new Set(["conversou", "negativa", "demo_agendada", "demo_realizada", "contrato"]);
+  // brecha ativa: queda que ainda não acabou, ou dentro do prazo de 14 dias
+  const brechaAtiva = (e) => e.categoria === "brecha" && (e.valido_ate ? new Date(e.valido_ate) >= new Date() : !e.fim);
+  async function carregarConcorrencia(forcar) {
+    const C = S.cc; if (C.carregando || (C.carregado && !forcar) || !S.user || !S.perfil?.aprovado) return;
+    C.carregando = true;
+    try {
+      const [ev, po, rg, mp] = await Promise.all([
+        sb.from("concorrencia_eventos").select("*").eq("descartado", false).order("inicio", { ascending: false }).limit(400),
+        sb.from("concorrencia_portais").select("sistema,url,ultimo_teste,ultimo_ok,ultimo_status,falhas"),
+        sb.from("registros").select("id,ficha_id,usuario_id,tipo,data,brecha_id").not("brecha_id", "is", null).limit(5000),
+        sb.from("mapa").select("cnpj,razao_social,nome_fantasia,municipio,uf,telefone1,telefone2,email,sistema,sistema_status,sistema_marcado,removido").or("sistema.not.is.null,sistema_marcado.not.is.null").limit(5000),
+      ]);
+      C.eventos = ev.data || []; C.portais = po.data || []; C.regs = rg.data || []; C.mapa = (mp.data || []).filter((r) => !r.removido);
+      C.carregado = true;
+    } catch (e) { console.warn(e); }
+    finally { C.carregando = false; if (["inicio", "concorrencia", "relatorios"].includes(S.view)) render(); }
+  }
+  function numerosBrecha(e) {
+    const rs = S.cc.regs.filter((r) => r.brecha_id === e.id && r.tipo !== "anotacao");
+    return { ligacoes: rs.length, contatos: rs.filter((r) => CONTATO_REAL.has(r.tipo)).length, demos: rs.filter((r) => r.tipo === "demo_agendada").length, contratos: rs.filter((r) => r.tipo === "contrato").length, fichas: new Set(rs.map((r) => r.ficha_id)) };
+  }
+  // quem usa o sistema da brecha: as fichas do time e as empresas do mapeamento (sem ficha ainda)
+  function quemUsa(sistema) {
+    const g = grupoSis(sistema), L = S.lg, out = [], cnpjs = new Set();
+    for (const f of L.fichas || []) {
+      if (!f.sistema || grupoSis(f.sistema) !== g) continue;
+      if ((etapaSCC(f)?.resultado || "") === "ganho") continue;
+      if (f.cnpj) cnpjs.add(f.cnpj);
+      out.push({ ficha: f, nome: f.nome, cidade: f.cidade, uf: f.uf, tel: f.telefones || f.whatsapp || "", semInt: ehSemInteresse(f) });
+    }
+    for (const r of S.cc.mapa) {
+      const n = sistemaDe(r).nome; if (!n || grupoSis(n) !== g || cnpjs.has(r.cnpj) || fichaDoCnpj(r.cnpj)) continue;
+      cnpjs.add(r.cnpj);
+      out.push({ empresa: r, nome: nomeEmp(r), cidade: r.municipio ? titulo(r.municipio) : "", uf: r.uf, tel: r.telefone1 || "", semInt: false });
+    }
+    return out;
+  }
+  function cartaoBrecha(e, grande) {
+    const usa = quemUsa(e.sistema), n = numerosBrecha(e), ativa = brechaAtiva(e), [tl, tc] = TIPO_EV[e.tipo] || TIPO_EV.outro;
+    const feitas = usa.filter((u) => u.ficha && n.fichas.has(u.ficha.id)).length, faltam = usa.length - feitas;
+    const quando = e.tipo === "queda" && !e.fim ? `Desde ${dataHoraBR(e.inicio)}` : ddmmaaaa(localSP(e.inicio).slice(0, 10));
+    const aberto = S.cc.sel === e.id;
+    return `<article class="cc-brecha ${ativa ? (e.tipo === "queda" && !e.fim ? "cc-agora" : "cc-ativa") : "cc-velha"}">
+      <div class="cc-brecha-cab"><div class="pilha" style="gap:4px;min-width:0">
+        <span class="linha-flex" style="gap:6px">${e.tipo === "queda" && !e.fim ? '<span class="selo s-errado">Agora</span>' : ""}<span class="selo ${tc}">${tl}</span><span class="selo s-sis">${esc(nomeSis(e.sistema))}</span></span>
+        <b class="cc-tit">${esc(e.titulo)}</b>
+        <span class="t12 fraco">${esc(quando)} · ${esc(e.fonte || "")}${e.url ? ` · <a href="${esc(e.url)}" target="_blank" rel="noopener">abrir</a>` : ""}${e.detalhe ? ` · ${esc(e.detalhe)}` : ""}</span></div>
+        <span class="t12 fraco cc-prazo">${ativa ? (e.valido_ate ? `Vale até ${ddmm(localSP(e.valido_ate).slice(0, 10))}` : "Em andamento") : "Encerrada"}</span></div>
+      <div class="cc-nums">${[[usa.length, `${usa.length === 1 ? "usa" : "usam"} ${nomeSis(e.sistema)}`], [n.ligacoes, "ligações feitas"], [n.contatos, "contatos"], [n.demos, "demos agendadas"], [n.contratos, "contratos"]].map(([v, l]) => `<div><b class="num">${fmtN(v)}</b><span>${esc(l)}</span></div>`).join("")}</div>
+      <div class="linha-flex" style="gap:8px">${ativa && usa.length ? `<button type="button" class="btn ${grande ? "btn-primario" : "btn-sec"}" data-acao="cc-lista" data-id="${e.id}">${aberto ? "Fechar lista" : feitas ? `Continuar lista (${fmtN(faltam)} ${faltam === 1 ? "restante" : "restantes"})` : "Montar lista de ligação"}</button>` : ""}
+        ${!usa.length ? `<span class="t12 fraco">Nenhuma administradora mapeada usa ${esc(nomeSis(e.sistema))} ainda.</span>` : ""}
+        <button type="button" class="mini" data-acao="cc-descartar" data-id="${e.id}" title="Não é relevante">Descartar</button></div>
+      ${aberto ? listaBrecha(e, usa, n) : ""}</article>`;
+  }
+  function listaBrecha(e, usa, n) {
+    const ord = [...usa].sort((a, b) => (a.semInt - b.semInt) || ((a.ficha && n.fichas.has(a.ficha.id)) - (b.ficha && n.fichas.has(b.ficha.id))) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+    return `<div class="cc-lista"><div class="cc-lista-cab t12 fraco"><span>Administradora</span><span>Cidade</span><span>Telefone</span><span></span></div>
+      ${ord.map((u) => { const feito = u.ficha && n.fichas.has(u.ficha.id); return `<div class="cc-linha ${feito ? "cc-feito" : ""}">
+        <span class="pilha" style="gap:1px;min-width:0"><b class="t13">${esc(u.nome)}</b><span class="t11 fraco">${u.ficha ? `Ficha · ${esc(etapaDaFicha(u.ficha).nome)}` : "Mapeamento (sem ficha ainda)"}${u.semInt ? " · sem interesse" : ""}</span></span>
+        <span class="t13">${esc([u.cidade, u.uf].filter(Boolean).join(" - "))}</span><span class="t13 num">${esc(u.tel || "—")}</span>
+        <span>${feito ? '<span class="selo s-conf">Já ligou</span>' : `<button type="button" class="mini mini-ok" data-acao="cc-ligar" data-ficha="${u.ficha ? u.ficha.id : ""}" data-cnpj="${u.empresa ? esc(u.empresa.cnpj) : ""}">Ligar e registrar</button>`}</span></div>`; }).join("")}
+      <span class="t12 fraco" style="padding:8px 2px 0">Toda ligação para quem usa ${esc(nomeSis(e.sistema))} até o fim do prazo conta para esta brecha, mesmo feita fora desta lista.</span></div>`;
+  }
+  function formEventoManual() {
+    const lista = sistemasConhecidos().filter((n) => n !== NOSSO && n !== "Sem sistema");
+    return `<section class="cartao pad"><form class="pilha" style="gap:12px" data-acao="cc-salvar" autocomplete="off">
+      <b>Registrar à mão</b><span class="t13 fraco">Para o que o vigia não pega sozinho: algo que você viu no Reclame Aqui, que um cliente contou, que apareceu numa ligação.</span>
+      <div class="form-grade">
+        <div class="campo"><label for="cc-sis">Concorrente</label><select id="cc-sis" name="sistema" class="input" required><option value="">Escolha</option>${lista.map((n) => `<option>${esc(n)}</option>`).join("")}</select></div>
+        <div class="campo"><label for="cc-tipo">O que foi</label><select id="cc-tipo" name="tipo" class="input">
+          <optgroup label="Brecha (atacar)"><option value="brecha:reclamacoes">Muitas reclamações (Reclame Aqui)</option><option value="brecha:queda">Sistema fora do ar</option><option value="brecha:preco">Reajuste de preço</option><option value="brecha:noticia">Outro problema</option></optgroup>
+          <optgroup label="Movimento (ficar sabendo)"><option value="movimento:lancamento">Lançamento</option><option value="movimento:parceria">Parceria ou aquisição</option><option value="movimento:outro">Mudança na empresa</option></optgroup></select></div>
+        <div class="campo"><label for="cc-dia">Quando</label><input id="cc-dia" name="dia" type="date" class="input" value="${hojeISO()}" max="${hojeISO()}"></div>
+      </div>
+      <div class="campo"><label for="cc-tit">Resumo</label><input id="cc-tit" name="titulo" class="input" maxlength="300" required placeholder="Ex.: Superlógica com boletos duplicados, dezenas de reclamações"></div>
+      <div class="form-grade"><div class="campo"><label for="cc-det">Detalhes (opcional)</label><input id="cc-det" name="detalhe" class="input" maxlength="2000"></div><div class="campo"><label for="cc-url">Link (opcional)</label><input id="cc-url" name="url" class="input" type="url" placeholder="https://"></div></div>
+      <div class="linha-flex"><button type="submit" class="btn btn-primario">Registrar</button><button type="button" class="btn btn-sec" data-acao="cc-form">Cancelar</button><span class="t12 fraco">Brecha vale por 14 dias a partir do dia informado.</span></div>
+    </form></section>`;
+  }
+  function telaConcorrencia() {
+    const C = S.cc, L = S.lg;
+    if (!C.carregado) carregarConcorrencia();
+    if (!L.carregado && !L.carregando) carregarLig();
+    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Concorrência</h1><p class="fraco" style="margin:0">O sistema testa os portais dos concorrentes a cada 15 minutos e procura notícias a cada 2 horas. Brecha é hora de ligar para quem usa aquele sistema; movimento é para o time ficar sabendo.</p></div>
+      <div class="linha-flex"><button type="button" class="btn ${C.form ? "btn-sec" : "btn-primario"}" data-acao="cc-form">${C.form ? "Fechar" : "+ Registrar à mão"}</button></div></div>`;
+    if (!C.carregado || !L.carregado) return cab + `<div class="cartao vazio">Carregando…</div>`;
+    const brechas = C.eventos.filter((e) => e.categoria === "brecha"), ativas = brechas.filter(brechaAtiva), velhas = brechas.filter((e) => !brechaAtiva(e));
+    const movs = C.eventos.filter((e) => e.categoria === "movimento");
+    const abas = `<div class="si-abas" role="tablist">${[["brechas", "Brechas", ativas.length], ["movimentos", "Movimentos", movs.length], ["concorrentes", "Por concorrente", null]].map(([k, l, q]) => `<button type="button" role="tab" data-acao="cc-aba" data-v="${k}" aria-selected="${C.aba === k}">${l}${q != null ? ` <b>${fmtN(q)}</b>` : ""}</button>`).join("")}</div>`;
+    let corpo = "";
+    if (C.aba === "brechas") {
+      corpo = (ativas.length ? `<div class="pilha" style="gap:14px">${ativas.map((e) => cartaoBrecha(e, true)).join("")}</div>` : `<div class="cartao vazio">Nenhuma brecha aberta agora. Quando um concorrente cair ou sair notícia de problema, aparece aqui e no Início.</div>`)
+        + (velhas.length ? `<section class="pilha" style="gap:10px;margin-top:8px"><button type="button" class="mini" style="align-self:flex-start" data-acao="cc-velhas">${C.mostrarVelhas ? "Esconder" : "Ver"} brechas encerradas (${fmtN(velhas.length)})</button>${C.mostrarVelhas ? velhas.map((e) => cartaoBrecha(e, false)).join("") : ""}</section>` : "");
+    } else if (C.aba === "movimentos") {
+      corpo = movs.length ? `<section class="cartao" style="overflow:hidden">${movs.map((e) => { const [tl, tc] = TIPO_EV[e.tipo] || TIPO_EV.outro; return `<div class="cc-mov"><span class="t12 fraco num">${ddmm(localSP(e.inicio).slice(0, 10))}</span>
+        <span class="pilha" style="gap:2px;min-width:0"><span class="t13"><b>${esc(nomeSis(e.sistema))}</b> · ${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.titulo)}</a>` : esc(e.titulo)}</span><span class="t11 fraco">${esc(e.fonte || "")}${e.detalhe ? ` · ${esc(e.detalhe)}` : ""}</span></span>
+        <span class="selo ${tc}">${tl}</span><button type="button" class="mini" data-acao="cc-descartar" data-id="${e.id}" aria-label="Descartar">Descartar</button></div>`; }).join("")}</section>`
+        : `<div class="cartao vazio">Nenhum lançamento, parceria ou mudança registrada ainda.</div>`;
+    } else {
+      const seis = Date.now() - 183 * 86400000;
+      const nomes = [...new Set([...C.portais.map((p) => nomeSis(p.sistema)), ...C.eventos.map((e) => nomeSis(e.sistema))])].sort((a, b) => (a === "Superlógica" ? -1 : b === "Superlógica" ? 1 : a.localeCompare(b, "pt-BR")));
+      corpo = `<div class="cc-conc">${nomes.map((s) => {
+        const g = grupoSis(s), ps = C.portais.filter((p) => grupoSis(p.sistema) === g), ev = C.eventos.filter((e) => grupoSis(e.sistema) === g);
+        const quedas = ev.filter((e) => e.tipo === "queda" && new Date(e.inicio).getTime() >= seis);
+        const maior = quedas.reduce((m, e) => Math.max(m, (e.fim ? new Date(e.fim) : new Date()) - new Date(e.inicio)), 0);
+        const fora = ps.length && ps.every((p) => p.falhas >= 2), ult = ps.map((p) => p.ultimo_teste).filter(Boolean).sort().pop();
+        const durTxt = maior >= 2 * 86400000 ? `${Math.round(maior / 86400000)} dias` : maior >= 3600000 ? `${Math.round(maior / 3600000)} h` : maior ? "menos de 1 h" : "";
+        return `<section class="cartao pad pilha" style="gap:10px"><div class="linha-flex" style="justify-content:space-between"><b>${esc(s)}</b>${ps.length ? `<span class="selo ${fora ? "s-errado" : "s-conf"}">${fora ? "Portal fora do ar" : "Portal no ar"}</span>` : '<span class="selo s-vazio">Sem portal para testar</span>'}</div>
+          ${(() => { const nu = quemUsa(s).length, np = ev.filter((e) => e.categoria === "brecha" && e.tipo !== "queda").length, nm = ev.filter((e) => e.categoria === "movimento").length;
+            return `<div class="cc-mini"><span><b class="num">${fmtN(nu)}</b> ${nu === 1 ? "administradora usa" : "administradoras usam"}</span><span><b class="num">${fmtN(quedas.length)}</b> ${quedas.length === 1 ? "queda" : "quedas"} em 6 meses${durTxt ? ` · maior: ${durTxt}` : ""}</span><span><b class="num">${fmtN(np)}</b> ${np === 1 ? "notícia de problema" : "notícias de problema"}</span><span><b class="num">${fmtN(nm)}</b> ${nm === 1 ? "movimento" : "movimentos"}</span></div>`; })()}
+          ${ult ? `<span class="t11 fraco">Último teste do portal: ${esc(dataHoraBR(ult))}</span>` : ""}</section>`; }).join("")}</div>`;
+    }
+    return cab + (C.form ? formEventoManual() : "") + abas + corpo;
+  }
+  // Início: alerta quando há brecha aberta; sem brecha, só a última novidade
+  function cartaoConcorrenciaInicio() {
+    const C = S.cc;
+    if (!C.carregado) { carregarConcorrencia(); return ""; }
+    const ativas = C.eventos.filter(brechaAtiva).sort((a, b) => ((b.tipo === "queda" && !b.fim) - (a.tipo === "queda" && !a.fim)) || (a.inicio < b.inicio ? 1 : -1));
+    if (ativas.length) {
+      const e = ativas[0], usa = quemUsa(e.sistema).length, outras = ativas.length - 1;
+      return `<section class="in-cartao in-cc in-cc-alerta" data-pedaco="concorrencia"><div class="in-cc-dentro">
+        <div class="pilha" style="gap:6px;min-width:0"><span class="linha-flex" style="gap:6px"><span class="selo s-errado">${e.tipo === "queda" && !e.fim ? "Brecha agora" : "Brecha aberta"}</span><span class="selo s-sis">${esc(nomeSis(e.sistema))}</span></span>
+          <h2 style="margin:0">${esc(e.titulo)}</h2><span class="t13 fraco">${e.tipo === "queda" && !e.fim ? `Desde ${esc(dataHoraBR(e.inicio))}` : `${esc(ddmm(localSP(e.inicio).slice(0, 10)))} · ${esc(e.fonte || "")}`} · vale até ${esc(ddmm(localSP(e.valido_ate || new Date(Date.now() + 14 * 86400000).toISOString()).slice(0, 10)))}${outras ? ` · e mais ${outras} ${outras === 1 ? "brecha" : "brechas"}` : ""}</span></div>
+        <div class="in-cc-acao"><b class="num">${fmtN(usa)}</b><span>${usa === 1 ? "administradora usa" : "administradoras usam"}</span><button type="button" class="btn btn-primario" data-acao="cc-abrir" data-id="${e.id}">Montar lista de ligação</button></div></div></section>`;
+    }
+    const m = C.eventos.find((e) => e.categoria === "movimento");
+    return `<section class="in-cartao in-cc" data-pedaco="concorrencia"><div class="in-cc-dentro"><div class="pilha" style="gap:4px;min-width:0"><span class="t12 fraco">Concorrência · nenhuma brecha aberta</span>
+      ${m ? `<span class="t13"><b>${esc(nomeSis(m.sistema))}</b> · ${esc(m.titulo)} <span class="fraco">(${esc(ddmm(localSP(m.inicio).slice(0, 10)))})</span></span>` : '<span class="t13">O vigia está testando os portais e procurando notícias.</span>'}</div>
+      <button type="button" class="in-link" data-acao="ir" data-view="concorrencia">Ver concorrência →</button></div></section>`;
+  }
+  // Relatório: o que cada brecha rendeu no período
+  function secaoBrechasRel(m) {
+    const C = S.cc; if (!C.carregado) { carregarConcorrencia(); return ""; }
+    const por = new Map();
+    for (const r of m.rs) if (r.brecha_id && r.tipo !== "anotacao") { if (!por.has(r.brecha_id)) por.set(r.brecha_id, []); por.get(r.brecha_id).push(r); }
+    if (!por.size) return "";
+    const linhas = [...por].map(([id, rs]) => { const e = C.eventos.find((x) => x.id === id); return { e, rs }; }).filter((x) => x.e);
+    if (!linhas.length) return "";
+    const n = (rs, f) => fmtN(rs.filter(f).length);
+    return `<section class="rel-pg"><h2 class="rel-h">Brechas da concorrência</h2><p class="fraco" style="margin:0 0 10px">Ligações feitas para administradoras que usam o sistema do concorrente enquanto a brecha estava aberta (14 dias). Demonstrações e contratos que vieram depois contam para a brecha que abriu a conversa.</p>
+      <div class="rolagem"><table class="tab-simples rel-tab"><thead><tr><th>Brecha</th><th>Ligações</th><th>Contatos</th><th>Demos agendadas</th><th>Demos realizadas</th><th>Contratos</th></tr></thead><tbody>
+      ${linhas.map(({ e, rs }) => `<tr><td><b>${esc(nomeSis(e.sistema))}</b> · ${esc(e.titulo)}<br><span class="t11 fraco">${esc(ddmm(localSP(e.inicio).slice(0, 10)))}${e.fim ? ` a ${esc(ddmm(localSP(e.fim).slice(0, 10)))}` : ""}</span></td><td class="num">${fmtN(rs.length)}</td><td class="num">${n(rs, (r) => CONTATO_REAL.has(r.tipo))}</td><td class="num">${n(rs, (r) => r.tipo === "demo_agendada")}</td><td class="num">${n(rs, (r) => r.tipo === "demo_realizada")}</td><td class="num">${n(rs, (r) => r.tipo === "contrato")}</td></tr>`).join("")}
+      </tbody></table></div></section>`;
+  }
+
   /* ---- Agenda: retornos marcados e demonstrações agendadas, com aviso na hora */
   S.ag = { fichas: [], carregado: false, cnpjs: new Set(), modo: "mes", ref: hojeISO(), dia: hojeISO(), arrastando: null };
   let buscandoAgenda = null;
@@ -2558,7 +2718,7 @@
         <section class="rel-pg"><div class="rel-painel-cab"><h2 class="rel-h">Painel de Contratos Fechados</h2><b class="t13">TOTAL: ${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "Contrato" : "Contratos"}</b></div>
           ${A.contratos.length ? `<div class="rel-cards">${A.contratos.map((f) => { const d = (L.porFicha.get(f.id) || []).find((x) => x.tipo === "demo_realizada"); return cartaoDemo(f, d ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} realizada: ${extenso(d.data, horaDe(d, f))}` : "", `<b class="t12">Contrato fechado dia ${ddmmaaaa(f.contrato_em || (L.porFicha.get(f.id) || []).find((x) => x.tipo === "contrato")?.data || "")}</b>`); }).join("")}</div>` : '<p class="fraco">Nenhum contrato fechado ainda.</p>'}</section>`;
     }
-    return ctrl + barra + `<div class="relatorio">${capa}${secObs}${secNums}${secLista}${secDestaque}${resto}</div>`;
+    return ctrl + barra + `<div class="relatorio">${capa}${secObs}${secNums}${secaoBrechasRel(m)}${secLista}${secDestaque}${resto}</div>`;
   }
   function graficoPorDia(P, m) {
     let pontos = [];
@@ -2583,6 +2743,47 @@
     window.addEventListener("afterprint", volta);
     setTimeout(() => window.print(), 50);
   }
+
+  app.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM" || !b.dataset.acao.startsWith("cc-")) return;
+    const C = S.cc, a = b.dataset.acao;
+    switch (a) {
+      case "cc-aba": C.aba = b.dataset.v; render(); break;
+      case "cc-form": C.form = !C.form; render(); break;
+      case "cc-velhas": C.mostrarVelhas = !C.mostrarVelhas; render(); break;
+      case "cc-lista": C.sel = C.sel === +b.dataset.id ? null : +b.dataset.id; render(); break;
+      case "cc-abrir": C.aba = "brechas"; C.sel = +b.dataset.id; S.view = "concorrencia"; S.voltarAtivo = true; render(); window.scrollTo(0, 0); break;
+      case "cc-descartar": {
+        const e = C.eventos.find((x) => x.id === +b.dataset.id); if (!e) break;
+        const { error } = await sb.rpc("descartar_evento", { p_id: e.id, p_descartar: true });
+        if (error) { toast("Não deu para descartar. Tente de novo."); break; }
+        C.eventos = C.eventos.filter((x) => x.id !== e.id); if (C.sel === e.id) C.sel = null;
+        toast("Descartado."); render(); break;
+      }
+      case "cc-ligar": {
+        // abre a ficha já no registro de contato (empresa sem ficha: cria a ficha primeiro)
+        b.disabled = true;
+        if (b.dataset.ficha) { await abrirFicha(b.dataset.ficha); S.lg.registrar = S.lg.sel; render(); }
+        else { const r = C.mapa.find((x) => x.cnpj === b.dataset.cnpj); if (r) { await abrirFichaDaEmpresa(r); if (S.lg.sel) { S.lg.registrar = S.lg.sel; render(); } } }
+        break;
+      }
+    }
+  });
+  app.addEventListener("submit", async (ev) => {
+    const f = ev.target; if (f.dataset.acao !== "cc-salvar") return;
+    ev.preventDefault();
+    const fd = new FormData(f), [categoria, tipo] = String(fd.get("tipo") || "").split(":");
+    const sistema = String(fd.get("sistema") || ""), titulo = String(fd.get("titulo") || "").trim();
+    if (!sistema) { toast("Escolha o concorrente."); return; }
+    if (!titulo) { toast("Escreva um resumo do que aconteceu."); return; }
+    const b = f.querySelector("button[type=submit]"); b.disabled = true;
+    const { error } = await sb.rpc("registrar_evento_concorrencia", { p_sistema: sistema, p_categoria: categoria, p_tipo: tipo, p_titulo: titulo, p_detalhe: String(fd.get("detalhe") || ""), p_url: String(fd.get("url") || ""), p_dia: String(fd.get("dia") || hojeISO()) });
+    b.disabled = false;
+    if (error) { toast("Não deu para registrar. Tente de novo."); console.warn(error); return; }
+    S.cc.form = false; S.cc.aba = categoria === "brecha" ? "brechas" : "movimentos";
+    toast(categoria === "brecha" ? "Brecha registrada. Vale por 14 dias." : "Movimento registrado.");
+    await carregarConcorrencia(true);
+  });
 
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM") return;
@@ -2695,6 +2896,7 @@
     { const fm = t.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1"; }
     if (t.closest?.('[data-acao="lg-salvar"]') && !$("#rg-painel")?.hidden && t.name !== "res") atualizarBlocoDemo(t.form, false);
     if ((t.name === "res" || t.name === "neg_destino") && t.closest('[data-acao="lg-salvar"]')) atualizarNegativa(t.form);
+    if (t.dataset?.funcaoDe) { chamar("gerenciar-usuarios", { acao: "funcao", id: t.dataset.funcaoDe, funcao: t.value }).then((r) => { if (r.erro) toast(r.erro); else { toast("Função atualizada."); const u = S.equipe?.usuarios?.find((x) => x.id === t.dataset.funcaoDe); if (u) u.funcao = t.value; } }); }
     if (t.name === "sistema" && t.tagName === "SELECT" && t.form) { const o = t.form.elements.sistema_outro; if (o) { o.hidden = t.value !== "__outro"; if (!o.hidden) o.focus(); } }
     if ((t.name === "res" || t.name === "envio") && t.closest('[data-acao="lg-salvar"]')) {
       atualizarBlocoDemo(t.form, t.name === "res" && t.value === "demo_realizada");
@@ -3054,7 +3256,7 @@
     if (f.dataset.acao === "criar-usuario") {
       ev.preventDefault();
       const btn = f.querySelector("button"); btn.disabled = true;
-      const data = await chamar("gerenciar-usuarios", { acao: "criar", nome: $("#u-nome").value, email: $("#u-email").value, senha: $("#u-senha").value, papel: $("#u-papel").value });
+      const data = await chamar("gerenciar-usuarios", { acao: "criar", nome: $("#u-nome").value, email: $("#u-email").value, senha: $("#u-senha").value, papel: $("#u-papel").value, funcao: $("#u-funcao").value });
       if (data.erro) { toast(data.erro === "rede" ? "Não foi possível agora. Tente de novo." : data.erro); btn.disabled = false; return; }
       toast("Pessoa adicionada. Passe o e-mail e a senha inicial para ela."); S.equipe = null; render();
     }
@@ -3062,7 +3264,7 @@
 
   /* ------------------------------------------------------------- início */
   /* ---- rota: a tela atual fica no endereço (#/vendas?funil=SCC). F5 volta para o mesmo lugar e o Voltar do navegador funciona */
-  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "agenda", "relatorios", "listas", "equipe"];
+  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "agenda", "relatorios", "concorrencia", "listas", "equipe"];
   const ROTA = {
     mapeamento: { emp: [() => S.sel, (v) => { S.rotaEmp = v; }] },
     adms: {

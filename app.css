@@ -52,9 +52,9 @@ body.fora::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-
   -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%); }
 .login h1 { font-size: 24px; color: #fff; }
 .login label { font-size: 12px; font-weight: 600; color: #A9BEE6; margin-top: 6px; }
-.login input { height: 46px; border: 1px solid rgba(160, 200, 255, .25); border-radius: 12px; padding: 0 14px; background: rgba(255, 255, 255, .06); color: #fff; transition: border-color .15s, box-shadow .15s; }
+.login input, .login select { height: 46px; border: 1px solid rgba(160, 200, 255, .25); border-radius: 12px; padding: 0 14px; background: rgba(255, 255, 255, .06); color: #fff; transition: border-color .15s, box-shadow .15s; }
 .login input::placeholder { color: rgba(200, 215, 240, .45); }
-.login input:focus { outline: none; border-color: #6FE4FF; box-shadow: 0 0 0 3px rgba(111, 228, 255, .18); }
+.login input:focus, .login select:focus { outline: none; border-color: #6FE4FF; box-shadow: 0 0 0 3px rgba(111, 228, 255, .18); }
 .login input:-webkit-autofill { -webkit-text-fill-color: #fff; -webkit-box-shadow: 0 0 0 1000px #15296a inset; caret-color: #fff; }
 .login .btn { margin-top: 10px; height: 48px; border-radius: 12px; }
 .login .btn-primario { background: linear-gradient(90deg, #2C63DB, #39B3F0); box-shadow: 0 10px 26px rgba(57, 179, 240, .28); }
@@ -1412,3 +1412,35 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .fc-vazio { margin: 0; color: var(--fraco); font-size: 14px; }
 .ficha-clara .mc-esqueleto span, .ficha-clara .mc-esq-tit { background: #1B23331a; }
 .ficha-clara p.mc-esqueleto { display: grid; gap: 12px; min-height: 44px; margin: 0; }
+
+.login select option { color: #10204a; }
+
+/* concorrência */
+.s-amarelo { background: #FFF4D6; color: #8A5A00; }
+.cc-brecha { background: #fff; border: 1px solid var(--linha); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.cc-brecha.cc-agora { border: 2px solid #D64545; }
+.cc-brecha.cc-ativa { border: 1.5px solid #E8A13A; }
+.cc-brecha.cc-velha { opacity: .85; }
+.cc-brecha-cab { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.cc-tit { font-size: 15px; line-height: 1.35; }
+.cc-prazo { white-space: nowrap; }
+.cc-nums { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.cc-nums div { background: var(--fundo, #F4F6FA); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 1px; }
+.cc-nums b { font-size: 20px; }
+.cc-nums span { font-size: 11px; color: var(--fraco); }
+.cc-lista { border-top: 1px solid var(--linha); padding-top: 8px; display: flex; flex-direction: column; }
+.cc-lista-cab, .cc-linha { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1fr) 150px; gap: 12px; align-items: center; padding: 8px 2px; }
+.cc-linha { border-bottom: 1px solid var(--linha-clara); }
+.cc-linha.cc-feito { opacity: .6; }
+.cc-mov { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--linha-clara); }
+.cc-conc { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.cc-mini { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.in-cc { grid-column: 1 / -1; padding: 16px 22px; }
+.in-cc-alerta { border: 2px solid #D64545; }
+.in-cc-dentro { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.in-cc h2 { font-size: 18px; }
+.in-cc-acao { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.in-cc-acao b { font-size: 28px; line-height: 1; }
+.in-cc-acao span { font-size: 12px; color: var(--fraco); }
+@media (max-width: 760px) { .cc-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cc-lista-cab { display: none; } .cc-linha { grid-template-columns: 1fr; gap: 4px; } .cc-mov { grid-template-columns: 1fr; } .in-cc-acao { align-items: flex-start; } }
+.cc-mov a, .cc-brecha a { color: var(--link); }
