@@ -1152,3 +1152,11 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .ct-sozinho { justify-content: flex-end; }
 .ct-valor .ct-mail { overflow-wrap: anywhere; }
 .ct-claro .ct-valor b { font-weight: 500; font-size: 15px; }
+
+/* ---- pedaço trocado porque chegaram dados: aparece sem repetir a animação de entrada */
+.pedaco { display: contents; }
+.sem-entrada.in-ola, .sem-entrada.in-cta, .sem-entrada.in-cartao { animation: none; }
+/* aviso de versão nova */
+.aviso-versao { position: fixed; left: 50%; bottom: 20px; translate: -50% 0; z-index: 200; display: flex; align-items: center; gap: 14px; padding: 12px 14px 12px 18px; border-radius: 14px; background: #0B1B4D; color: #fff; font-weight: 600; font-size: 14px; box-shadow: 0 16px 36px rgba(10,24,71,.35); }
+.aviso-versao button { min-height: 36px; padding: 0 16px; border: 0; border-radius: 99px; background: #39B3F0; color: #06102F; font: inherit; font-weight: 700; cursor: pointer; }
+.menu-versao { display: block; padding: 8px 14px 4px; font-size: 12px; color: #6B7488; }

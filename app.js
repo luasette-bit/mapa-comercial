@@ -144,7 +144,7 @@
   }
 
   async function carregarMapeamento() {
-    S.carregando = true; S.erro = ""; render();
+    S.carregando = true; S.erro = ""; renderDados();
     try {
       const [cid, info, busc, tot] = await Promise.all([
         sb.rpc("cidades_da_uf", { p_uf: S.uf, p_so_ativas: S.soAtivas }),
@@ -168,7 +168,7 @@
     } catch (e) {
       S.erro = "Não foi possível carregar as empresas. Verifique a internet e recarregue a página.";
       console.error(e);
-    } finally { S.carregando = false; render(); }
+    } finally { S.carregando = false; renderDados(); }
   }
   async function recarregarEmpresa(cnpj) {
     const { data } = await sb.from("mapa").select(COLS).eq("cnpj", cnpj).maybeSingle();
@@ -365,10 +365,12 @@
     if (g.foco) document.getElementById(g.foco)?.focus();
   }
   function render() {
+    contaRedesenho++;
     const g = guardarForm(), rolagem = app.querySelector(".gaveta .painel")?.scrollTop || 0; renderTela(); devolverForm(g);
     const gv = app.querySelector(".gaveta .painel"); if (gv && rolagem) gv.scrollTop = rolagem;
     if (window.Gaveta && app.querySelector(".upw-sec-files")) window.Gaveta.ligar(app);
     document.body.classList.toggle("com-gaveta", !!gv);
+    sincronizarRota();
   }
   const gaveta = (html, fechar) => `<div class="gaveta-fundo" data-acao="${fechar}"></div><div class="gaveta gaveta-grande" role="dialog" aria-modal="true">${html}</div>`;
   function renderTela() {
@@ -376,8 +378,42 @@
     if (S.recuperando) return renderNovaSenha();
     if (!S.user) return S.cadastro ? renderCadastro() : renderLogin();
     if (S.perfil && !S.perfil.aprovado) return renderAguardando();
-    app.innerHTML = topo() + `<main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? "" : faixaAgenda()}${S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : telaEquipe()}</main>`;
+    app.innerHTML = htmlLogado();
+    guardarPedacos();
     if (S.view === "regiao") desenharMapa();
+  }
+  // a tela logada: o topo e cada parte que pode mudar sozinha quando chegam dados ficam num "pedaço" (data-pedaco)
+  function htmlLogado() {
+    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : telaEquipe();
+    return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${tela}</div>`}</main>`;
+  }
+  const PEDACOS = new Map();
+  function guardarPedacos() {
+    PEDACOS.clear();
+    const els = app.querySelectorAll("[data-pedaco]");
+    for (const el of els) PEDACOS.set(el.dataset.pedaco, el.outerHTML);
+    app.dataset.pedacos = [...els].map((e) => e.dataset.pedaco).join(",") + "|" + S.view;
+  }
+  // chegaram dados: troca só os pedaços que mudaram (sem redesenhar a tela e sem repetir as animações de entrada)
+  let contaRedesenho = 0, contaPedaco = 0;
+  function renderDados() {
+    if (!S.user || S.recuperando || !S.perfil?.aprovado || S.view === "regiao" || !app.dataset.pedacos) return render();
+    const t = document.createElement("template"); t.innerHTML = htmlLogado();
+    const novos = [...t.content.querySelectorAll("[data-pedaco]")];
+    if (novos.map((e) => e.dataset.pedaco).join(",") + "|" + S.view !== app.dataset.pedacos) return render();
+    const g = guardarForm(), rolagem = app.querySelector(".gaveta .painel")?.scrollTop || 0;
+    let trocou = false;
+    for (const n of novos) {
+      const k = n.dataset.pedaco, html = n.outerHTML; if (PEDACOS.get(k) === html) continue;
+      const v = app.querySelector(`[data-pedaco="${k}"]`); if (!v) return render();
+      n.classList.add("sem-entrada"); v.replaceWith(n); PEDACOS.set(k, html); trocou = true; contaPedaco++;
+    }
+    sincronizarRota();
+    if (!trocou) return;
+    devolverForm(g);
+    const gv = app.querySelector(".gaveta .painel"); if (gv && rolagem) gv.scrollTop = rolagem;
+    if (window.Gaveta && app.querySelector(".upw-sec-files")) window.Gaveta.ligar(app);
+    document.body.classList.toggle("com-gaveta", !!gv);
   }
 
   function topo() {
@@ -388,7 +424,7 @@
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
       <nav aria-label="Menu principal">${nav.map(([k, l]) => `<button type="button" data-acao="ir" data-view="${k}" ${k === "agenda" ? 'id="nav-agenda"' : ""} ${S.view === k ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>
       <div class="usuario"><button type="button" data-acao="menu" aria-expanded="${S.menu}"><span>${esc(S.perfil?.nome || "")}</span><span class="avatar">${esc(ini(S.perfil?.nome))}</span></button>
-        ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${S.perfil?.papel === "admin" ? "Administradora" : "SDR"}</span><button type="button" data-acao="atualizar">Atualizar dados</button><button type="button" data-acao="sair">Sair</button></div>` : ""}
+        ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${S.perfil?.papel === "admin" ? "Administradora" : "SDR"}</span><button type="button" data-acao="atualizar">Atualizar dados</button><span class="menu-versao">Versão ${VERSAO}</span><button type="button" data-acao="sair">Sair</button></div>` : ""}
       </div>
     </header>`;
   }
@@ -831,7 +867,7 @@
       sb.from("historico").select("criado_em,usuario_nome,acao,campo,empresa,quantidade").neq("acao", "exportou").order("criado_em", { ascending: false }).limit(60),
     ]);
     S.listas = { exportacoes: a.data || [], atividade: b.data || [] }; S.buscandoListas = false;
-    render();
+    renderDados();
   }
 
   function telaEquipe() {
@@ -863,7 +899,7 @@
     if (S.buscandoEquipe) return; S.buscandoEquipe = true;
     const data = await chamar("gerenciar-usuarios", { acao: "listar" }).finally(() => { S.buscandoEquipe = false; });
     S.equipe = data.erro || !data.usuarios ? { erro: data.erro && data.erro !== "rede" ? data.erro : "Não foi possível carregar a equipe." } : { usuarios: data.usuarios };
-    render();
+    renderDados();
   }
 
   /* --------------------------------------------------------------- login */
@@ -1230,7 +1266,7 @@
       derivar();
       L.carregado = true; S.carregadoEm = Date.now();
     } catch (e) { console.error(e); toast("Não deu para carregar as ligações. Tente de novo."); }
-    finally { L.carregando = false; if (L.carregado && !L.dono) carregarAgenda(); render(); }
+    finally { L.carregando = false; if (L.carregado && !L.dono) carregarAgenda(); renderDados(); }
   }
   function derivar() {
     const L = S.lg; S.dv = (S.dv || 0) + 1;
@@ -1470,6 +1506,7 @@
     const x = q.scrollLeft;
     for (const sel of [".vd-resumo", ".vd-quadro", '.filtros .chips', '.filtros .abas']) { const a = app.querySelector(sel), b = t.content.querySelector(sel); if (a && b) a.replaceWith(b); }
     app.querySelector(".vd-quadro").scrollLeft = x;
+    sincronizarRota();
   }
   function modalPerda() {
     const n = S.vd.negocios.find((x) => x.id === S.vd.perder);
@@ -1505,7 +1542,7 @@
       if (V.funil == null) V.funil = (funis.find((f) => f.sigla === "SCC") || funis[0])?.id;
       derivarVendas(); V.carregado = true;
     } catch (e) { console.error(e); toast("Não deu para carregar os negócios. Tente de novo."); }
-    finally { V.carregando = false; render(); }
+    finally { V.carregando = false; aplicarFunilDaRota(); renderDados(); }
   }
   function derivarVendas() {
     const V = S.vd; S.dv = (S.dv || 0) + 1;
@@ -1667,8 +1704,8 @@
     const ind = (v, l, cls) => `<span class="in-num ${cls}"><b class="num">${v}</b><span>${l}</span></span>`;
     return `<section class="in-hero"><div class="in-grade" aria-hidden="true"></div><div class="in-aro" aria-hidden="true"></div><div class="in-aro2" aria-hidden="true"></div>
       <div class="in-hero-dentro">
-        <div class="pilha in-ola"><span class="in-data">${esc(dataTxt)}</span><h1>${saud}${nome ? `, ${esc(nome)}` : ""}.</h1><p>${esc(frase)}</p></div>
-        <div class="pilha in-cta">
+        <div class="pilha in-ola" data-pedaco="ola"><span class="in-data">${esc(dataTxt)}</span><h1>${saud}${nome ? `, ${esc(nome)}` : ""}.</h1><p>${esc(frase)}</p></div>
+        <div class="pilha in-cta" data-pedaco="cta">
           ${S.cidade ? `<button type="button" class="in-btn" data-acao="in-continuar">Continuar em ${esc(S.cidade)}/${esc(S.uf)} <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
             <span class="in-cta-sub">${aLigar != null ? `${fmtN(aLigar)} ${aLigar === 1 ? "empresa ainda não contatada" : "empresas ainda não contatadas"}` : "abre a próxima empresa da lista"}</span>
             <button type="button" class="in-btn2" data-acao="ir" data-view="mapeamento">Escolher outra cidade</button>`
@@ -1676,17 +1713,17 @@
         </div>
       </div></section>
     <div class="in-cartoes">
-      <section class="in-cartao"><div class="in-cab"><h2>Sua agenda de hoje</h2><button type="button" class="in-link" data-acao="ir" data-view="agenda">Ver agenda →</button></div>
+      <section class="in-cartao" data-pedaco="agenda"><div class="in-cab"><h2>Sua agenda de hoje</h2><button type="button" class="in-link" data-acao="ir" data-view="agenda">Ver agenda →</button></div>
         <div class="in-nums">${ind(hojeRet.length, hojeRet.length === 1 ? "retorno" : "retornos", "in-azul")}${ind(atr.length, atr.length === 1 ? "atrasado" : "atrasados", "in-verm")}${ind(hojeDemo.length, hojeDemo.length === 1 ? "demo" : "demos", "in-roxo")}</div>
         ${proximos.length ? `${lista.length ? "" : '<span class="t12 fraco">Nada para hoje. Os próximos:</span>'}<div class="pilha" style="gap:8px">${proximos.map(itemAg).join("")}</div>` : '<span class="t13 fraco">Nenhum retorno marcado. Quando marcar "Ligar de novo" numa ficha, ele aparece aqui.</span>'}
       </section>
-      <section class="in-cartao"><div class="in-cab"><h2>Seu dia até agora</h2><button type="button" class="in-link" data-acao="lg-rel-dia">Relatório do dia →</button></div>
+      <section class="in-cartao" data-pedaco="dia"><div class="in-cab"><h2>Seu dia até agora</h2><button type="button" class="in-link" data-acao="lg-rel-dia">Relatório do dia →</button></div>
         ${m ? `<div class="in-grande"><b class="num">${fmtN(m.ligacoes)}</b><span>${m.ligacoes === 1 ? "contato" : "contatos"}${m.pessoas ? ` com ${fmtN(m.pessoas)} ${m.pessoas === 1 ? "administradora" : "administradoras"}` : " hoje"}</span></div>
         <div class="in-mini">${[["Contatos novos", m.primeira_ligacao], ["Follow-ups", m.follow_up], ["Sem contato", m.sem_contato], ["Demos agendadas", m.demo_agendada]].map(([l, v]) => `<span><span class="fraco">${l}</span><b class="num">${fmtN(v)}</b></span>`).join("")}</div>
         <div class="pilha" style="gap:6px"><span class="t12 fraco">Contatos por hora</span><div class="in-barras" aria-hidden="true">${horas.map(([h, v]) => `<i style="height:${v ? Math.max(10, Math.round((v / maxH) * 100)) : 6}%" class="${h === horaAgora ? "agora" : v ? "tem" : ""}" title="${h}h: ${v}"></i>`).join("")}</div><span class="in-eixo"><span>8h</span><span>12h</span><span>16h</span><span>19h</span></span></div>`
         : '<span class="t13 fraco">Carregando…</span>'}
       </section>
-      <section class="in-cartao"><div class="in-cab"><h2>Suas administradoras</h2><button type="button" class="in-link" data-acao="ir" data-view="vendas">Ver funil →</button></div>
+      <section class="in-cartao" data-pedaco="adms"><div class="in-cab"><h2>Suas administradoras</h2><button type="button" class="in-link" data-acao="ir" data-view="vendas">Ver funil →</button></div>
         ${pronto ? `<div class="pilha" style="gap:9px">${porEtapa.map(([k, l, v]) => `<span class="in-etapa"><span class="fraco">${l}</span><span class="in-trilho"><i style="width:${v ? Math.max(3, Math.round((v / maxE) * 100)) : 0}%;background:${corE[k]}"></i></span><b class="num">${fmtN(v)}</b></span>`).join("")}</div>
         <div class="in-acum"><b>${fmtN(Ac.demos.length)} ${Ac.demos.length === 1 ? "demonstração" : "demonstrações"}</b> e <b>${fmtN(Ac.contratos.length)} ${Ac.contratos.length === 1 ? "contrato" : "contratos"}</b> no acumulado. ${periodo === "noite" ? "Amanhã tem mais." : "Falta pouco para a próxima."}</div>` : '<span class="t13 fraco">Carregando…</span>'}
       </section>
@@ -2014,7 +2051,7 @@
       S.ag.fichas = data || [];
     }
     S.ag.carregado = true; S.ag.cnpjs = new Set(S.ag.fichas.map((f) => f.cnpj).filter(Boolean));
-    if (S.view === "agenda") render(); else atualizarContador();
+    if (S.view === "agenda" || S.view === "inicio") renderDados(); else atualizarContador();
     verificarAvisos();
   }
   function itensAgenda() {
@@ -2374,7 +2411,7 @@
   app.addEventListener("input", (ev) => {
     const fm = ev.target.closest?.('form[data-acao="lg-salvar"]'); if (fm) fm.dataset.sujo = "1";
     if (ev.target.id === "vd-busca") { const v = ev.target.value; clearTimeout(S.vd.espera); S.vd.espera = setTimeout(() => { const a = $("#vd-busca"); if (!a) return; S.vd.busca = a.value; atualizarVendas(); }, 200); void v; return; }
-    if (ev.target.id === "lg-busca") { clearTimeout(S.lg.espera); S.lg.espera = setTimeout(() => { const a = $("#lg-busca"); if (!a) return; S.lg.busca = a.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); }, 200); }
+    if (ev.target.id === "lg-busca") { clearTimeout(S.lg.espera); S.lg.espera = setTimeout(() => { const a = $("#lg-busca"); if (!a) return; S.lg.busca = a.value; S.lg.mostrar = 100; const l = $("#lg-lista"); if (l) l.innerHTML = linhasFichas(); sincronizarRota(); }, 200); }
   });
   app.addEventListener("change", (ev) => {
     const t = ev.target;
@@ -2738,6 +2775,90 @@
   });
 
   /* ------------------------------------------------------------- início */
+  /* ---- rota: a tela atual fica no endereço (#/vendas?funil=SCC). F5 volta para o mesmo lugar e o Voltar do navegador funciona */
+  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "agenda", "relatorios", "listas", "equipe"];
+  const ROTA = {
+    mapeamento: { emp: [() => S.sel, (v) => { S.rotaEmp = v; }] },
+    adms: {
+      ficha: [() => S.lg.sel, (v) => { S.lg.sel = v; }],
+      dono: [() => S.lg.dono, () => {}], // aplicado em aplicarRota (troca de dono recarrega as fichas)
+      etapa: [() => (S.lg.etapa !== "todas" ? S.lg.etapa : null), (v) => { S.lg.etapa = v; }],
+      busca: [() => S.lg.busca || null, (v) => { S.lg.busca = v; }],
+    },
+    vendas: {
+      funil: [() => S.vd.funis.find((f) => f.id === S.vd.funil)?.sigla || S.vd.funilRota || null, (v) => { S.vd.funilRota = v; aplicarFunilDaRota(); }],
+      status: [() => (S.vd.status !== "em_andamento" ? S.vd.status : null), (v) => { S.vd.status = v; }],
+      resp: [() => (S.vd.resp !== "todos" ? S.vd.resp : null), (v) => { S.vd.resp = v; }],
+      busca: [() => S.vd.busca || null, (v) => { S.vd.busca = v; }],
+    },
+    relatorios: {
+      periodo: [() => (S.rl.periodo !== "dia" ? S.rl.periodo : null), (v) => { S.rl.periodo = v; }],
+      ref: [() => (S.rl.ref !== hojeISO() ? S.rl.ref : null), (v) => { S.rl.ref = v; }],
+    },
+  };
+  function rotaAtual() {
+    const q = new URLSearchParams();
+    for (const [k, [ler]] of Object.entries(ROTA[S.view] || {})) { const v = ler(); if (v != null && v !== "") q.set(k, v); }
+    const t = q.toString(); return `#/${S.view}${t ? "?" + t : ""}`;
+  }
+  // o que muda de "lugar" (tela, ficha, empresa) entra no histórico; filtros só substituem o endereço
+  const lugarDa = (h) => { const [v, q = ""] = h.replace(/^#\/?/, "").split("?"), p = new URLSearchParams(q); return [v, p.get("ficha"), p.get("emp")].join("|"); };
+  let aplicandoRota = false;
+  function sincronizarRota() {
+    if (aplicandoRota || !S.user || !S.perfil?.aprovado) return;
+    const h = rotaAtual(); if (h === location.hash) return;
+    const url = location.pathname + location.search + h;
+    if (location.hash && lugarDa(h) !== lugarDa(location.hash)) history.pushState(null, "", url); else history.replaceState(null, "", url);
+  }
+  function aplicarRota(h) {
+    const [v, q = ""] = String(h || "").replace(/^#\/?/, "").split("?");
+    if (!VIEWS.includes(v) || (v === "equipe" && S.perfil?.papel !== "admin")) return false;
+    S.view = v; S.sel = null; S.selRow = null; S.rotaEmp = null;
+    if (v === "adms") { S.lg.sel = null; S.lg.etapa = "todas"; S.lg.busca = ""; }
+    const p = new URLSearchParams(q);
+    for (const [k, [, escrever]] of Object.entries(ROTA[v] || {})) if (p.has(k)) escrever(p.get(k));
+    if (v === "adms") {
+      const dono = p.get("dono") || null;
+      if (dono !== (S.lg.dono || null)) { S.lg.dono = dono; S.lg.carregado = false; }
+    }
+    return true;
+  }
+  function aplicarFunilDaRota() {
+    const V = S.vd; if (!V.funilRota || !V.funis.length) return;
+    const f = V.funis.find((x) => x.sigla === V.funilRota); if (f) V.funil = f.id; V.funilRota = null;
+  }
+  window.addEventListener("popstate", () => {
+    if (!S.user || !S.perfil?.aprovado) return;
+    aplicandoRota = true;
+    if (!aplicarRota(location.hash)) aplicarRota("#/inicio");
+    render(); aplicandoRota = false;
+    if (S.rotaEmp) { selecionar(S.rotaEmp); S.rotaEmp = null; }
+    if (S.view === "adms" && !S.lg.carregado && !S.lg.carregando) carregarLig();
+  });
+  /* ---- versão nova no ar: o GitHub Pages deixa o index.html em cache por 10 minutos. O app confere a versão publicada
+     (sem cache) ao abrir, ao voltar para a aba e a cada 30 minutos. Na abertura troca sozinho; depois mostra um aviso. */
+  const VERSAO = +(document.querySelector('meta[name="versao"]')?.content || 0);
+  let avisouVersao = false;
+  async function conferirVersao(abrindo) {
+    try {
+      const r = await fetch(`index.html?nc=${Date.now()}`, { cache: "no-store" }); if (!r.ok) return;
+      const nova = +((await r.text()).match(/name="versao" content="(\d+)"/)?.[1] || 0);
+      if (!nova || nova <= VERSAO) return;
+      const ir = () => location.replace(`${location.pathname}?v=${nova}${location.hash}`);
+      // na abertura troca sozinho, mas só uma vez por versão (evita ficar recarregando se o servidor ainda mandar a antiga)
+      let tentou; try { tentou = sessionStorage.getItem("mc-versao-tentada") === String(nova); sessionStorage.setItem("mc-versao-tentada", String(nova)); } catch { tentou = true; }
+      if (abrindo && !tentou) return ir();
+      if (avisouVersao) return; avisouVersao = true;
+      const el = document.createElement("div"); el.className = "aviso-versao"; el.setAttribute("role", "status");
+      el.innerHTML = `<span>Saiu uma versão nova do sistema.</span><button type="button">Atualizar agora</button>`;
+      el.querySelector("button").addEventListener("click", ir); document.body.appendChild(el);
+    } catch { /* sem rede: tenta de novo depois */ }
+  }
+  // tira o ?v= do endereço depois de abrir a versão nova
+  if (/[?&]v=\d+/.test(location.search)) history.replaceState(null, "", location.pathname + location.search.replace(/[?&]v=\d+/, "").replace(/^&/, "?") + location.hash);
+  conferirVersao(true);
+  setInterval(() => conferirVersao(false), 30 * 60e3);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") conferirVersao(false); });
   let iniciando = null;
   function iniciar() { if (!iniciando) iniciando = iniciarAgora().finally(() => { iniciando = null; }); return iniciando; }
   async function iniciarAgora() {
@@ -2745,8 +2866,10 @@
     S.user = data.session?.user || null;
     if (!S.user) return render();
     await carregarPerfil();
-    render();
+    if (S.perfil?.aprovado && location.hash) { aplicandoRota = true; aplicarRota(location.hash); }
+    render(); aplicandoRota = false;
     if (!S.perfil.aprovado) return;
+    if (S.rotaEmp) { selecionar(S.rotaEmp); S.rotaEmp = null; }
     carregarLig(); carregarAgenda();
     if (avisosStatus() === "granted") registrarSw();
     const abrir = new URLSearchParams(location.search).get("abrir");
