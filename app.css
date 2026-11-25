@@ -1160,3 +1160,21 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .aviso-versao { position: fixed; left: 50%; bottom: 20px; translate: -50% 0; z-index: 200; display: flex; align-items: center; gap: 14px; padding: 12px 14px 12px 18px; border-radius: 14px; background: #0B1B4D; color: #fff; font-weight: 600; font-size: 14px; box-shadow: 0 16px 36px rgba(10,24,71,.35); }
 .aviso-versao button { min-height: 36px; padding: 0 16px; border: 0; border-radius: 99px; background: #39B3F0; color: #06102F; font: inherit; font-weight: 700; cursor: pointer; }
 .menu-versao { display: block; padding: 8px 14px 4px; font-size: 12px; color: #6B7488; }
+
+/* ---- Início: esqueleto discreto enquanto os dados chegam (mesma altura dos cartões, sem números nem frase) */
+.esq-barra { display: block; border-radius: 8px; background: currentColor; opacity: .09; }
+.in-esqueleto .in-hero { color: #fff; }
+.in-esqueleto .in-hero .esq-barra { opacity: .14; }
+.in-esq-ola { gap: 16px; max-width: 760px; }
+.in-esq-cartao { color: #1B2333; min-height: 318px; gap: 16px; animation: none; }
+.in-esq-linha { display: flex; gap: 10px; }
+.in-esqueleto .esq-barra { animation: esq-pulsa 1.4s ease-in-out infinite alternate; }
+@keyframes esq-pulsa { to { opacity: .04; } }
+.in-esqueleto .in-hero .esq-barra { animation-name: esq-pulsa-claro; }
+@keyframes esq-pulsa-claro { to { opacity: .07; } }
+/* o mesmo Início redesenhado (ex.: abrir o menu) não repete a entrada */
+.ja-visto .in-ola, .ja-visto .in-cta, .ja-visto.in-cartoes .in-cartao { animation: none; }
+@media (prefers-reduced-motion: reduce) { .in-esqueleto .esq-barra { animation: none; } }
+/* saindo do esqueleto: troca direto, com um esmaecer curto (sem tela vazia no meio) */
+.de-esq .in-ola, .de-esq .in-cta, .de-esq.in-cartoes .in-cartao { animation: esq-entra .18s ease-out both; }
+@keyframes esq-entra { from { opacity: .35; } }

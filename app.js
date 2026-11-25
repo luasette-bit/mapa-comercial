@@ -62,13 +62,12 @@
 
   /* ----------------------------------------------------------------- dados */
   async function carregarPerfil() {
-    const { data } = await sb.from("perfis").select("nome,papel,aprovado").eq("id", S.user.id).maybeSingle();
+    const [{ data }, pend] = await Promise.all([
+      sb.from("perfis").select("nome,papel,aprovado").eq("id", S.user.id).maybeSingle(),
+      sb.from("perfis").select("id", { count: "exact", head: true }).eq("aprovado", false),
+    ]);
     S.perfil = data || { nome: (S.user.email || "").split("@")[0], papel: "sdr", aprovado: false };
-    S.pendentes = 0;
-    if (S.perfil.aprovado && S.perfil.papel === "admin") {
-      const { count } = await sb.from("perfis").select("id", { count: "exact", head: true }).eq("aprovado", false);
-      S.pendentes = count || 0;
-    }
+    S.pendentes = S.perfil.aprovado && S.perfil.papel === "admin" ? pend.count || 0 : 0;
   }
   let buscandoPessoas = null;
   function garantirPessoas() {
@@ -78,18 +77,18 @@
   }
   async function carregarSocios(basicos) {
     const falta = [...new Set(basicos)].filter((b) => !S.socios.has(b));
-    for (const parte of chunk(falta, 150)) {
+    await Promise.all(chunk(falta, 150).map(async (parte) => {
       const { data } = await sb.from("socios").select("cnpj_basico,nome,qualificacao").in("cnpj_basico", parte);
       parte.forEach((b) => S.socios.set(b, []));
       (data || []).forEach((s) => S.socios.get(s.cnpj_basico).push(s));
-    }
+    }));
   }
   async function carregarMarcas(cnpjs) {
-    for (const parte of chunk([...new Set(cnpjs)], 150)) {
+    await Promise.all(chunk([...new Set(cnpjs)], 150).map(async (parte) => {
       const { data } = await sb.from("marcacoes").select("cnpj,campo,status,usuario_nome,criado_em").in("cnpj", parte);
       parte.forEach((c) => S.marcas.set(c, {}));
       (data || []).forEach((m) => { S.marcas.get(m.cnpj)[m.campo] = m; });
-    }
+    }));
   }
   const IBGE = new Map();
   async function cidadesIbge(uf) {
@@ -146,6 +145,10 @@
   async function carregarMapeamento() {
     S.carregando = true; S.erro = ""; renderDados();
     try {
+      let q = sb.from("mapa").select(COLS).eq("uf", S.uf).eq("removido", false).neq("referencia_receita", "exemplo").order("nota", { ascending: false }).limit(3000);
+      if (S.cidadeId) q = q.eq("municipio_ibge", S.cidadeId);
+      else if (S.cidade) q = q.eq("municipio", S.cidade);
+      const lista = q.then((r) => { if (!r.error) { S.rows = r.data || []; S.rowsProntas = true; tentarInicio(); } return r; });
       const [cid, info, busc, tot] = await Promise.all([
         sb.rpc("cidades_da_uf", { p_uf: S.uf, p_so_ativas: S.soAtivas }),
         sb.rpc("info_base"),
@@ -157,10 +160,7 @@
       S.cidades = cid.data || [];
       S.info = info.data || null;
       cidadesIbge(S.uf).then(() => { if (S.cidMenu) render(); });
-      let q = sb.from("mapa").select(COLS).eq("uf", S.uf).eq("removido", false).neq("referencia_receita", "exemplo").order("nota", { ascending: false }).limit(3000);
-      if (S.cidadeId) q = q.eq("municipio_ibge", S.cidadeId);
-      else if (S.cidade) q = q.eq("municipio", S.cidade);
-      const { data, error } = await q;
+      const { data, error } = await lista;
       if (error) throw error;
       S.rows = data || [];
       await Promise.all([carregarSocios(S.rows.map((r) => r.cnpj_basico)), carregarMarcas(S.rows.map((r) => r.cnpj))]);
@@ -366,6 +366,8 @@
   }
   function render() {
     contaRedesenho++;
+    S.mesmaTela = app.dataset.ultimaTela === S.view && !!app.querySelector("main") && !app.querySelector(".in-esqueleto");
+    app.dataset.ultimaTela = S.user && S.perfil?.aprovado ? S.view : "";
     const g = guardarForm(), rolagem = app.querySelector(".gaveta .painel")?.scrollTop || 0; renderTela(); devolverForm(g);
     const gv = app.querySelector(".gaveta .painel"); if (gv && rolagem) gv.scrollTop = rolagem;
     if (window.Gaveta && app.querySelector(".upw-sec-files")) window.Gaveta.ligar(app);
@@ -397,6 +399,8 @@
   // chegaram dados: troca só os pedaços que mudaram (sem redesenhar a tela e sem repetir as animações de entrada)
   let contaRedesenho = 0, contaPedaco = 0;
   function renderDados() {
+    if (S.user && !S.perfil) return; // o perfil ainda não chegou: a primeira tela sai junto com ele
+    if (S.view === "inicio" && S.user && S.perfil?.aprovado && app.querySelector("main")) { if (!S.inicio.desenhado) tentarInicio(); return; }
     if (!S.user || S.recuperando || !S.perfil?.aprovado || S.view === "regiao" || !app.dataset.pedacos) return render();
     const t = document.createElement("template"); t.innerHTML = htmlLogado();
     const novos = [...t.content.querySelectorAll("[data-pedaco]")];
@@ -1215,14 +1219,21 @@
   const donoAtual = () => S.lg.dono || S.user.id;
   const souDono = () => donoAtual() === S.user.id;
 
-  async function tudo(montar) {
+  // busca tudo em páginas de 1000, várias ao mesmo tempo: quantas páginas pedir de uma vez vem do tamanho da última busca (guardado por chave)
+  async function tudo(montar, chave) {
+    let guardado = 0; try { guardado = +localStorage.getItem("mc-tam-" + chave) || 0; } catch { /* sem armazenamento */ }
+    // sem tamanho guardado (primeira vez neste navegador): pede 3 páginas de uma vez
+    let lote = !chave ? 1 : guardado ? Math.min(8, Math.ceil((guardado + 1) / 1000)) : 3;
     const out = [];
-    for (let de = 0; ; de += 1000) {
-      const { data, error } = await montar().range(de, de + 999);
-      if (error) throw error;
-      out.push(...(data || []));
-      if (!data || data.length < 1000) return out;
+    for (let de = 0; ; de += lote * 1000) {
+      const res = await Promise.all(Array.from({ length: lote }, (_, i) => montar().range(de + i * 1000, de + i * 1000 + 999)));
+      let cheia = true;
+      for (const { data, error } of res) { if (error) throw error; out.push(...(data || [])); if (!data || data.length < 1000) cheia = false; }
+      if (!cheia) break;
+      lote = 2;
     }
+    if (chave) try { localStorage.setItem("mc-tam-" + chave, String(out.length)); } catch { /* sem armazenamento */ }
+    return out;
   }
   const COLS_REG = "id,ficha_id,usuario_id,data,tipo,detalhe,detalhes,envio,canal,criado_em";
   const COLS_FICHA = "id,usuario_id,cnpj,nome,telefones,whatsapp,horario_funcionamento,cidade,uf,sistema,qtd_condominios,qtd_unidades,atendente,email,numero_responsavel,melhor_horario,responsavel,etapa,funil,demo_em,demo_formato,contrato_em,criado_em,atualizado_em,contato_anterior,retorno_em,retorno_nota,observacoes";
@@ -1251,18 +1262,19 @@
   }
   async function carregarLig() {
     const L = S.lg; if (L.carregando) return; L.carregando = true;
+    const pessoasP = (S.perfilP || Promise.resolve()).then(garantirPessoas);
     const dono = donoAtual();
     const q = (t, cols) => () => { let x = sb.from(t).select(cols); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order(t === "acumulado_base" ? "usuario_id" : t === "relatorios" ? "inicio" : "id"); };
     try {
       const [fichas, regs, base, rels] = await Promise.all([
-        tudo(q("fichas", COLS_FICHA)),
+        tudo(q("fichas", COLS_FICHA), "fichas-" + dono),
         // o texto vem junto só dos contatos registrados no sistema; o das anotações importadas é buscado ao abrir a ficha
-        tudo(() => { let x = sb.from("registros").select(COLS_REG + ",texto").neq("tipo", "anotacao"); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order("id"); }),
-        tudo(q("acumulado_base", "*")), tudo(q("relatorios", "*")),
-        tudo(() => { let x = sb.from("registros").select(COLS_REG).eq("tipo", "anotacao"); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order("id"); }),
+        tudo(() => { let x = sb.from("registros").select(COLS_REG + ",texto").neq("tipo", "anotacao"); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order("id"); }, "regs-" + dono),
+        tudo(q("acumulado_base", "*"), "base-" + dono), tudo(q("relatorios", "*"), "rels-" + dono),
+        tudo(() => { let x = sb.from("registros").select(COLS_REG).eq("tipo", "anotacao"); if (dono !== "todos") x = x.eq("usuario_id", dono); return x.order("id"); }, "anot-" + dono),
       ]).then(([fichas, regs, base, rels, anot]) => { L.textosFicha = new Set(); return [fichas, regs.concat(anot), base, rels]; });
       Object.assign(L, { fichas, regs, base, rels });
-      await garantirPessoas();
+      pessoasP.then(() => { if (S.view !== "inicio") renderDados(); }); // a lista de pessoas não segura as fichas
       derivar();
       L.carregado = true; S.carregadoEm = Date.now();
     } catch (e) { console.error(e); toast("Não deu para carregar as ligações. Tente de novo."); }
@@ -1528,14 +1540,15 @@
   const dados = (r) => { if (r.error) throw r.error; return r.data || []; };
   async function carregarVendas() {
     const V = S.vd; if (V.carregando || !S.user) return; V.carregando = true;
+    const pessoasP = (S.perfilP || Promise.resolve()).then(garantirPessoas);
     try {
       const [funis, etapas, produtos, negs] = await Promise.all([
         sb.from("funis").select("id,nome,sigla,ordem").eq("ativo", true).order("ordem").then(dados),
         sb.from("etapas").select("id,funil_id,nome,ordem,dias_alerta,resultado").order("funil_id").order("ordem").then(dados),
         sb.from("produtos").select("id,nome").then(dados),
-        tudo(() => sb.from("negocios").select(COLS_NEG).order("id")),
+        tudo(() => sb.from("negocios").select(COLS_NEG).order("id"), "negocios"),
       ]);
-      await garantirPessoas();
+      await pessoasP;
       V.funis = funis; V.etapas = etapas.map((e) => ({ id: e.id, funil: e.funil_id, nome: e.nome, ordem: e.ordem, alerta: e.dias_alerta, resultado: e.resultado }));
       V.produtoPorId = new Map(produtos.map((p) => [p.id, p]));
       V.negocios = negs.map(mapNeg);
@@ -1672,7 +1685,35 @@
     }
     return lista[0].replace("{cidade}", "toda parte");
   }
+  // o Início só aparece quando fichas, registros, agenda e negócios chegaram (e a lista da cidade, ou 2,5 s)
+  S.inicio = { t0: 0, desenhado: false, timer: null };
+  function inicioPronto() {
+    const L = S.lg;
+    if (!(S.perfil && L.carregado && !L.dono && S.ag.carregado && S.vd.carregado)) return false;
+    if (!S.cidade || S.rowsProntas) return true;
+    const resta = 2500 - (performance.now() - S.inicio.t0);
+    if (resta <= 0) return true;
+    clearTimeout(S.inicio.timer); S.inicio.timer = setTimeout(tentarInicio, resta);
+    return false;
+  }
+  function tentarInicio() {
+    if (S.view !== "inicio" || S.inicio.desenhado || !S.user || !S.perfil?.aprovado || !app.querySelector(".in-esqueleto")) return;
+    if (inicioPronto()) { S.inicio.doEsqueleto = true; render(); S.inicio.doEsqueleto = false; }
+  }
+  function esqueletoInicio() {
+    const barra = (w, h, extra = "") => `<i class="esq-barra" style="width:${w};height:${h}px;${extra}"></i>`;
+    const cartao = () => `<section class="in-cartao in-esq-cartao" aria-hidden="true">${barra("55%", 18)}<div class="in-esq-linha">${barra("30%", 56)}${barra("30%", 56)}${barra("30%", 56)}</div>${barra("100%", 44)}${barra("100%", 44)}${barra("70%", 14)}</section>`;
+    return `<div class="in-esqueleto" role="status" aria-label="Carregando a página inicial"><section class="in-hero"><div class="in-grade" aria-hidden="true"></div>
+      <div class="in-hero-dentro"><div class="pilha in-esq-ola" aria-hidden="true">${barra("190px", 14, "opacity:.5")}${barra("min(420px,70%)", 52)}${barra("min(520px,80%)", 18, "opacity:.6")}</div></div></section>
+      <div class="in-cartoes">${cartao()}${cartao()}${cartao()}</div></div>`;
+  }
   function telaInicio() {
+    if (!S.inicio.desenhado && !inicioPronto()) {
+      if (!S.lg.carregado && !S.lg.carregando) carregarLig();
+      if (!S.vd.carregado && !S.vd.carregando) carregarVendas();
+      return esqueletoInicio();
+    }
+    S.inicio.desenhado = true;
     const L = S.lg, A = S.ag, hj = hojeISO(), agora = new Date();
     const hora = +agora.toLocaleString("en-US", { timeZone: TZ, hour: "numeric", hour12: false }) % 24;
     const periodo = hora < 12 ? "manha" : hora < 18 ? "tarde" : "noite";
@@ -1702,7 +1743,7 @@
     const corE = { mapeamento: "#9AAAC6", indisponivel: "#9AAAC6", contato: "#2C63DB", follow_semestral: "#FDB601", sem_interesse: "#E3B4AE", demonstracao: "#5B2A86", contrato: "#1E7A46" };
     const Ac = pronto ? acumulado(hj) : null;
     const ind = (v, l, cls) => `<span class="in-num ${cls}"><b class="num">${v}</b><span>${l}</span></span>`;
-    return `<section class="in-hero"><div class="in-grade" aria-hidden="true"></div><div class="in-aro" aria-hidden="true"></div><div class="in-aro2" aria-hidden="true"></div>
+    return `<section class="in-hero ${S.mesmaTela ? "ja-visto" : ""} ${S.inicio.doEsqueleto ? "de-esq" : ""}"><div class="in-grade" aria-hidden="true"></div><div class="in-aro" aria-hidden="true"></div><div class="in-aro2" aria-hidden="true"></div>
       <div class="in-hero-dentro">
         <div class="pilha in-ola" data-pedaco="ola"><span class="in-data">${esc(dataTxt)}</span><h1>${saud}${nome ? `, ${esc(nome)}` : ""}.</h1><p>${esc(frase)}</p></div>
         <div class="pilha in-cta" data-pedaco="cta">
@@ -1712,7 +1753,7 @@
           : `<button type="button" class="in-btn" data-acao="ir" data-view="mapeamento">Começar a prospectar <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>`}
         </div>
       </div></section>
-    <div class="in-cartoes">
+    <div class="in-cartoes ${S.mesmaTela ? "ja-visto" : ""} ${S.inicio.doEsqueleto ? "de-esq" : ""}">
       <section class="in-cartao" data-pedaco="agenda"><div class="in-cab"><h2>Sua agenda de hoje</h2><button type="button" class="in-link" data-acao="ir" data-view="agenda">Ver agenda →</button></div>
         <div class="in-nums">${ind(hojeRet.length, hojeRet.length === 1 ? "retorno" : "retornos", "in-azul")}${ind(atr.length, atr.length === 1 ? "atrasado" : "atrasados", "in-verm")}${ind(hojeDemo.length, hojeDemo.length === 1 ? "demo" : "demos", "in-roxo")}</div>
         ${proximos.length ? `${lista.length ? "" : '<span class="t12 fraco">Nada para hoje. Os próximos:</span>'}<div class="pilha" style="gap:8px">${proximos.map(itemAg).join("")}</div>` : '<span class="t13 fraco">Nenhum retorno marcado. Quando marcar "Ligar de novo" numa ficha, ele aparece aqui.</span>'}
@@ -2039,7 +2080,7 @@
   S.ag = { fichas: [], carregado: false, cnpjs: new Set(), modo: "mes", ref: hojeISO(), dia: hojeISO(), arrastando: null };
   let buscandoAgenda = null;
   async function carregarAgenda(doBanco) {
-    if (!S.user || !S.perfil?.aprovado) return;
+    if (!S.user || (S.perfil && !S.perfil.aprovado)) return;
     const L = S.lg, minhas = L.carregado && !L.dono;
     if (minhas && !doBanco) S.ag.fichas = L.fichas.filter((f) => f.usuario_id === S.user.id);
     else if (!doBanco && L.carregando && !L.dono) return; // as fichas já estão vindo; carregarLig chama a agenda no fim
@@ -2193,6 +2234,7 @@
     Object.assign(S.lg, { carregado: false, textosFicha: new Set() });
     Object.assign(S.vd, { carregado: false });
     S.fx.cache.clear(); S.listas = null; S.equipe = null; S.carregadoEm = Date.now();
+    S.inicio.desenhado = false; S.inicio.t0 = performance.now(); S.rowsProntas = !S.cidade || S.rowsProntas;
     carregarLig(); carregarVendas();
     if (!silencioso) toast("Atualizando os dados…");
   }
@@ -2865,7 +2907,10 @@
     const { data } = await sb.auth.getSession();
     S.user = data.session?.user || null;
     if (!S.user) return render();
-    await carregarPerfil();
+    S.inicio.t0 = performance.now();
+    S.perfilP = carregarPerfil();
+    carregarLig(); carregarVendas(); const mapeando = carregarMapeamento();
+    await S.perfilP;
     if (S.perfil?.aprovado && location.hash) { aplicandoRota = true; aplicarRota(location.hash); }
     render(); aplicandoRota = false;
     if (!S.perfil.aprovado) return;
@@ -2874,7 +2919,7 @@
     if (avisosStatus() === "granted") registrarSw();
     const abrir = new URLSearchParams(location.search).get("abrir");
     if (abrir) { history.replaceState(null, "", location.pathname); abrirFicha(abrir); }
-    await carregarMapeamento();
+    await mapeando;
     localizarPendentes(S.uf);
     identificarSistemas(S.uf);
   }
