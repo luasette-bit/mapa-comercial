@@ -1175,6 +1175,10 @@
   ];
   const RES = Object.fromEntries(RESULTADOS.map(([k, l, c]) => [k, { l, c }]));
   const LIGACAO = new Set(["conversou", "sem_contato", "negativa", "demo_agendada"]);
+  // Sem contato não é contato: a partir de 25/11/2026 ele não conta como contato novo nem como follow-up
+  // (fica só em "Sem contato"). Os registros de antes continuam contando como contavam.
+  const SEM_CONTATO_NAO_CONTA_DESDE = "2026-11-25";
+  const contaComoContato = (r) => LIGACAO.has(r.tipo) && !(r.tipo === "sem_contato" && r.data >= SEM_CONTATO_NAO_CONTA_DESDE);
   const ETAPA = { prospeccao: ["Em prospecção", "s-neutro"], demo_agendada: ["Demo agendada", "s-roxo"], demo_realizada: ["Demo realizada", "s-ident"], contrato: ["Contrato fechado", "s-conf"], negativa: ["Negativa", "s-errado"] };
   const FUNIL = [
     ["mapeamento", "Mapeamento", "Ainda não contatadas"], ["indisponivel", "Indisponível", "Não conseguiu falar"], ["contato", "Contato", "Já conversou"],
@@ -1289,17 +1293,17 @@
     for (const r of ord) { if (!L.porFicha.has(r.ficha_id)) L.porFicha.set(r.ficha_id, []); L.porFicha.get(r.ficha_id).push(r); }
     for (const [id, lista] of L.porFicha) {
       let primeira = !L.fichaPorId.get(id)?.contato_anterior;
-      for (const r of lista) { r.nova = false; if (LIGACAO.has(r.tipo)) { r.nova = primeira; primeira = false; } }
+      for (const r of lista) { r.nova = false; if (contaComoContato(r)) { r.nova = primeira; primeira = false; } }
     }
     // texto de busca de cada ficha: todos os campos e todas as anotações
     L.idx = new Map(L.fichas.map((f) => [f.id, norm([f.nome, f.cidade, f.uf, f.sistema, f.responsavel, f.telefones, f.whatsapp, f.email, f.atendente, f.numero_responsavel, f.melhor_horario, f.horario_funcionamento, f.cnpj, f.observacoes, f.retorno_nota, ...(L.porFicha.get(f.id) || []).map((r) => r.texto)].join(" ")).replace(/\s+/g, " ")]));
   }
   const nomePessoa = (id) => id === S.user.id ? S.perfil?.nome : (S.lg.pessoas || []).find((p) => p.id === id)?.nome || "";
-  const jaLigou = (f) => f.contato_anterior || (S.lg.porFicha.get(f.id) || []).some((r) => LIGACAO.has(r.tipo));
+  const jaLigou = (f) => f.contato_anterior || (S.lg.porFicha.get(f.id) || []).some(contaComoContato);
 
   function metricas(ini, fim) {
     const rs = S.lg.regs.filter((r) => r.data >= ini && r.data <= fim);
-    const lig = rs.filter((r) => LIGACAO.has(r.tipo));
+    const lig = rs.filter(contaComoContato);
     const n = (t) => rs.filter((r) => r.tipo === t).length;
     return { rs, lig, ligacoes: lig.length, pessoas: new Set(lig.map((r) => r.ficha_id)).size, primeira_ligacao: lig.filter((r) => r.nova).length, follow_up: lig.filter((r) => !r.nova).length,
       sem_contato: n("sem_contato"), negativa: n("negativa"), demo_agendada: n("demo_agendada"), demo_realizada: n("demo_realizada"), contrato: n("contrato") };
@@ -1309,7 +1313,7 @@
     const baseAte = new Map();
     for (const b of L.base) if (b.ate <= fim) { tentativas += b.tentativas; prospectadas += b.prospectadas; baseAte.set(b.usuario_id, b.ate); }
     for (const r of L.regs) {
-      if (r.data > fim || !LIGACAO.has(r.tipo)) continue;
+      if (r.data > fim || !contaComoContato(r)) continue;
       const ate = baseAte.get(r.usuario_id); if (ate && r.data <= ate) continue;
       tentativas++; if (r.nova) prospectadas++;
     }
@@ -1344,7 +1348,7 @@
     if (k === "anotacao") return "Só anotação: não conta no relatório.";
     if (k === "demo_realizada") return "Vai contar como <b>demonstração realizada</b>.";
     const tipo = nova ? "contato novo" : "follow-up";
-    return k === "sem_contato" ? `Vai contar como <b>${tipo}</b>, sem contato.` : `Vai contar como <b>${tipo}</b>.`;
+    return k === "sem_contato" ? "Vai contar como <b>sem contato</b> (não é contato novo nem follow-up)." : `Vai contar como <b>${tipo}</b>.`;
   }
   const DETALHE = { nao_atende: "Não atende", caixa_postal: "Caixa postal", numero_invalido: "Número não existe", material_enviado: "Só atende por e-mail / WhatsApp", pediu_retorno: "Pediu para retornar", sem_abertura: "Sem abertura" };
   const CANAL = { ligacao: "Ligação", whatsapp: "WhatsApp", email: "E-mail" };
@@ -1420,7 +1424,7 @@
     const lista = fichasFiltradas();
     if (!lista.length) return `<div class="vazio">${S.lg.fichas.length ? "Nenhuma administradora com essa busca." : "Nenhuma administradora ainda. Clique em <b>+ Nova administradora</b> ou, no Mapeamento, abra uma empresa e clique em <b>Registrar ligação</b>."}</div>`;
     return lista.slice(0, S.lg.mostrar).map((f) => {
-      const u = ultimaDe(f), lig = (S.lg.porFicha.get(f.id) || []).filter((r) => LIGACAO.has(r.tipo)).length, { nome: el, cor: ec } = etapaDaFicha(f);
+      const u = ultimaDe(f), lig = (S.lg.porFicha.get(f.id) || []).filter(contaComoContato).length, { nome: el, cor: ec } = etapaDaFicha(f);
       return `<button type="button" class="lg-linha" data-acao="lg-sel" data-id="${f.id}" aria-pressed="${S.lg.sel === f.id}">
         <span class="pilha" style="gap:1px;min-width:0"><span class="t-nome">${esc(f.nome)}</span><span class="t12 fraco">${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "Cidade não informada")}${S.lg.dono === "todos" ? ` · ${esc(nomePessoa(f.usuario_id))}` : ""}</span></span>
         <span class="t13">${f.sistema ? esc(f.sistema) : '<span class="fraco">Sistema ?</span>'}</span>
@@ -1901,7 +1905,7 @@
       const v = visualReg(r), h = horaReg(r), q = `${ddmm(r.data)}${h ? ` às ${h}` : ""}`;
       const ds = r.detalhes?.length ? r.detalhes : r.detalhe ? [r.detalhe] : [];
       const chips = [r.canal ? CANAL[r.canal] : r.tipo === "anotacao" ? "" : CANAL.ligacao, ...ds.map((k) => NOME_BOTAO[k] || k), ...(r.envio || []).map((k) => `Apresentação por ${ENVIO[k] || k}`)];
-      const meta = [LIGACAO.has(r.tipo) ? (r.nova ? "Contato novo" : "Follow-up") : { demo_realizada: "Demonstração", contrato: "Contrato", anotacao: "Anotação" }[r.tipo] || "Registro", L.dono === "todos" ? nomePessoa(r.usuario_id) : ""].filter(Boolean).join(" · ");
+      const meta = [contaComoContato(r) ? (r.nova ? "Contato novo" : "Follow-up") : { sem_contato: "Sem contato", demo_realizada: "Demonstração", contrato: "Contrato", anotacao: "Anotação" }[r.tipo] || "Registro", L.dono === "todos" ? nomePessoa(r.usuario_id) : ""].filter(Boolean).join(" · ");
       return `<li class="upw-sec-files__item" data-cat="${v.cat}" data-cor="${v.cor}" data-id="${r.id}" data-num="${regs.length - regs.indexOf(r)}" data-quando="${esc(q)}" data-carimbo="${esc(v.selo)}" ${r.id === aberto ? "data-aberto" : ""}><div class="upw-sec-files__folder">
         <h3><button type="button" class="upw-sec-files__q"><span class="upw-sec-files__tab">${ddmm(r.data)} · ${esc(v.curto)}</span><span class="upw-sec-files__qt">${r.texto === undefined ? `<span class="mc-esq-tit" data-texto="${r.id}"></span>` : esc(tituloReg(r))}</span></button></h3>
         <div class="upw-sec-files__a"><div class="upw-sec-files__in"><div class="upw-sec-files__paper">
@@ -1969,7 +1973,7 @@
       </div>
       ${ro ? `<details class="lg-bloco" open><summary><b>Dados da administradora</b></summary>${camposDados(f, true)}</details>` : formLigacao(f)}
       <div class="pilha" style="gap:8px"><span style="font-size:12px;font-weight:700">Histórico · ${regs.length} ${regs.length === 1 ? "registro" : "registros"}</span>
-        ${regs.length ? regs.map((r) => { const h = horaReg(r); return `<div class="lg-reg"><div class="linha-flex" style="justify-content:space-between"><span class="linha-flex" style="gap:6px"><b class="num t13">${ddmmaaaa(r.data)}${h ? ` <span class="fraco" style="font-weight:500">${h}</span>` : ""}</b><span class="selo ${RES[r.tipo]?.c || "s-neutro"}">${esc(rotuloReg(r))}</span>${LIGACAO.has(r.tipo) ? `<span class="selo ${r.nova ? "s-novo" : "s-neutro"}">${r.nova ? "Contato novo" : "Follow-up"}</span>` : ""}</span>${ro ? "" : `<button type="button" class="mini lg-x" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar" : "Apagar"}</button>`}</div>${r.texto ? `<span class="t13 lg-txt">${esc(r.texto)}</span>` : ""}</div>`; }).join("") : '<span class="t13 fraco">Nenhum contato registrado ainda.</span>'}
+        ${regs.length ? regs.map((r) => { const h = horaReg(r); return `<div class="lg-reg"><div class="linha-flex" style="justify-content:space-between"><span class="linha-flex" style="gap:6px"><b class="num t13">${ddmmaaaa(r.data)}${h ? ` <span class="fraco" style="font-weight:500">${h}</span>` : ""}</b><span class="selo ${RES[r.tipo]?.c || "s-neutro"}">${esc(rotuloReg(r))}</span>${contaComoContato(r) ? `<span class="selo ${r.nova ? "s-novo" : "s-neutro"}">${r.nova ? "Contato novo" : "Follow-up"}</span>` : ""}</span>${ro ? "" : `<button type="button" class="mini lg-x" data-acao="lg-apagar-reg" data-id="${r.id}">${L.apagar === r.id ? "Confirmar" : "Apagar"}</button>`}</div>${r.texto ? `<span class="t13 lg-txt">${esc(r.texto)}</span>` : ""}</div>`; }).join("") : '<span class="t13 fraco">Nenhum contato registrado ainda.</span>'}
       </div>
       ${ro ? "" : `<div class="acoes-painel"><button type="button" class="btn btn-perigo" data-acao="lg-apagar-ficha" data-id="${f.id}">${L.apagar === f.id ? "Clique de novo para apagar" : "Apagar ficha"}</button></div>`}
     </aside>`;
@@ -2032,7 +2036,7 @@
       if (!mapa) { L.novo = false; L.sel = id; L.registrar = null; if (novo) L.gvAberto = novo.id; }
       derivar(); form.dataset.sujo = "";
       const salvo = novo && L.regs.find((x) => x.id === novo.id);
-      toast(salvo ? (LIGACAO.has(salvo.tipo) ? `Salvo como ${salvo.nova ? "contato novo" : "follow-up"}${nf?.retorno_em ? ` · ligar de novo ${quandoTxt(nf.retorno_em).toLowerCase()}` : ""}.` : "Registro salvo.") : f ? "Dados salvos." : "Ficha criada.");
+      toast(salvo ? (contaComoContato(salvo) ? `Salvo como ${salvo.nova ? "contato novo" : "follow-up"}${nf?.retorno_em ? ` · ligar de novo ${quandoTxt(nf.retorno_em).toLowerCase()}` : ""}.` : salvo.tipo === "sem_contato" ? "Salvo como sem contato." : "Registro salvo.") : f ? "Dados salvos." : "Ficha criada.");
       carregarAgenda(); recarregarNegociosDaFicha(id).then(() => render());
       if (mapa) {
         L.proxima = fd.get("proxima") === "on";
@@ -2313,7 +2317,7 @@
       <p class="rel-lead">${(() => { const n = ajustado ? (+val("follow_up") + +val("primeira_ligacao")) : m.ligacoes; return `<b>${fmtN(n)}</b> ${n === 1 ? "contato" : "contatos"}`; })()}${ajustado ? "" : ` com <b>${fmtN(m.pessoas)}</b> ${m.pessoas === 1 ? "administradora" : "administradoras diferentes"}`}${ajustado ? ' <span class="selo s-nao rel-tela">números corrigidos à mão</span>' : ""}</p>${numsHtml}
       ${R.periodo !== "dia" && m.ligacoes ? graficoPorDia(P, m) : ""}</section>`;
 
-    const listaLig = (rs) => rs.length ? `<table class="tab-simples rel-tab"><thead><tr>${R.periodo === "dia" ? "" : "<th>Dia</th>"}<th>Administradora</th><th>Cidade</th><th>Ligação</th><th>Resultado</th><th>Anotação</th>${donoAtual() === "todos" ? "<th>Quem</th>" : ""}</tr></thead><tbody>${rs.map((r) => { const f = L.fichaPorId.get(r.ficha_id) || {}; return `<tr>${R.periodo === "dia" ? "" : `<td class="num">${ddmm(r.data)}</td>`}<td><b>${esc(f.nome || "")}</b></td><td>${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}</td><td>${LIGACAO.has(r.tipo) ? (r.nova ? "Contato novo" : "Follow-up") : "—"}</td><td><span class="selo ${RES[r.tipo]?.c}">${esc(rotuloReg(r))}</span></td><td class="rel-anot">${esc(r.texto || "")}</td>${donoAtual() === "todos" ? `<td>${esc(nomePessoa(r.usuario_id))}</td>` : ""}</tr>`; }).join("")}</tbody></table>` : `<div class="vazio" style="padding:20px">Nenhuma ligação registrada ${R.periodo === "dia" ? "neste dia" : "neste período"}.</div>`;
+    const listaLig = (rs) => rs.length ? `<table class="tab-simples rel-tab"><thead><tr>${R.periodo === "dia" ? "" : "<th>Dia</th>"}<th>Administradora</th><th>Cidade</th><th>Ligação</th><th>Resultado</th><th>Anotação</th>${donoAtual() === "todos" ? "<th>Quem</th>" : ""}</tr></thead><tbody>${rs.map((r) => { const f = L.fichaPorId.get(r.ficha_id) || {}; return `<tr>${R.periodo === "dia" ? "" : `<td class="num">${ddmm(r.data)}</td>`}<td><b>${esc(f.nome || "")}</b></td><td>${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}</td><td>${contaComoContato(r) ? (r.nova ? "Contato novo" : "Follow-up") : r.tipo === "sem_contato" ? "Sem contato" : "—"}</td><td><span class="selo ${RES[r.tipo]?.c}">${esc(rotuloReg(r))}</span></td><td class="rel-anot">${esc(r.texto || "")}</td>${donoAtual() === "todos" ? `<td>${esc(nomePessoa(r.usuario_id))}</td>` : ""}</tr>`; }).join("")}</tbody></table>` : `<div class="vazio" style="padding:20px">Nenhuma ligação registrada ${R.periodo === "dia" ? "neste dia" : "neste período"}.</div>`;
     const ordenados = [...m.rs].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.criado_em < b.criado_em ? -1 : 1));
     const secLista = R.periodo === "dia" ? `<section class="rel-pg"><h2 class="rel-h">Ligações do dia</h2><div class="rolagem">${listaLig(ordenados)}</div></section>`
       : `<section class="rel-pg rel-sem-print"><details class="rel-tela"><summary><b>Ver todos os registros ${P.curto} (${m.rs.length})</b></summary><div class="rolagem" style="margin-top:10px">${listaLig(ordenados)}</div></details></section>`;
