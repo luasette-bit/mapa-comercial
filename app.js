@@ -1345,7 +1345,7 @@
   function dadosDoForm(form) {
     const v = (n) => String(form.elements[n]?.value ?? "").trim();
     const dt = v("rg_demo_em");
-    return { nome: v("nome") || form.dataset.nome || "", sistema: v("sistema"), qtd_condominios: v("qtd_condominios").replace(/\D/g, ""), responsavel: v("responsavel"), cidade: v("cidade"), uf: v("uf"), demo: dt, formato: v("rg_formato") || "virtual" };
+    return { nome: v("nome") || form.dataset.nome || "", sistema: v("sistema"), qtd_condominios: v("qtd_condominios").replace(/\D/g, ""), qtd_unidades: v("qtd_unidades").replace(/\D/g, ""), responsavel: v("responsavel"), cidade: v("cidade"), uf: v("uf"), demo: dt, formato: v("rg_formato") || "virtual" };
   }
   function faltaDemo(form) {
     const d = dadosDoForm(form), falta = DADOS_DEMO.filter(([k]) => !d[k]).map(([k, l]) => [k, l]);
@@ -1363,7 +1363,7 @@
     const dt = d.demo ? `${d.demo.slice(8, 10)} de ${MESES[+d.demo.slice(5, 7) - 1]} às ${d.demo.slice(11, 16)}` : "";
     p.innerHTML = `<span class="rg-painel-tit">Vai entrar assim no Painel de Demonstrações Realizadas</span>
       <div class="rel-card"><b class="rel-card-nome">${esc(d.nome || "—")}</b><b class="t12">Demonstração ${d.formato === "presencial" ? "presencial" : "virtual"} realizada: ${dt ? esc(dt) : '<i class="rg-falta">falta o dia e a hora</i>'}</b>
-      ${linha("Sistema usado", d.sistema)}${linha("Quantos condomínios atende", d.qtd_condominios ? `${fmtN(+d.qtd_condominios)} ${+d.qtd_condominios === 1 ? "condomínio" : "condomínios"}` : "")}${linha("Nome do responsável", d.responsavel)}${linha("Cidade", d.cidade && d.uf ? `${d.cidade} - ${d.uf}` : d.cidade && !d.uf ? "" : "")}</div>
+      ${linha("Sistema usado", d.sistema)}${linha("Quantos condomínios atende", d.qtd_condominios ? `${fmtN(+d.qtd_condominios)} ${+d.qtd_condominios === 1 ? "condomínio" : "condomínios"}${d.qtd_unidades ? ` | ${fmtN(+d.qtd_unidades)} unidades` : ""}` : "")}${linha("Nome do responsável", d.responsavel)}${linha("Cidade", d.cidade && d.uf ? `${d.cidade} - ${d.uf}` : d.cidade && !d.uf ? "" : "")}</div>
       <span class="t12 fraco">Os dados vêm de "Dados da administradora", logo acima. Todos são obrigatórios para a demonstração.</span>`;
   }
   // aviso ao lado do Salvar: como este contato entra no relatório (mesma regra dos relatórios)
@@ -2318,7 +2318,8 @@
     return "";
   }
   function cartaoDemo(f, linha, extra = "") {
-    const qtd = f.qtd_condominios != null && f.qtd_condominios !== "" ? `${fmtN(f.qtd_condominios)} ${+f.qtd_condominios === 1 ? "condomínio" : "condomínios"}` : "—";
+    // condomínios, e as unidades só quando a ficha tem essa informação
+    const qtd = f.qtd_condominios != null && f.qtd_condominios !== "" ? `${fmtN(f.qtd_condominios)} ${+f.qtd_condominios === 1 ? "condomínio" : "condomínios"}${f.qtd_unidades ? ` | ${fmtN(f.qtd_unidades)} unidades` : ""}` : "—";
     return `<div class="rel-card" data-ficha="${f.id}"><b class="rel-card-nome">${esc(f.nome)}</b><b class="t12">${linha}</b>
       <span>Sistema usado: ${esc(f.sistema || "—")}</span><span>Quantos condomínios atende: ${esc(qtd)}</span><span>Nome do responsável: ${esc(f.responsavel || "—")}</span><span>Cidade: ${esc([f.cidade, f.uf].filter(Boolean).join(" - ") || "—")}</span>${extra}</div>`;
   }
