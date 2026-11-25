@@ -10,7 +10,7 @@
   const UFS = [["AC","Acre"],["AL","Alagoas"],["AM","Amazonas"],["AP","Amapá"],["BA","Bahia"],["CE","Ceará"],["DF","Distrito Federal"],["ES","Espírito Santo"],["GO","Goiás"],["MA","Maranhão"],["MG","Minas Gerais"],["MS","Mato Grosso do Sul"],["MT","Mato Grosso"],["PA","Pará"],["PB","Paraíba"],["PE","Pernambuco"],["PI","Piauí"],["PR","Paraná"],["RJ","Rio de Janeiro"],["RN","Rio Grande do Norte"],["RO","Rondônia"],["RR","Roraima"],["RS","Rio Grande do Sul"],["SC","Santa Catarina"],["SE","Sergipe"],["SP","São Paulo"],["TO","Tocantins"]];
   const TIPOS = ["Todas", "Administradora", "Imobiliária", "Construtora", "Contabilidade"];
   // softwares que o sistema reconhece pelo link do portal no site da administradora
-  const SOFTWARES = ["Superlógica", "Group Software (Condomínio21)", "Almah", "CondoMob", "uCondo", "TownSq", "CondoPanel", "Condominizar", "Seu Condomínio", "Alterdata", "Ahreas", "Winker", "Webware", "Hitecnet", "SCC Online (PRG)"];
+  const SOFTWARES = ["Superlógica", "Group Software (Condomínio21)", "Almah Condos", "CondoMob", "uCondo", "TownSq", "CondoPanel", "Condominizar", "Seu Condomínio", "Alterdata", "Ahreas", "Winker", "Webware", "Hitecnet", "SCC Online (PRG)"];
   // o nosso sistema: quem usa já é cliente (o app Omeupredio vem junto com ele)
   const NOSSO = "SCC Online (PRG)";
   // função de cada pessoa no time (o acesso continua sendo o "papel": SDR ou administrador)
@@ -21,7 +21,7 @@
   // nomes diferentes para o mesmo sistema: tudo vira o nome oficial, para não contar duas vezes
   const chaveSis = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const APELIDOS = { cond21: "Group Software (Condomínio21)", condominio21: "Group Software (Condomínio21)", group: "Group Software (Condomínio21)", groupsoftware: "Group Software (Condomínio21)", groupcondominios: "Group Software (Condomínio21)", com21: "Group Software (Condomínio21)",
-    almahcondos: "Almah", almahcondo: "Almah", superlogicacondominios: "Superlógica", omeupredio: NOSSO, omeupredioplus: NOSSO, scc: NOSSO, scconline: NOSSO, prg: NOSSO, prgsoftware: NOSSO, sccprg: NOSSO,
+    almah: "Almah Condos", almahcondos: "Almah Condos", almahcondo: "Almah Condos", superlogicacondominios: "Superlógica", omeupredio: NOSSO, omeupredioplus: NOSSO, scc: NOSSO, scconline: NOSSO, prg: NOSSO, prgsoftware: NOSSO, sccprg: NOSSO,
     brcondominios: "BR Condomínios", brcondos: "BR Condomínios", alterdataimmobile: "Alterdata", immobile: "Alterdata", condominioup: "Alterdata", semsistema: "Sem sistema", nenhum: "Sem sistema" };
   function sistemasConhecidos() {
     const extra = (S.lg?.fichas || []).map((f) => f.sistema).filter(Boolean);

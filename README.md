@@ -40,5 +40,6 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - **Lista de ligação da brecha**: fichas e empresas do mapeamento que usam aquele sistema, com "Ligar e registrar" (abre a ficha já no registro; empresa sem ficha ganha ficha na hora).
 - **Marcação no banco** (gatilho `registro_marca_brecha`): todo contato com administradora que usa o sistema da brecha, dentro do prazo, ganha `registros.brecha_id`; demonstração e contrato até 60 dias depois herdam a brecha do contato que abriu a conversa. O relatório (semana/mês) mostra uma seção "Brechas da concorrência".
 - **Início**: card de alerta quando há brecha aberta; sem brecha, mostra a última novidade.
+- Nome oficial dos sistemas garantido no banco (função `nome_oficial_sistema` + gatilhos em fichas, empresas, marcações e concorrência): "Almah" vira "Almah Condos", "Cond21" vira "Group Software (Condomínio21)" etc.
 - **Funções do time**: no cadastro a pessoa escolhe SDR, Vendedor, Pós-vendas ou Gestor (`perfis.funcao`); a Equipe mostra e troca a função. "Papel" continua sendo o acesso (próprios dados ou vê tudo).
 
