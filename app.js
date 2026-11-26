@@ -416,6 +416,7 @@
   // a tela logada: o topo e cada parte que pode mudar sozinha quando chegam dados ficam num "pedaço" (data-pedaco)
   function htmlLogado() {
     if (S.view !== "concorrencia") S.cc.abertura = false; // ao voltar para a Concorrência, a abertura toca de novo
+    if (S.view === "clientes" && !ehPos()) S.view = "inicio";
     const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "oportunidades" ? telaOportunidades() : S.view === "clientes" ? telaClientes() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "indicadores" ? telaIndicadores() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
     return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${S.voltarAtivo && !(S.view === "adms" && S.lg.sel) ? '<div class="voltar-barra"><button type="button" class="fc-voltar" data-acao="voltar">← Voltar</button></div>' : ""}${tela}</div>`}</main>`;
   }
@@ -454,9 +455,9 @@
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
     const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["oportunidades", (() => { if (!S.op.lista && !S.op.carregando && !S.op.erro && S.perfil?.aprovado) setTimeout(() => carregarOportunidades(true), 0); return rotuloNavOp(); })()], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"], ["concorrencia", (() => { const n = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0; return n ? `Concorrência <span class="contador">${n}</span>` : "Concorrência"; })()], ["listas", "Listas"]];
     if (ehVendedor()) for (const k of ["mapeamento", "regiao", "listas"]) { const i = nav.findIndex((x) => x[0] === k); if (i >= 0) nav.splice(i, 1); }
-    if (ehPos() || S.perfil?.papel === "admin") nav.splice(nav.findIndex((x) => x[0] === "vendas") + 1, 0, ["clientes", "Clientes"]);
+    if (ehPos()) nav.splice(nav.findIndex((x) => x[0] === "vendas") + 1, 0, ["clientes", "Clientes"]);
     if (ehPos()) { const fica = ["inicio", "agenda", "clientes", "vendas", "adms"]; for (let i = nav.length - 1; i >= 0; i--) if (!fica.includes(nav[i][0])) nav.splice(i, 1); }
-    if (ehGestor()) { nav.length = 0; nav.push(["inicio", "Início"], ["indicadores", "Indicadores"], ["oportunidades", "Oportunidades"], ["clientes", "Clientes"], ["relatorios", "Relatórios"], ["agenda", nAg ? `Agenda do time <span class="contador">${nAg}</span>` : "Agenda do time"]); }
+    if (ehGestor()) { nav.length = 0; nav.push(["inicio", "Início"], ["indicadores", "Indicadores"], ["oportunidades", "Oportunidades"], ["relatorios", "Relatórios"], ["agenda", nAg ? `Agenda do time <span class="contador">${nAg}</span>` : "Agenda do time"]); }
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
@@ -4852,7 +4853,6 @@
     const G = S.gs;
     if (!S.ind.d && !S.ind.carregando) carregarIndicadores(true);
     if (!S.op.lista && !S.op.carregando) carregarOportunidades(true);
-    if (!S.pv.clientes && !S.pv.carregando) carregarPos(true);
     if (G.adic || G.carregando) return; G.carregando = true;
     try {
       const { data: fs } = await sb.from("funis").select("id,nome");
@@ -4866,7 +4866,7 @@
   }
   function telaInicioGestor() {
     const I = S.ind, D = I.d;
-    if (!D || !S.op.lista || !S.pv.clientes || !S.gs.adic) carregarGestor();
+    if (!D || !S.op.lista || !S.gs.adic) carregarGestor();
     if (!D) return `<div class="gs pedaco" data-pedaco="gestor"><div class="cartao vazio">${I.erro ? "Não deu para carregar os números. Use Atualizar dados no menu." : "Carregando o resumo do comercial…"}</div></div>`;
     const hj = hojeISO(), iniM = hj.slice(0, 8) + "01", fimM = somaDias(somaMeses(iniM, 1), -1), iniA = somaMeses(iniM, -1), fimA = somaDias(iniM, -1);
     const respAntes = I.resp; I.resp = "todos";
@@ -4889,7 +4889,7 @@
     const adicM = S.gs.adic ? S.gs.adic.filter((n) => n.conclusao_em >= iniM && n.conclusao_em <= fimM).length : null;
     const adicA = S.gs.adic ? S.gs.adic.filter((n) => n.conclusao_em >= iniA && n.conclusao_em <= fimA).length : null;
     const kpi = (l, a, b, pm) => `<div class="gs-kpi"><span>${l}</span><b class="num">${a == null ? "…" : fmtN(a)}</b>${a == null ? "" : comp(a, b, pm)}</div>`;
-    const kpis = `<section class="gs-kpis">${kpi("Contatos no mês", M.cont.length, A.cont.length, true)}${kpi("Demos realizadas", M.realizadas.length, A.realizadas.length)}${kpi("Contratos fechados", M.contratos.length, A.contratos.length)}${kpi("Adicionais vendidos (pós-vendas)", adicM, adicA)}</section>`;
+    const kpis = `<section class="gs-kpis">${kpi("Contatos no mês", M.cont.length, A.cont.length, true)}${kpi("Demos realizadas", M.realizadas.length, A.realizadas.length)}${kpi("Contratos fechados", M.contratos.length, A.contratos.length)}${kpi("Propostas enviadas", M.propostas.length, A.propostas.length)}</section>`;
     // o time agora
     const seg = segundaDe(hj), sex = somaDias(seg, 4), dom = somaDias(seg, 6), naSemana = (d) => d && d >= seg && d <= dom;
     const linha = (l, v) => `<li>${l} <b class="num">${v}</b></li>`;
@@ -4914,7 +4914,7 @@
       cards.push(`<div class="gs-pes"><header><span class="gs-av gs-av-le">${ini2(p.nome)}</span><div><b>${esc(p.curto)}</b><span>Vendedor · demos</span></div></header><ul>${linha("Demos na semana", fmtN(demS))}${linha("Próxima demo", proxTxt)}${linha("Propostas enviadas", fmtN(propS))}${linha("Sem resultado", fmtN(sr))}</ul>${sr ? tag(false, sr === 1 ? "1 demo sem resultado" : `${sr} demos sem resultado`) : tag(true, "Em dia")}</div>`);
     }
     const P = S.pv, posP = D.pessoas.filter((x) => x.funcao === "pos_vendas" && x.id);
-    if (P.clientes) {
+    if (false && P.clientes) { // pós-vendas fica para depois
       const vis = P.visitas || [], feitasS = vis.filter((v) => v.status === "feita" && naSemana(localSP(v.feita_em || v.quando).slice(0, 10))).length;
       const atras = vis.filter((v) => v.status === "agendada" && v.dia < hj).length, risco = pvAtencao().length;
       const adS = (S.gs.adic || []).filter((n) => naSemana(n.conclusao_em)).length;
@@ -4945,11 +4945,11 @@
       const paradas = opItens().filter((o) => o.aba === "negociando" && opDias(o.ultimo?.data || o.demo) > 15).sort((a, b) => ((a.ultimo?.data || a.demo) < (b.ultimo?.data || b.demo) ? -1 : 1));
       if (paradas.length) at.push(["o", "⏱", `${pl(paradas.length, "oportunidade parada", "oportunidades paradas")} há mais de 15 dias`, esc(paradas.slice(0, 3).map((o) => o.nome).join(", ")) + (paradas.length > 3 ? "…" : "") + ` · ${paradas.length === 1 ? "última conversa" : "a mais antiga"} em ${ddmmaaaa(paradas[0].ultimo?.data || paradas[0].demo)}`]);
     }
-    if (P.clientes) { const r = pvAtencao().length; if (r) at.push(["v", "↓", `${pl(r, "cliente da carteira em risco", "clientes da carteira em risco")}`, "Insatisfeitos ou sem contato há mais de 90 dias, sem visita marcada"]); }
+    if (false && P.clientes) { const r = pvAtencao().length; if (r) at.push(["v", "↓", `${pl(r, "cliente da carteira em risco", "clientes da carteira em risco")}`, "Insatisfeitos ou sem contato há mais de 90 dias, sem visita marcada"]); }
     if (falta) at.push(["o", "◎", `Faltam ${pl(falta, "demo", "demos")} para a meta`, `${uteisRest === 1 ? "Resta 1 dia útil" : `Restam ${uteisRest} dias úteis`} em ${mes}`]);
     const aten = `<section class="cartao gs-sec gs-aten"><h2>Precisa da sua atenção</h2>${at.length ? `<ul>${at.map(([c, i, t, sub]) => `<li><span class="gs-ic gs-ic-${c}">${i}</span><div><b>${esc(t)}</b><span>${sub}</span></div></li>`).join("")}</ul>` : `<p class="fraco" style="margin:0">Tudo em dia por aqui.</p>`}</section>`;
     const atalho = (acao, v, ic, t, sub) => `<button type="button" data-acao="${acao}" data-view="${v}"><i>${ic}</i><div>${t}<span>${sub}</span></div></button>`;
-    const atalhos = `<section class="cartao gs-sec"><h2>Atalhos</h2><div class="gs-atalhos">${atalho("ir", "indicadores", "▤", "Indicadores", "BI completo do comercial")}${atalho("gs-rel", "relatorios", "⤓", "Relatório da semana", "Baixar o PDF da semana")}${atalho("ir", "oportunidades", "◷", "Oportunidades", "Pós-demo em aberto")}${atalho("ir", "clientes", "⌂", "Clientes", "Carteira do pós-vendas")}</div></section>`;
+    const atalhos = `<section class="cartao gs-sec"><h2>Atalhos</h2><div class="gs-atalhos">${atalho("ir", "indicadores", "▤", "Indicadores", "BI completo do comercial")}${atalho("gs-rel", "relatorios", "⤓", "Relatório da semana", "Baixar o PDF da semana")}${atalho("ir", "oportunidades", "◷", "Oportunidades", "Pós-demo em aberto")}${atalho("ir", "agenda", "▦", "Agenda do time", "Retornos e demos marcados")}</div></section>`;
     return `<div class="gs pedaco" data-pedaco="gestor">${hero}${kpis}<div class="gs-duas"><div class="gs-col">${time}${funil}${proxHtml}</div><div class="gs-col">${aten}${atalhos}</div></div></div>`;
   }
   app.addEventListener("click", (ev) => {

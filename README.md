@@ -115,3 +115,8 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Início do gestor: meta de demos do mês com barra, 4 números do mês contra o mês anterior, o time agora (SDR, vendedor, pós-vendas), funil do mês, demos dos próximos 7 dias (com "Matheus cobre"), "Precisa da sua atenção" (demos sem resultado, oportunidades paradas há +15 dias, clientes em risco, meta) e atalhos. Os números vêm do mesmo cálculo dos Indicadores.
 - Banco: as políticas de leitura de fichas, registros, relatórios, negócios, contatos, tarefas e acumulado usam `eh_gestao()` (admin ou gestor). Escrever continua só para o dono.
 - Gestor vê a equipe toda por padrão (Relatórios com seletor de pessoa), não recebe avisos de retorno dos outros.
+
+## v68 — Pós-vendas guardado para depois
+- A página Clientes saiu do menu da admin e do gestor (fica só para quem tiver a função Pós-vendas, que ainda não tem contas). Quem abrir #/clientes sem ser do pós-vendas volta para o Início.
+- Início do gestor sem a parte do pós-vendas: o cartão "Carlos e Ivan" e o aviso de clientes em risco saíram; o 4º número virou **Propostas enviadas**; o atalho Clientes virou **Agenda do time**.
+- O código do pós-vendas (início, clientes, visitas) continua no sistema para quando essa parte for repensada.
