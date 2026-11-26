@@ -1828,3 +1828,6 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .agn-atr-cab { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 0; background: none; padding: 0; font-size: 15px; color: #C9343A; text-align: left; }
 .agn-atr-cab b { font-weight: 600; }
 .agn-atr-lista { max-height: 420px; overflow-y: auto; padding-right: 2px; }
+/* botões pequenos (Fechar ✕ e outros): texto sempre centralizado na altura */
+.mini, .fechar-painel { display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1; }
+.gaveta .fechar-painel { display: inline-flex; }
