@@ -1200,7 +1200,7 @@
   // O resultado é o que aconteceu na ligação. Se ela é contato novo ou follow-up o sistema descobre sozinho:
   // a primeira ligação para a administradora é nova, as seguintes são follow-up.
   const RESULTADOS = [
-    ["conversou", "Conversei", "s-ident"],
+    ["conversou", "Contato realizado", "s-ident"],
     ["sem_contato", "Não atendeu / sem contato", "s-vazio"],
     ["negativa", "Negativa", "s-errado"],
     ["demo_agendada", "Demo agendada", "s-roxo"],
@@ -1254,7 +1254,7 @@
   const extenso = (iso, hora) => `${iso.slice(8, 10)} de ${MESES[+iso.slice(5, 7) - 1]}${hora ? ` às ${hora}` : ""}`;
 
   S.lg = { dono: null, carregado: false, carregando: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, busca: "", etapa: "todas", sel: null, novo: false, apagar: null, mostrar: 100, dadosAberto: true, idx: new Map(), modo: (() => { try { return localStorage.getItem("mapa-adm-modo") || "quadro"; } catch { return "quadro"; } })(), porColuna: {}, arrastando: null, arrastou: false };
-  S.rl = { periodo: "dia", ref: hojeISO(), editObs: false, editAj: false };
+  S.rl = { periodo: "dia", ref: hojeISO(), editObs: false, editAj: false, editReg: null };
 
   const donoAtual = () => S.lg.dono || S.user.id;
   const souDono = () => donoAtual() === S.user.id;
@@ -1362,7 +1362,7 @@
     ["nao_atende", "Não atende", "sem_contato", "nao_atende"],
     ["caixa_postal", "Caixa postal", "sem_contato", "caixa_postal"],
     ["numero_invalido", "Número não existe", "sem_contato", "numero_invalido"],
-    ["conversou", "Conversei", "conversou", null],
+    ["conversou", "Contato realizado", "conversou", null],
     ["material_enviado", "Só atende por e-mail / WhatsApp", "conversou", "material_enviado"],
     ["pediu_retorno", "Pediu para retornar", "conversou", "pediu_retorno"],
     ["sem_abertura", "Sem abertura", "conversou", "sem_abertura"],
@@ -1374,7 +1374,7 @@
     ["sem_contato", "Sem contato", "sem_contato", null],
   ];
   // o que aparece no formulário: uma escolha só, na ordem do Relatório diário
-  const OPCOES = [["sem_contato", "Sem contato"], ["conversou", "Consegui contato"], ["demo_agendada", "Demo agendada"], ["demo_realizada", "Demo realizada"], ["negativa", "Negativa"]];
+  const OPCOES = [["sem_contato", "Sem contato"], ["conversou", "Contato realizado"], ["demo_agendada", "Demo agendada"], ["demo_realizada", "Demo realizada"], ["negativa", "Negativa"]];
   // Demo realizada: os dados do cartão do Painel de Demonstrações Realizadas (todos obrigatórios)
   const DADOS_DEMO = [["sistema", "Sistema usado"], ["qtd_condominios", "Quantos condomínios atende"], ["responsavel", "Nome do responsável"], ["cidade", "Cidade"], ["uf", "UF"]];
   function dadosDoForm(form) {
@@ -2936,7 +2936,7 @@
       <p class="rel-lead">${(() => { const n = ajustado ? (+val("follow_up") + +val("primeira_ligacao")) : m.ligacoes; return `<b>${fmtN(n)}</b> ${n === 1 ? "contato" : "contatos"}`; })()}${ajustado ? "" : ` com <b>${fmtN(m.pessoas)}</b> ${m.pessoas === 1 ? "administradora" : "administradoras diferentes"}`}${ajustado ? ' <span class="selo s-nao rel-tela">números corrigidos à mão</span>' : ""}</p>${numsHtml}
       ${R.periodo !== "dia" && m.ligacoes ? graficoPorDia(P, m) : ""}</section>`;
 
-    const listaLig = (rs) => rs.length ? `<table class="tab-simples rel-tab"><thead><tr>${R.periodo === "dia" ? "" : "<th>Dia</th>"}<th>Administradora</th><th>Cidade</th><th>Ligação</th><th>Resultado</th><th>Anotação</th>${donoAtual() === "todos" ? "<th>Quem</th>" : ""}</tr></thead><tbody>${rs.map((r) => { const f = L.fichaPorId.get(r.ficha_id) || {}; return `<tr>${R.periodo === "dia" ? "" : `<td class="num">${ddmm(r.data)}</td>`}<td><b>${esc(f.nome || "")}</b></td><td>${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}</td><td>${contaComoContato(r) ? (r.nova ? "Contato novo" : "Follow-up") : r.tipo === "sem_contato" ? "Sem contato" : "—"}</td><td><span class="selo ${RES[r.tipo]?.c}">${esc(rotuloReg(r))}</span></td><td class="rel-anot">${esc(r.texto || "")}</td>${donoAtual() === "todos" ? `<td>${esc(nomePessoa(r.usuario_id))}</td>` : ""}</tr>`; }).join("")}</tbody></table>` : `<div class="vazio" style="padding:20px">Nenhuma ligação registrada ${R.periodo === "dia" ? "neste dia" : "neste período"}.</div>`;
+    const listaLig = (rs) => rs.length ? `<table class="tab-simples rel-tab"><thead><tr>${R.periodo === "dia" ? "" : "<th>Dia</th>"}<th>Administradora</th><th>Cidade</th><th>Ligação</th><th>Resultado</th><th>Anotação</th>${donoAtual() === "todos" ? "<th>Quem</th>" : ""}<th class="rel-tela"></th></tr></thead><tbody>${rs.map((r) => { const f = L.fichaPorId.get(r.ficha_id) || {}; return `<tr>${R.periodo === "dia" ? "" : `<td class="num">${ddmm(r.data)}</td>`}<td><b>${esc(f.nome || "")}</b></td><td>${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}</td><td>${contaComoContato(r) ? (r.nova ? "Contato novo" : "Follow-up") : r.tipo === "sem_contato" ? "Sem contato" : "—"}</td><td><span class="selo ${RES[r.tipo]?.c}">${esc(rotuloReg(r))}</span></td><td class="rel-anot">${esc(r.texto || "")}</td>${donoAtual() === "todos" ? `<td>${esc(nomePessoa(r.usuario_id))}</td>` : ""}<td class="rel-tela">${r.usuario_id === S.user.id ? `<button type="button" class="mini" data-acao="rl-reg-editar" data-id="${r.id}">Editar</button>` : ""}</td></tr>`; }).join("")}</tbody></table>` : `<div class="vazio" style="padding:20px">Nenhuma ligação registrada ${R.periodo === "dia" ? "neste dia" : "neste período"}.</div>`;
     const ordenados = [...m.rs].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.criado_em < b.criado_em ? -1 : 1));
     const secLista = R.periodo === "dia" ? `<section class="rel-pg"><h2 class="rel-h">Ligações do dia</h2><div class="rolagem">${listaLig(ordenados)}</div></section>`
       : `<section class="rel-pg rel-sem-print"><details class="rel-tela"><summary><b>Ver todos os registros ${P.curto} (${m.rs.length})</b></summary><div class="rolagem" style="margin-top:10px">${listaLig(ordenados)}</div></details></section>`;
@@ -2967,7 +2967,51 @@
           ${A.contratos.length ? `<div class="rel-cards">${A.contratos.map((f) => { const d = (L.porFicha.get(f.id) || []).find((x) => x.tipo === "demo_realizada"); return cartaoDemo(f, d ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} realizada: ${extenso(d.data, horaDe(d, f))}` : "", `<b class="t12">Contrato fechado dia ${ddmmaaaa(f.contrato_em || (L.porFicha.get(f.id) || []).find((x) => x.tipo === "contrato")?.data || "")}</b>`); }).join("")}</div>` : '<p class="fraco">Nenhum contrato fechado ainda.</p>'}</section>`;
     }
     R._pdf = { P, m, val, ajustado, obs, quem, ag, re, ordenados };
-    return ctrl + barra + `<div class="relatorio">${capa}${secObs}${secNums}${secLista}${secDestaque}${resto}</div>`;
+    const regEd = R.editReg && L.regs.find((x) => x.id === R.editReg);
+    return ctrl + barra + `<div class="relatorio">${capa}${secObs}${secNums}${secLista}${secDestaque}${resto}</div>` + (regEd ? gaveta(painelEditarReg(regEd), "rl-reg-fechar") : "");
+  }
+  // corrigir um contato já registrado, direto do relatório: o resultado e a anotação
+  const RES_EDITAVEL = [["sem_contato", "Sem contato"], ["conversou", "Contato realizado"], ["negativa", "Negativa"], ["anotacao", "Só anotação"]];
+  function painelEditarReg(r) {
+    const f = S.lg.fichaPorId.get(r.ficha_id) || {}, troca = RES_EDITAVEL.some(([k]) => k === r.tipo);
+    const R = S.rl, tipo = R.editTipo || r.tipo, semestral = somaDias(hojeISO(), 182);
+    return `<aside class="cartao painel rl-ed" aria-label="Corrigir contato"><button type="button" class="mini fechar-painel" data-acao="rl-reg-fechar">Fechar ✕</button>
+      <div class="pilha" style="gap:2px"><h2>${esc(f.nome || "")}</h2><span class="t13 fraco">Contato de ${ddmmaaaa(r.data)}${f.cidade ? ` · ${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}` : ""}</span></div>
+      <form class="pilha" style="gap:16px" data-acao="rl-reg" data-id="${r.id}">
+        ${troca ? `<div class="pilha" style="gap:8px"><span class="rotulo">O que aconteceu</span><div class="rg-opcoes">${RES_EDITAVEL.map(([k, l]) => `<label class="chip-radio"><input type="radio" name="tipo" value="${k}" ${tipo === k ? "checked" : ""} data-acao="rl-reg-tipo"><span>${l}</span></label>`).join("")}</div></div>`
+          : `<p class="t13 fraco" style="margin:0">Este registro é <b>${esc(rotuloReg(r))}</b>. Aqui dá para corrigir só a anotação.</p>`}
+        ${troca && tipo === "negativa" ? `<div class="pilha rg-neg" style="gap:8px"><span class="rotulo">Para onde vai essa negativa?</span>
+          <div class="rg-opcoes rg-opcoes2"><label class="chip-radio"><input type="radio" name="neg_destino" value="follow" ${R.editDest === "follow" ? "checked" : ""} data-acao="rl-reg-dest"><span>Follow-up semestral</span></label><label class="chip-radio"><input type="radio" name="neg_destino" value="sem" ${R.editDest === "sem" ? "checked" : ""} data-acao="rl-reg-dest"><span>Sem interesse</span></label></div>
+          ${R.editDest === "follow" ? `<div class="campo" style="max-width:200px"><label for="rl-neg-data">Próximo contato</label><input id="rl-neg-data" name="neg_retorno" type="date" class="input" value="${f.retorno_em && diaDe(f.retorno_em) > hojeISO() ? diaDe(f.retorno_em) : semestral}" min="${hojeISO()}"></div>` : ""}
+          ${R.editDest === "sem" ? `<span class="t12 fraco">Sai das listas de ligação e vai para a aba <b>Sem interesse</b>.</span>` : ""}</div>` : ""}
+        <div class="campo"><label for="rl-ed-texto">Anotação</label><textarea id="rl-ed-texto" name="texto" class="input lg-texto" rows="5" maxlength="4000">${esc(r.texto || "")}</textarea></div>
+        <div class="linha-flex"><button type="submit" class="btn btn-primario">Salvar correção</button><button type="button" class="btn btn-sec" data-acao="rl-reg-fechar">Cancelar</button></div>
+      </form></aside>`;
+  }
+  async function salvarEdicaoReg(form) {
+    const L = S.lg, r = L.regs.find((x) => x.id === form.dataset.id); if (!r) return;
+    const fd = new FormData(form), tipo = String(fd.get("tipo") || r.tipo), texto = String(fd.get("texto") || "").trim();
+    const mud = {};
+    if (texto !== (r.texto || "")) mud.texto = texto || null;
+    if (tipo !== r.tipo) { mud.tipo = tipo; mud.detalhe = null; mud.detalhes = [tipo]; }
+    let ficha = null;
+    if (tipo === "negativa" && RES_EDITAVEL.some(([k]) => k === r.tipo)) {
+      const dest = String(fd.get("neg_destino") || "");
+      if (tipo !== r.tipo && !dest) { toast("Escolha para onde vai a negativa: Follow-up semestral ou Sem interesse."); return; }
+      if (dest === "follow") { const nd = String(fd.get("neg_retorno") || ""); if (!nd || nd < hojeISO()) { toast("Escolha a data do próximo contato."); return; } ficha = { retorno_em: tsSP(nd, "09:00"), retorno_nota: "Follow-up semestral" }; }
+      else if (dest === "sem") ficha = { retorno_em: null, retorno_nota: null };
+    }
+    if (!Object.keys(mud).length && !ficha) { S.rl.editReg = null; render(); return; }
+    form.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = true));
+    try {
+      if (Object.keys(mud).length) { const { data, error } = await sb.from("registros").update(mud).eq("id", r.id).select().single(); if (error) throw error; Object.assign(r, data); }
+      if (ficha) { const { error } = await sb.from("fichas").update(ficha).eq("id", r.ficha_id); if (error) throw error; }
+      const { data: nf } = await sb.from("fichas").select(COLS_FICHA).eq("id", r.ficha_id).single();
+      if (nf) { const i = L.fichas.findIndex((x) => x.id === nf.id); if (i >= 0) L.fichas[i] = nf; }
+      derivar(); carregarAgenda();
+      Object.assign(S.rl, { editReg: null, editTipo: null, editDest: null });
+      toast("Contato corrigido."); render();
+    } catch (e) { console.error(e); toast("Não foi possível salvar. Tente de novo."); form.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = false)); }
   }
   function graficoPorDia(P, m) {
     let pontos = [];
@@ -3245,6 +3289,14 @@
       case "rl-obs-cancelar": R.editObs = false; render(); break;
       case "rl-aj-editar": R.editAj = true; render(); break;
       case "rl-aj-cancelar": R.editAj = false; render(); break;
+      case "rl-reg-editar": Object.assign(R, { editReg: b.dataset.id, editTipo: null, editDest: null }); render(); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); break;
+      case "rl-reg-fechar": Object.assign(R, { editReg: null, editTipo: null, editDest: null }); render(); break;
+      case "rl-reg-tipo": case "rl-reg-dest": {
+        // guarda o que já foi escrito antes de redesenhar a gaveta
+        const fm = b.closest("form"), txt = fm?.elements.texto?.value;
+        if (a === "rl-reg-tipo") R.editTipo = b.value; else R.editDest = b.value;
+        render(); const t = document.querySelector('form[data-acao="rl-reg"] [name="texto"]'); if (t && txt != null) t.value = txt; break;
+      }
       default: break;
     }
   });
@@ -3255,6 +3307,7 @@
     if (a === "lg-salvar") salvarTudo(f, ev.submitter?.value === "dados" ? "dados" : "ligacao");
     if (a === "vd-perda") { const m = new FormData(f).get("motivo"); if (!m) { toast("Escolha o motivo."); return; } const id = S.vd.perder; S.vd.perder = null; await perderNegocio(id, String(m)); }
     if (a === "rl-obs") { const fd = new FormData(f); const obs = [0, 1, 2].map((i) => ({ titulo: String(fd.get("t" + i) || "").trim(), texto: String(fd.get("x" + i) || "").trim() })).filter((o) => o.titulo || o.texto); if (await salvarRel({ observacoes: obs })) { S.rl.editObs = false; toast("Observações salvas."); render(); } }
+    if (a === "rl-reg") salvarEdicaoReg(f);
     if (a === "rl-aj") { const fd = new FormData(f), aj = {}; for (const [k, v] of fd) if (String(v).trim() !== "") aj[k] = Math.max(0, parseInt(v, 10) || 0); if (await salvarRel({ ajustes: aj })) { S.rl.editAj = false; toast(Object.keys(aj).length ? "Números corrigidos." : "Números voltaram a ser contados pelo sistema."); render(); } }
   });
   app.addEventListener("input", (ev) => {
@@ -4312,7 +4365,7 @@
     const quem = Q.todos ? "Equipe comercial" : `${Q.curto} · ${rotuloFuncao(indPapelFuncao(Q))}`;
     const capa = `<div class="in-print-cab"><b>Indicadores Comerciais</b><span>${esc(P.nome)} · ${esc(quem)}</span><span>Comparado com ${ddmmaaaa(P.cmpIni)}${P.cmpIni !== P.cmpFim ? " a " + ddmmaaaa(P.cmpFim) : ""} · Gerado em ${ddmmaaaa(hojeISO())} às ${localSP(new Date().toISOString()).slice(11, 16)} por ${esc(S.perfil?.nome || "")}</span></div>`;
     const html = cab + filtros + `<div class="in-corpo">${capa}${secKpis(M, A)}${secMetas(M, P)}${secFunil(M)}${secGraficos(M, A, P)}${secPartes(M, P)}${secAnalise(M, A, P)}${secTabelas(M, P)}
-      <p class="t12 fraco in-nota">Como os números são contados: tentativas de contato = registros de Sem contato, Consegui contato, Negativa e Demo agendada (ligação, WhatsApp ou e-mail), contados desde que os contatos passaram a ser registrados no sistema (25/11/2026). Contato efetivado = tentativas menos as de Sem contato. Demo agendada conta uma vez por agendamento; reagendar não conta de novo. Demo realizada conta para quem apresentou. Contrato = registro de Contrato fechado. Propostas vêm das etapas do funil SCC (datas anteriores a 26/11/2026 são as do Agendor). As demos de antes da página existir entram como realizadas, sem data de agendamento.</p></div>`
+      <p class="t12 fraco in-nota">Como os números são contados: tentativas de contato = registros de Sem contato, Contato realizado, Negativa e Demo agendada (ligação, WhatsApp ou e-mail), contados desde que os contatos passaram a ser registrados no sistema (25/11/2026). Contato efetivado = tentativas menos as de Sem contato. Demo agendada conta uma vez por agendamento; reagendar não conta de novo. Demo realizada conta para quem apresentou. Contrato = registro de Contrato fechado. Propostas vêm das etapas do funil SCC (datas anteriores a 26/11/2026 são as do Agendor). As demos de antes da página existir entram como realizadas, sem data de agendamento.</p></div>`
       + (I.drill ? gaveta(painelDrill(M), "in-fechar") : "") + (I.metas ? gaveta(painelMetas(), "in-fechar") : "");
     requestAnimationFrame(animarIndicadores);
     return html;

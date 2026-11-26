@@ -91,3 +91,10 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Os blocos são medidos e distribuídos nas páginas sem cortar cartões; se a última página ficaria quase vazia, usa uma versão um pouco mais compacta.
 - Margem 0 na página: o navegador não imprime endereço e data; o rodapé é do próprio relatório.
 - As brechas da concorrência saíram dos relatórios.
+
+## v64 — Corrigir contato pelo relatório
+- Na tabela de ligações dos Relatórios, cada contato seu tem o botão **Editar**: dá para trocar o resultado (Sem contato, Contato realizado, Negativa, Só anotação) e reescrever a anotação. Negativa pede o destino (Follow-up semestral com data, ou Sem interesse), igual ao registro novo.
+- Registros de demonstração e contrato: só a anotação é editável.
+- Banco: gatilhos `registro_corrigido_*` atualizam a ficha e o negócio quando o resultado muda (só avançam, como no registro novo).
+- "Conversei" / "Consegui contato" passou a se chamar **Contato realizado**.
+- Banco: "sem_contato" aceito em `registros.detalhes` (o Salvar com "Sem contato" falhava).
