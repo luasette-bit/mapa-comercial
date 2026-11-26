@@ -49,3 +49,19 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Resumo automático só para links diretos (blog, registros à mão): o vigia guarda a descrição oficial da página (meta description). Os links do Google Notícias não levam direto à matéria; o resumo dessas fica para o time escrever.
 - **Abertura animada** da página (toda vez que entra na Concorrência; cobre a tela no clique, antes de a página aparecer; pula com Esc ou clique): o globo da marca passa pelos concorrentes com a situação real de cada um (quem tem brecha fica mais tempo e em vermelho) e termina no total de brechas abertas.
 
+
+## Indicadores Comerciais (v47)
+- Aba **Indicadores** no menu: central de indicadores para a gestão. Página nova; Relatórios diário, semanal e mensal não mudaram.
+- Tudo é calculado sozinho; só as **metas** são digitadas (botão "Metas e parâmetros", só para admin ou função Gestor). Meta inicial gravada: 6 demos agendadas por mês. Meta em branco = sem meta (nada é inventado).
+- Fontes: `registros` (tentativas = Sem contato, Consegui contato, Negativa e Demo agendada, em qualquer canal; contato efetivado = tentativas menos Sem contato; contrato = registro Contrato fechado), `demos` (histórico de demonstrações), `negocio_etapas` (histórico de etapas do funil SCC, para propostas) e `metas_comerciais`.
+- Banco (migração `indicadores_comerciais`):
+  - `demos`: cada agendamento é uma linha. Gatilho em `fichas.demo_em` (data no futuro = agendamento; data diferente com uma demo aberta = reagendamento, que fecha a anterior como `reagendada` e liga a nova em `reagendada_de`, sem contar de novo). Gatilho em `registros`: Demo agendada garante a linha aberta; Demo realizada fecha a aberta como `realizada` (ou cria uma já realizada). As 38 demos realizadas anteriores entraram como `origem = historico`, apresentadas pelo Leonardo, sem data de agendamento.
+  - `registros.apresentador`: quem apresentou a demo (campo "Quem apresentou" em Demo realizada: Leonardo ou Matheus cobrindo férias). Na tabela de demonstrações dos Indicadores dá para corrigir quem apresentou e marcar "Não aconteceu" nas demos que passaram da data sem resultado.
+  - `negocio_etapas`: gatilho grava cada mudança de etapa de negócio com data. As etapas atuais vindas do Agendor entraram como `origem = importado` (data = `etapa_desde`).
+  - `metas_comerciais`: chave/valor; lê quem está liberado, grava só a gestão (`eh_gestao()`).
+  - Os gatilhos nunca bloqueiam o registro: se algo falhar, só avisam no log.
+- Quem conta o quê: a SDR conta tentativas, contatos e demos agendadas (`usuario_id` / `agendada_por`); quem apresenta conta demos realizadas, propostas e contratos (pelo `apresentador` da última demo realizada da ficha). O Matheus aparece no filtro como Gestor (sem conta) só pelas demos que apresentou.
+- Funil por empresa: cada administradora conta uma vez em todas as etapas que alcançou até o fim do período; proposta e contrato só entram para quem teve demo realizada.
+- Filtros: Dia, Semana, Mês, Ano e Personalizado (com ← →), e Responsável. Tudo na página usa o mesmo período e responsável. Compara com o período anterior do mesmo tamanho (no período em andamento, até o mesmo dia).
+- Atualização: busca de novo ao abrir a aba (se passou 1 minuto), a cada 2 minutos com a aba aberta, no botão Atualizar e no "Atualizar dados" do menu.
+- Exportação: "Baixar PDF" (impressão do navegador, só o conteúdo) e "Baixar Excel" (SheetJS carregado na hora: Resumo, Funil, Por responsável, Evolução, Demonstrações).
