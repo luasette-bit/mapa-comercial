@@ -120,3 +120,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - A página Clientes saiu do menu da admin e do gestor (fica só para quem tiver a função Pós-vendas, que ainda não tem contas). Quem abrir #/clientes sem ser do pós-vendas volta para o Início.
 - Início do gestor sem a parte do pós-vendas: o cartão "Carlos e Ivan" e o aviso de clientes em risco saíram; o 4º número virou **Propostas enviadas**; o atalho Clientes virou **Agenda do time**.
 - O código do pós-vendas (início, clientes, visitas) continua no sistema para quando essa parte for repensada.
+
+## v69 — Menu lateral
+- A barra de cima virou um menu lateral com grupos: Geral (Início, Agenda), Prospecção (Mapeamento, Região, Listas, Concorrência), Carteira (Administradoras), Comercial (Vendas, Oportunidades), Análises (Relatórios, Indicadores). Embaixo: Equipe (só admin), o usuário (menu com Atualizar dados, versão e Sair) e "Recolher menu".
+- Recolhido fica só com ícones (76px), com os contadores sobre os ícones e o nome ao passar o mouse; a escolha fica guardada (localStorage `mapa-menu-mini`).
+- Em telas até 900px: barra fina em cima com ☰ e o menu abre como gaveta pela esquerda.
+- Cada função vê só as próprias páginas (vendedor, gestor, pós-vendas), agrupadas do mesmo jeito.

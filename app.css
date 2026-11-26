@@ -2121,3 +2121,70 @@ button.agn-ev { cursor: pointer; }
 .gs-atalhos button i { font-style: normal; flex: none; width: 30px; height: 30px; border-radius: 9px; background: #EDF3FC; display: grid; place-items: center; color: var(--link); }
 @media (max-width: 1100px) { .gs-duas { grid-template-columns: 1fr; } .gs-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .gs-hero { grid-template-columns: 1fr; } .gs-funil { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; } .gs-et[data-c]::before { display: none; } .gs-atalhos { grid-template-columns: 1fr; } }
+
+/* ---- menu lateral (substitui a barra de cima) */
+:root { --lat: 260px; }
+body.menu-mini { --lat: 76px; }
+#app:has(> .pedaco > header.topo.lateral) { padding-left: var(--lat); transition: padding-left .2s; }
+header.topo.lateral { position: fixed; left: 0; top: 0; bottom: 0; width: var(--lat); z-index: 900; flex-direction: column; flex-wrap: nowrap; align-items: stretch; justify-content: flex-start; gap: 0; padding: 0; min-height: 0; border-bottom: 0; border-right: 1px solid rgba(111, 228, 255, .12); overflow: hidden; transition: width .2s; }
+.lateral .lat-cab { display: flex; align-items: center; gap: 8px; padding: 14px 16px 8px; min-height: 72px; }
+.lateral .lat-abrir { display: none; }
+.lateral .marca-topo { padding: 4px 0; min-width: 0; }
+.lateral .marca-prg { width: 52px; }
+.lateral .marca-nome { font-size: 15px; white-space: nowrap; }
+.lateral .marca-sub { white-space: nowrap; }
+.lateral nav { flex: 1; display: block; overflow-y: auto; overflow-x: hidden; padding: 4px 12px 10px; align-self: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.15) transparent; }
+.lateral .nav-grupo { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+.lateral .nav-gtit { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: #8396C4; font-weight: 600; padding: 6px 10px 4px; white-space: nowrap; }
+.lateral .nav-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 42px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: #D5DEF5; font-size: 14px; text-align: left; white-space: nowrap; position: relative; cursor: pointer; }
+.lateral .nav-item:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+.lateral .nav-item[aria-current="page"] { background: linear-gradient(90deg, rgba(57, 200, 255, .18), rgba(57, 200, 255, .06)); color: #fff; font-weight: 600; }
+.lateral .nav-item[aria-current="page"]::after { content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px; right: auto; width: 4px; height: auto; border-radius: 0 4px 4px 0; background: var(--ciano); }
+.lateral .nav-ico { flex: none; width: 20px; height: 20px; }
+.lateral .nav-rot { overflow: hidden; text-overflow: ellipsis; }
+.lateral .nav-item .contador { margin-left: auto; }
+.lateral .lat-pe { border-top: 1px solid rgba(255, 255, 255, .08); padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 2px; }
+.lateral .usuario { margin: 0; display: block; }
+.lateral .usuario > button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 6px; color: #fff; text-align: left; border-radius: 10px; }
+.lateral .usuario > button:hover { background: rgba(255, 255, 255, .06); }
+.lateral .usuario .avatar { flex: none; }
+.lateral .lat-eu { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.lateral .lat-eu b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lateral .lat-eu span { font-size: 11.5px; color: #8FA2CF; white-space: nowrap; }
+.lateral .menu { position: fixed; left: 12px; right: auto; top: auto; bottom: 64px; width: 236px; }
+.lateral .lat-recolher { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: #8FA2CF; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.lateral .lat-recolher:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+.lateral .lat-recolher svg { flex: none; transition: transform .2s; }
+.lat-fundo { display: none; }
+.lat-dica { display: none; position: fixed; left: 84px; transform: translateY(-50%); background: var(--azul-escuro); color: #fff; font-size: 12.5px; padding: 5px 10px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); pointer-events: none; z-index: 2000; white-space: nowrap; }
+/* recolhido: só ícones */
+body.menu-mini .lateral .nav-rot, body.menu-mini .lateral .marca-txt, body.menu-mini .lateral .marca-sep, body.menu-mini .lateral .lat-eu { display: none; }
+body.menu-mini .lateral .lat-cab { justify-content: center; padding: 14px 0 8px; }
+body.menu-mini .lateral .marca-prg { width: 44px; }
+body.menu-mini .lateral .nav-gtit { font-size: 0; padding: 0; height: 1px; margin: 8px 10px; background: rgba(255, 255, 255, .1); }
+body.menu-mini .lateral .nav-item, body.menu-mini .lateral .lat-recolher { justify-content: center; padding: 0; }
+body.menu-mini .lateral .nav-item .contador { position: absolute; top: 2px; right: 4px; margin: 0; font-size: 10px; padding: 0 5px; min-width: 0; }
+body.menu-mini .lateral .usuario > button { justify-content: center; }
+body.menu-mini .lateral .lat-recolher svg { transform: rotate(180deg); }
+/* celular e tela estreita: barra fininha em cima com ☰; o menu abre como gaveta pela esquerda */
+@media (max-width: 900px) {
+  #app:has(> .pedaco > header.topo.lateral) { padding-left: 0; padding-top: 60px; }
+  header.topo.lateral { right: 0; bottom: auto; width: auto; height: 60px; flex-direction: row; align-items: center; overflow: visible; border-right: 0; border-bottom: 1px solid rgba(111, 228, 255, .12); }
+  .lateral .lat-cab { min-height: 0; height: 60px; padding: 0 10px; }
+  .lateral .lat-abrir { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 10px; background: none; color: #fff; cursor: pointer; }
+  .lateral nav, .lateral .lat-pe { position: fixed; left: 0; width: 280px; background: var(--azul-escuro); transform: translateX(-100%); transition: transform .22s; z-index: 901; }
+  .lateral nav { top: 60px; bottom: 120px; }
+  .lateral .lat-pe { bottom: 0; height: 120px; justify-content: flex-start; }
+  body.lat-aberto .lateral nav, body.lat-aberto .lateral .lat-pe { transform: none; box-shadow: 10px 0 30px rgba(0, 0, 0, .25); }
+  body.lat-aberto .lat-fundo { display: block; position: fixed; inset: 60px 0 0 0; background: rgba(10, 24, 71, .4); z-index: 899; }
+  .lateral .lat-recolher { display: none; }
+  body.menu-mini .lateral .nav-rot { display: inline; }
+  body.menu-mini .lateral .marca-txt, body.menu-mini .lateral .lat-eu { display: flex; flex-direction: column; }
+  body.menu-mini .lateral .marca-sep { display: block; }
+  body.menu-mini .lateral .lat-cab { justify-content: flex-start; padding: 0 10px; }
+  body.menu-mini .lateral .nav-gtit { font-size: 10.5px; padding: 6px 10px 4px; height: auto; margin: 0; background: none; }
+  body.menu-mini .lateral .nav-item, body.menu-mini .lateral .usuario > button { justify-content: flex-start; padding: 0 12px; }
+  body.menu-mini .lateral .nav-item .contador { position: static; margin-left: auto; }
+  .lateral .menu { left: 12px; bottom: 124px; }
+}
+@media print { #app { padding-left: 0 !important; padding-top: 0 !important; } .lat-fundo, .lat-dica { display: none !important; } }

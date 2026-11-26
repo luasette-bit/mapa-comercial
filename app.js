@@ -451,22 +451,68 @@
     document.body.classList.toggle("com-gaveta", !!gv);
   }
 
+  // ícones do menu lateral (traço, 24x24)
+  const NAV_ICONE = {
+    inicio: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
+    agenda: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    mapeamento: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>',
+    regiao: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+    listas: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+    concorrencia: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    adms: '<path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M3 21h18M8 7h4M8 11h4M8 15h4"/>',
+    clientes: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    vendas: '<path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/>',
+    oportunidades: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+    relatorios: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+    indicadores: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    equipe: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/>',
+  };
+  const NAV_GRUPOS = [["Geral", ["inicio", "agenda"]], ["Prospecção", ["mapeamento", "regiao", "listas", "concorrencia"]], ["Carteira", ["adms", "clientes"]], ["Comercial", ["vendas", "oportunidades"]], ["Análises", ["relatorios", "indicadores"]]];
+  const navIco = (k) => `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAV_ICONE[k] || NAV_ICONE.inicio}</svg>`;
   function topo() {
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
-    const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["oportunidades", (() => { if (!S.op.lista && !S.op.carregando && !S.op.erro && S.perfil?.aprovado) setTimeout(() => carregarOportunidades(true), 0); return rotuloNavOp(); })()], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"], ["concorrencia", (() => { const n = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0; return n ? `Concorrência <span class="contador">${n}</span>` : "Concorrência"; })()], ["listas", "Listas"]];
-    if (ehVendedor()) for (const k of ["mapeamento", "regiao", "listas"]) { const i = nav.findIndex((x) => x[0] === k); if (i >= 0) nav.splice(i, 1); }
-    if (ehPos()) nav.splice(nav.findIndex((x) => x[0] === "vendas") + 1, 0, ["clientes", "Clientes"]);
-    if (ehPos()) { const fica = ["inicio", "agenda", "clientes", "vendas", "adms"]; for (let i = nav.length - 1; i >= 0; i--) if (!fica.includes(nav[i][0])) nav.splice(i, 1); }
-    if (ehGestor()) { nav.length = 0; nav.push(["inicio", "Início"], ["indicadores", "Indicadores"], ["oportunidades", "Oportunidades"], ["relatorios", "Relatórios"], ["agenda", nAg ? `Agenda do time <span class="contador">${nAg}</span>` : "Agenda do time"]); }
-    if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
-    return `<header class="topo">
-      <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
-      <nav aria-label="Menu principal">${nav.map(([k, l]) => `<button type="button" data-acao="ir" data-view="${k}" ${k === "agenda" ? 'id="nav-agenda"' : ""} ${S.view === k ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>
-      <div class="usuario"><button type="button" data-acao="menu" aria-expanded="${S.menu}"><span>${esc(S.perfil?.nome || "")}</span><span class="avatar">${esc(ini(S.perfil?.nome))}</span></button>
-        ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${esc(rotuloFuncao(S.perfil?.funcao))}${S.perfil?.papel === "admin" ? " · vê tudo" : ""}</span><button type="button" data-acao="atualizar">Atualizar dados</button><span class="menu-versao">Versão ${VERSAO}</span><button type="button" data-acao="sair">Sair</button></div>` : ""}
+    if (!S.op.lista && !S.op.carregando && !S.op.erro && S.perfil?.aprovado) setTimeout(() => carregarOportunidades(true), 0);
+    const nCc = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0;
+    // [chave, nome, contador]
+    let nav = [["inicio", "Início"], ["agenda", "Agenda", nAg], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["listas", "Listas"], ["concorrencia", "Concorrência", nCc], ["adms", "Administradoras"], ["vendas", "Vendas"], ["oportunidades", rotuloNavOp()], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"]];
+    if (ehVendedor()) nav = nav.filter(([k]) => !["mapeamento", "regiao", "listas"].includes(k));
+    if (ehPos()) { nav.push(["clientes", "Clientes"]); nav = nav.filter(([k]) => ["inicio", "agenda", "clientes", "vendas", "adms"].includes(k)); }
+    if (ehGestor()) nav = [["inicio", "Início"], ["agenda", "Agenda do time", nAg], ["oportunidades", "Oportunidades"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"]];
+    const item = ([k, l, n]) => `<button type="button" class="nav-item" data-acao="ir" data-view="${k}" data-nome="${esc(l)}" ${k === "agenda" ? 'id="nav-agenda"' : ""} ${S.view === k ? 'aria-current="page"' : ""}>${navIco(k)}<span class="nav-rot">${l}</span>${n ? `<span class="contador">${fmtN(n)}</span>` : ""}</button>`;
+    const grupos = NAV_GRUPOS.map(([g, ks]) => { const its = ks.map((k) => nav.find((x) => x[0] === k)).filter(Boolean); return its.length ? `<div class="nav-grupo"><span class="nav-gtit">${g}</span>${its.map(item).join("")}</div>` : ""; }).join("");
+    const equipe = S.perfil?.papel === "admin" ? item(["equipe", "Equipe", S.pendentes]) : "";
+    return `<header class="topo lateral">
+      <div class="lat-cab"><button type="button" class="lat-abrir" data-lat="abrir" aria-label="Abrir menu"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha marca-txt" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button></div>
+      <nav aria-label="Menu principal">${grupos}</nav>
+      <div class="lat-pe">${equipe}
+        <div class="usuario"><button type="button" data-acao="menu" aria-expanded="${S.menu}" data-nome="${esc(S.perfil?.nome || "")}"><span class="avatar">${esc(ini(S.perfil?.nome))}</span><span class="lat-eu"><b>${esc(S.perfil?.nome || "")}</b><span>${esc(rotuloFuncao(S.perfil?.funcao))}${S.perfil?.papel === "admin" ? " · vê tudo" : ""}</span></span></button>
+          ${S.menu ? `<div class="menu"><span class="origem" style="padding:6px 10px">${esc(S.user.email)} · ${esc(rotuloFuncao(S.perfil?.funcao))}${S.perfil?.papel === "admin" ? " · vê tudo" : ""}</span><button type="button" data-acao="atualizar">Atualizar dados</button><span class="menu-versao">Versão ${VERSAO}</span><button type="button" data-acao="sair">Sair</button></div>` : ""}
+        </div>
+        <button type="button" class="lat-recolher" data-lat="mini" data-nome="Abrir menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg><span class="nav-rot">Recolher menu</span></button>
       </div>
-    </header>`;
+    </header><div class="lat-fundo" data-lat="fechar"></div>`;
   }
+  // menu lateral: recolher (fica lembrado), abrir no celular e o nome ao passar o mouse no menu recolhido
+  try { if (localStorage.getItem("mapa-menu-mini") === "1") document.body.classList.add("menu-mini"); } catch { /* sem armazenamento */ }
+  const latDica = document.createElement("span"); latDica.className = "lat-dica"; document.body.appendChild(latDica);
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest?.("[data-lat]");
+    if (b) {
+      const k = b.dataset.lat;
+      if (k === "mini") { const on = document.body.classList.toggle("menu-mini"); try { localStorage.setItem("mapa-menu-mini", on ? "1" : "0"); } catch { /* */ } latDica.style.display = "none"; }
+      else if (k === "abrir") document.body.classList.add("lat-aberto");
+      else if (k === "fechar") document.body.classList.remove("lat-aberto");
+      return;
+    }
+    if (ev.target.closest?.(".topo.lateral .nav-item, .topo.lateral .marca-topo")) document.body.classList.remove("lat-aberto");
+  });
+  document.addEventListener("mouseover", (ev) => {
+    const b = ev.target.closest?.(".topo.lateral [data-nome]");
+    if (!b || !document.body.classList.contains("menu-mini") || innerWidth <= 900) { latDica.style.display = "none"; return; }
+    const r = b.getBoundingClientRect(); latDica.textContent = b.dataset.nome; latDica.style.top = (r.top + r.height / 2) + "px"; latDica.style.display = "block";
+  });
+
 
   function telaMapeamento() {
     const lista = filtrados(S.rows);
@@ -2677,7 +2723,8 @@
   const pendentesAgenda = () => itensAgenda().filter((i) => i.tipo === "retorno" && i.dia <= hojeISO()).length;
   function atualizarContador() {
     const el = $("#nav-agenda"); if (!el) return;
-    const n = pendentesAgenda(); el.innerHTML = n ? `Agenda <span class="contador">${n}</span>` : "Agenda";
+    const n = pendentesAgenda(), l = ehGestor() ? "Agenda do time" : "Agenda";
+    el.innerHTML = `${navIco("agenda")}<span class="nav-rot">${l}</span>${n ? `<span class="contador">${fmtN(n)}</span>` : ""}`;
   }
   function itemLista(i) {
     const atr = i.tipo === "retorno" && i.dia < hojeISO();
@@ -4014,7 +4061,7 @@
     } catch (e) { console.error(e); O.erro = true; if (!silencioso) toast("Não deu para carregar as oportunidades. Tente de novo."); }
     finally { O.carregando = false; if (S.view === "oportunidades" || (S.view === "inicio" && ehGestor())) renderDados(); else if (S.user) atualizarContadorOp(); }
   }
-  function atualizarContadorOp() { const b = app.querySelector('[data-view="oportunidades"]'); if (b) b.innerHTML = rotuloNavOp(); }
+  function atualizarContadorOp() { const b = app.querySelector('.topo .nav-item[data-view="oportunidades"] .nav-rot'); if (b) b.innerHTML = rotuloNavOp(); }
   function opItens() {
     const O = S.op, porFicha = new Map();
     for (const c of O.contatos) { if (!porFicha.has(c.ficha_id)) porFicha.set(c.ficha_id, []); porFicha.get(c.ficha_id).push(c); }
