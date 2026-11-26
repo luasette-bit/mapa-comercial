@@ -1813,3 +1813,18 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .agn-num b { font-size: 19px; }
 .agn-num-ic svg { width: 26px; height: 26px; }
 @media (max-width: 720px) { .agn-hero-acoes { flex-wrap: wrap; } }
+.agn-lado h2 { display: flex; align-items: baseline; gap: 8px; }
+.agn-lado-data { font-size: 14px; font-weight: 500; color: var(--fraco); }
+.agn-bloco { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.agn-bloco-t { font-size: 12px; font-weight: 600; color: var(--fraco); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+.agn-lado .agn-ev-l1, .agn-lado .agn-ev-l2 { white-space: normal; }
+.agn-lado .agn-ev { padding: 8px 10px; }
+.agn-demo { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; border: 0; border-radius: 12px; padding: 12px 14px; background: linear-gradient(135deg, #6B3FB8, #8B5CF6); color: #fff; box-shadow: 0 8px 18px rgba(107, 63, 184, .25); }
+.agn-demo:hover { filter: brightness(1.06); }
+.agn-demo-r { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; opacity: .85; }
+.agn-demo-l { display: flex; gap: 8px; align-items: baseline; font-size: 16px; font-weight: 600; }
+.agn-demo-l b { font-size: 18px; }
+.agn-demo-s { font-size: 12.5px; opacity: .85; }
+.agn-atr-cab { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 0; background: none; padding: 0; font-size: 15px; color: #C9343A; text-align: left; }
+.agn-atr-cab b { font-weight: 600; }
+.agn-atr-lista { max-height: 420px; overflow-y: auto; padding-right: 2px; }

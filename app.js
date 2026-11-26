@@ -2727,10 +2727,16 @@
     const doDia = (porDia.get(A.dia) || []).filter((i) => A.dia !== hj || i.tipo === "demo" || !i.ts || new Date(i.ts) >= new Date(Date.now() - 30 * 60e3) || true);
     const linhaLado = (i, comData) => { const atr = i.tipo === "retorno" && i.dia < hj;
       return `<button type="button" class="agn-li" data-acao="ag-abrir" data-id="${i.f.id}"><span class="agn-li-h num">${comData ? ddmm(i.dia) : i.hora}</span><span class="agn-li-t"><b>${esc(i.f.nome)}</b><span>${i.tipo === "demo" ? `Demonstração ${i.f.demo_formato === "presencial" ? "presencial" : "virtual"}` : esc(i.f.retorno_nota || "Ligar de novo")}</span></span><i class="agn-pt ${i.tipo === "demo" ? "agn-pt-demo" : atr ? "agn-pt-atr" : ""}"></i></button>`; };
-    const titLado = A.dia === hj ? "Próximos compromissos" : `${DIAS[isoData(A.dia).getUTCDay()][0].toUpperCase() + DIAS[isoData(A.dia).getUTCDay()].slice(1)}, ${ddmm(A.dia)}`;
-    const prior = A.todosAtr ? atrasados : atrasados.slice(0, 5);
-    const lado = `<aside class="agn-lado"><section><h2>${titLado}</h2>${doDia.length ? doDia.map((i) => linhaLado(i)).join("") : `<p class="agn-vazio">Nada marcado ${A.dia === hj ? "para hoje" : "neste dia"}.</p>`}</section>
-      <section id="agn-prioritarios"><div class="agn-lado-cab"><h2>Retornos prioritários</h2>${atrasados.length > 5 ? `<button type="button" class="agn-link" data-acao="agn-todos">${A.todosAtr ? "Ver menos" : "Ver todos"}</button>` : ""}</div>${prior.length ? prior.map((i) => linhaLado(i, true)).join("") : '<p class="agn-vazio">Nenhum retorno atrasado.</p>'}</section></aside>`;
+    const nomeDiaLado = A.dia === hj ? "Hoje" : `${DIAS[isoData(A.dia).getUTCDay()][0].toUpperCase() + DIAS[isoData(A.dia).getUTCDay()].slice(1)}`;
+    const doDiaL = porDia.get(A.dia) || [], demosL = doDiaL.filter((i) => i.tipo === "demo"), retL = doDiaL.filter((i) => i.tipo === "retorno");
+    const demoCard = (i) => `<button type="button" class="agn-demo" data-acao="ag-abrir" data-id="${i.f.id}"><span class="agn-demo-r">Demonstração ${i.f.demo_formato === "presencial" ? "presencial" : "virtual"}</span><span class="agn-demo-l"><b class="num">${i.hora}</b><span>${esc(i.f.nome)}</span></span>${i.f.responsavel || i.f.cidade ? `<span class="agn-demo-s">${esc([i.f.responsavel, i.f.cidade].filter(Boolean).join(" · "))}</span>` : ""}</button>`;
+    const verAtr = A.verAtr;
+    const lado = `<aside class="agn-lado"><section><h2>${nomeDiaLado}<span class="agn-lado-data">${ddmm(A.dia)}</span></h2>
+        ${demosL.length ? `<div class="agn-bloco">${demosL.map(demoCard).join("")}</div>` : ""}
+        <div class="agn-bloco"><span class="agn-bloco-t">${retL.length ? `Retornos · ${retL.length}` : "Retornos"}</span>${retL.length ? retL.map(chip).join("") : `<p class="agn-vazio">Nenhum retorno ${A.dia === hj ? "para hoje" : "neste dia"}.</p>`}</div>
+        ${!doDiaL.length && A.dia !== hj ? "" : ""}</section>
+      ${atrasados.length ? `<section id="agn-prioritarios"><button type="button" class="agn-atr-cab" data-acao="agn-veratr" aria-expanded="${!!verAtr}"><span><b>Atrasados</b> · ${fmtN(atrasados.length)}</span><span class="agn-link">${verAtr ? "Esconder" : "Ver"}</span></button>
+        ${verAtr ? `<div class="agn-bloco agn-atr-lista">${atrasados.slice(0, A.todosAtr ? atrasados.length : 30).map((i) => chip(i).replace('<b class="num">' + i.hora + "</b>", `<b class="num">${ddmm(i.dia)}</b>`)).join("")}${atrasados.length > 30 && !A.todosAtr ? `<button type="button" class="agn-mais" data-acao="agn-todos">Ver todos os ${fmtN(atrasados.length)}</button>` : ""}</div>` : ""}</section>` : ""}</aside>`;
     return cab + `<div class="agn-duas"><div class="agn-esq">${hero}${nums}${cal}</div>${lado}</div>` + (A.novo ? gaveta(painelNovoCompromisso(), "agn-fechar") : "");
   }
   const ICONE_SOL = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
@@ -2762,7 +2768,8 @@
       case "agn-todos": A.todosAtr = !A.todosAtr; render(); break;
       case "agn-expandir": A.aberto = A.aberto === b.dataset.dia ? null : b.dataset.dia; render(); break;
       case "agn-fechar-pop": A.aberto = null; render(); break;
-      case "agn-lista": $("#agn-prioritarios")?.scrollIntoView({ behavior: "smooth", block: "start" }); break;
+      case "agn-veratr": A.verAtr = !A.verAtr; render(); break;
+      case "agn-lista": A.verAtr = true; render(); setTimeout(() => $("#agn-prioritarios")?.scrollIntoView({ behavior: "smooth", block: "start" }), 30); break;
     }
   });
   document.addEventListener("click", (ev) => { if (!S.ag.aberto || S.view !== "agenda") return; if (ev.target.closest?.(".agn-pop, .agn-mais")) return; S.ag.aberto = null; render(); }, true);
