@@ -84,3 +84,10 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Aba **Clientes** (pós-vendas e admin): a carteira = fichas no Funil de Acompanhamento, vinda de `carteira_clientes()` (security definer). Na ficha do cliente: como está (Para contatar, Em acompanhamento, Satisfeito, Insatisfeito, via `situacao_cliente()`), produtos que já usa (`cliente_produtos`), marcar visita ou ligação e o histórico.
 - `visitas`: visita presencial ou ligação de acompanhamento, com resultado e como o cliente ficou. As da pessoa aparecem também na Agenda (verde).
 - Menu do pós-vendas: Início, Agenda, Clientes, Vendas e Administradoras.
+
+## v63 — PDF dos relatórios em A4 em pé
+- O "Baixar PDF" dos relatórios (dia, semana, mês) monta um PDF próprio em A4 em pé, no layout do Resumo Semanal: capa com a data grande, Observações, Resultados, Ligações do Dia (só no diário), Em destaque, e no semanal/mensal o Acumulado, Contratos Fechados e o Painel de Demonstrações Realizadas.
+- Fontes Sora (títulos e números) e Plus Jakarta Sans (texto), carregadas só na hora de baixar.
+- Os blocos são medidos e distribuídos nas páginas sem cortar cartões; se a última página ficaria quase vazia, usa uma versão um pouco mais compacta.
+- Margem 0 na página: o navegador não imprime endereço e data; o rodapé é do próprio relatório.
+- As brechas da concorrência saíram dos relatórios.

@@ -2948,7 +2948,7 @@
       <h2 class="rel-h">Demonstrações agendadas</h2>${cardsAg ? `<div class="rel-cards">${cardsAg}</div>` : '<p class="fraco">Nenhuma demonstração agendada no período.</p>'}
       <h2 class="rel-h" style="margin-top:18px">Demonstrações realizadas</h2>${cardsRe ? `<div class="rel-cards">${cardsRe}</div>` : '<p class="fraco">Nenhuma demonstração realizada no período.</p>'}</section>`;
 
-    let resto = "";
+    let resto = ""; R._pdfAcum = null;
     if (R.periodo !== "dia") {
       const A = acumulado(P.fim);
       const ufs = [...new Set(L.fichas.filter((f) => f.uf && (L.porFicha.get(f.id) || []).some((r) => r.data <= P.fim)).map((f) => f.uf))].sort();
@@ -2957,6 +2957,7 @@
       const listaUf = ufs.length > 1 ? ufs.slice(0, -1).join(", ") + " e " + ufs[ufs.length - 1] : ufs[0] || "";
       const fimTxt = R.periodo === "semana" ? somaDias(P.ini, 4) : P.fim;
       const ordDemo = (fs) => fs.map((f) => { const r = (L.porFicha.get(f.id) || []).find((x) => x.tipo === "demo_realizada" && x.data <= P.fim); return { f, r }; }).sort((a, b) => (a.r.data < b.r.data ? -1 : 1));
+      R._pdfAcum = { A, listaUf, top, fimTxt, ordDemo };
       resto = `<section class="rel-pg"><h2 class="rel-h">Acumulado até ${ddmm(fimTxt)}</h2><div class="rel-acum">${barrasSvg([["Tentativas", A.tentativas], ["Administradoras", A.prospectadas], ["Demonstrações", A.demos.length], ["Contratos", A.contratos.length]])}
         <div class="pilha" style="gap:12px"><b class="rel-sub2">Destaques do período</b><p style="margin:0">Com <b>${fmtN(A.tentativas)} tentativas de contato</b> e <b>${fmtN(A.prospectadas)} administradoras prospectadas</b>, o período acumulado resultou em <b>${fmtN(A.demos.length)} demonstrações realizadas</b> e <b>${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "contrato fechado" : "contratos fechados"}</b>.${listaUf ? ` Os atendimentos abrangeram administradoras em <b>${esc(listaUf)}</b>, com diferentes sistemas de gestão em uso.` : ""}</p>
         ${top.length ? `<div class="rel-info">As demonstrações contemplaram administradoras com rotinas e plataformas variadas, incluindo ${esc(top.join(", "))} e outros sistemas de administração.</div>` : ""}</div></div></section>
@@ -2965,7 +2966,8 @@
         <section class="rel-pg"><div class="rel-painel-cab"><h2 class="rel-h">Painel de Contratos Fechados</h2><b class="t13">TOTAL: ${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "Contrato" : "Contratos"}</b></div>
           ${A.contratos.length ? `<div class="rel-cards">${A.contratos.map((f) => { const d = (L.porFicha.get(f.id) || []).find((x) => x.tipo === "demo_realizada"); return cartaoDemo(f, d ? `Demonstração ${f.demo_formato === "presencial" ? "presencial" : "virtual"} realizada: ${extenso(d.data, horaDe(d, f))}` : "", `<b class="t12">Contrato fechado dia ${ddmmaaaa(f.contrato_em || (L.porFicha.get(f.id) || []).find((x) => x.tipo === "contrato")?.data || "")}</b>`); }).join("")}</div>` : '<p class="fraco">Nenhum contrato fechado ainda.</p>'}</section>`;
     }
-    return ctrl + barra + `<div class="relatorio">${capa}${secObs}${secNums}${secaoBrechasRel(m)}${secLista}${secDestaque}${resto}</div>`;
+    R._pdf = { P, m, val, ajustado, obs, quem, ag, re, ordenados };
+    return ctrl + barra + `<div class="relatorio">${capa}${secObs}${secNums}${secLista}${secDestaque}${resto}</div>`;
   }
   function graficoPorDia(P, m) {
     let pontos = [];
@@ -2982,14 +2984,117 @@
     L.rels = L.rels.filter((r) => !(r.usuario_id === data.usuario_id && r.periodo === data.periodo && r.inicio === data.inicio)).concat(data);
     return true;
   }
-  function baixarPdf() {
-    const P = periodoDe(S.rl.periodo, S.rl.ref), antes = document.title;
-    document.title = `${P.nome} - ${P.rotulo.replace(/\//g, "-")}${donoAtual() === "todos" ? " - Equipe" : ` - ${nomePessoa(donoAtual()) || ""}`}`;
-    document.body.classList.add("imprimindo");
-    const volta = () => { document.title = antes; document.body.classList.remove("imprimindo"); window.removeEventListener("afterprint", volta); };
-    window.addEventListener("afterprint", volta);
-    setTimeout(() => window.print(), 50);
+  /* PDF dos relatórios: A4 em pé, no layout do Resumo Semanal (Sora + Plus Jakarta Sans).
+     Monta blocos, mede cada um e distribui nas páginas sem deixar página quase vazia nem cortar cartão. */
+  function pdfCartao(f, linha, extra = "") {
+    const qtd = f.qtd_condominios != null && f.qtd_condominios !== "" ? `${fmtN(f.qtd_condominios)} ${+f.qtd_condominios === 1 ? "condomínio" : "condomínios"}${f.qtd_unidades ? ` · ${fmtN(f.qtd_unidades)} unidades` : ""}` : "";
+    const l2 = [f.sistema ? `Sistema: <b>${esc(f.sistema)}</b>` : "", esc(qtd)].filter(Boolean).join(" · ");
+    const l3 = [f.responsavel, [f.cidade, f.uf].filter(Boolean).join(" - ")].filter(Boolean).map(esc).join(" · ");
+    return `<div class="rp-demo"><h4>${esc(f.nome)}</h4>${linha ? `<span>${linha}</span>` : ""}${l2 ? `<span>${l2}</span>` : ""}${l3 ? `<span>${l3}</span>` : ""}${extra}</div>`;
   }
+  function pdfBlocos() {
+    const L = S.lg, R = S.rl, D = R._pdf; if (!D) return null;
+    const { P, m, val, ajustado, obs, quem, ag, re, ordenados } = D, dia = R.periodo === "dia";
+    const B = [], add = (html, gap = 8, junto = false) => B.push({ html, gap, junto });
+    const fmtD = (f, r, tipo) => { const pres = f.demo_formato === "presencial" ? "presencial" : "virtual";
+      if (tipo === "ag") { const dt = f.demo_em ? localSP(f.demo_em) : ""; return dt ? `Demonstração ${pres} agendada: <b>${extenso(dt.slice(0, 10), dt.slice(11, 16))}</b>` : `Agendada em ${ddmm(r.data)}`; }
+      return `Demonstração ${pres} realizada: <b>${extenso(r.data, horaDe(r, f))}</b>`; };
+    // capa
+    const grande = dia ? `<b>${ddmm(P.ini)}</b> <small>${P.sub}</small>` : R.periodo === "semana" ? `<b>${ddmm(P.ini)}</b> – ${ddmm(somaDias(P.ini, 4))}` : `<b>${P.rotulo.split(" de ")[0]}</b> ${P.ini.slice(0, 4)}`;
+    add(`<section class="rp-capa"><p class="rp-t rp-sobre">${P.nome}</p><p class="rp-t rp-data">${grande}</p><p class="rp-subt">${dia ? "Resumo das atividades de prospecção e follow-ups realizadas no dia." : "Resumo das atividades de prospecção, follow-ups e oportunidades em andamento no período."}</p><p class="rp-quem"><b>${esc(quem || "")}</b>${donoAtual() === "todos" ? "" : " · SDR"} · PRG Software</p></section>`, 0);
+    // observações
+    if (obs.length) { add(`<h2 class="rp-t rp-h">Observações ${P.curto}</h2>`, 9, true); add(`<div class="rp-obs">${obs.map((o) => `<div class="rp-card"><h3>${esc(o.titulo)}</h3><p>${esc(o.texto)}</p></div>`).join("")}</div>`, 0); }
+    // resultados
+    const n = ajustado ? (+val("follow_up") + +val("primeira_ligacao")) : m.ligacoes;
+    add(`<h2 class="rp-t rp-h">Resultados ${P.curto}</h2><p class="rp-lead"><b>${fmtN(n)} ${n === 1 ? "contato" : "contatos"}</b>${ajustado ? "" : ` com <b>${fmtN(m.pessoas)} ${m.pessoas === 1 ? "administradora" : "administradoras"}</b>${m.pessoas === 1 ? "" : " diferentes"}`}.</p>`, 9, true);
+    add(`<div class="rp-nums">${[["follow_up", "Follow-ups"], ["primeira_ligacao", "Novas administradoras"], ["sem_contato", "Sem contato"], ["demo_agendada", "Demos agendadas"], ["demo_realizada", "Demos realizadas"], ["negativa", "Negativas"]].map(([k, l]) => `<div><b>${fmtN(val(k))}</b><span>${l}</span></div>`).join("")}</div>`, 0);
+    // ligações do dia (só no diário)
+    if (dia) {
+      const todos = donoAtual() === "todos", cols = `<colgroup><col style="width:32%"><col style="width:17%"><col></colgroup>`;
+      add(`<h2 class="rp-t rp-h">Ligações do Dia</h2>`, 9, true);
+      if (!ordenados.length) add(`<p class="rp-vazio">Nenhuma ligação registrada neste dia.</p>`, 0);
+      else {
+        add(`<table class="rp-tab rp-tab-cab">${cols}<thead><tr><th>Administradora</th><th>Resultado</th><th>Anotação</th></tr></thead></table>`, 0, true);
+        ordenados.forEach((r, i) => { const f = L.fichaPorId.get(r.ficha_id) || {};
+          const tipo = contaComoContato(r) ? (r.nova ? "Contato novo" : "Follow-up") : r.tipo === "sem_contato" ? "Sem contato" : "";
+          const sub = [[f.cidade, f.uf].filter(Boolean).join(" - "), tipo, todos ? nomePessoa(r.usuario_id) : ""].filter(Boolean).map(esc).join(" · ");
+          add(`<table class="rp-tab${i === ordenados.length - 1 ? " rp-tab-fim" : ""}">${cols}<tbody><tr><td><b>${esc(f.nome || "")}</b>${sub ? `<small>${sub}</small>` : ""}</td><td><span class="rp-sel ${RES[r.tipo]?.c === "s-errado" ? "rp-no" : ""}">${esc(rotuloReg(r))}</span></td><td>${esc(r.texto || "")}</td></tr></tbody></table>`, 0, i < ordenados.length - 1 && false); });
+      }
+    }
+    // em destaque: agendadas | realizadas, em linhas de dois
+    const cAg = ag.map((r) => { const f = L.fichaPorId.get(r.ficha_id); return f ? pdfCartao(f, fmtD(f, r, "ag")) : ""; }).filter(Boolean);
+    const cRe = re.map((r) => { const f = L.fichaPorId.get(r.ficha_id); return f ? pdfCartao(f, fmtD(f, r, "re")) : ""; }).filter(Boolean);
+    const quando = dia ? "no dia" : R.periodo === "semana" ? "na semana" : "no mês";
+    add(`<span class="rp-tag">${dia ? "Dia" : R.periodo === "semana" ? "Semana" : "Mês"} em destaque</span><div class="rp-duas"><h2 class="rp-t2">Demonstrações agendadas</h2><h2 class="rp-t2">Demonstrações realizadas</h2></div>`, 9, true);
+    const linhas = Math.max(1, cAg.length, cRe.length);
+    for (let i = 0; i < linhas; i++) add(`<div class="rp-duas">${cAg[i] || (i === 0 ? `<p class="rp-vazio">Nenhuma demonstração agendada ${quando}.</p>` : "<div></div>")}${cRe[i] || (i === 0 ? `<p class="rp-vazio">Nenhuma demonstração realizada ${quando}.</p>` : "<div></div>")}</div>`, i ? 3.5 : 0, i < linhas - 1 && i === 0);
+    // semanal e mensal: acumulado, contratos e o painel de todas as demos
+    const X = R._pdfAcum;
+    if (!dia && X) {
+      const { A, listaUf, top, fimTxt, ordDemo } = X;
+      add(`<h2 class="rp-t rp-h">Acumulado até ${ddmm(fimTxt)}</h2>`, 9, true);
+      add(`<div class="rp-acum"><div class="rp-graf">${barrasSvg([["Tentativas", A.tentativas], ["Administradoras", A.prospectadas], ["Demonstrações", A.demos.length], ["Contratos", A.contratos.length]]).replace('class="rel-grafico"', 'class="rp-svg"')}</div>
+        <div class="rp-dest"><h3>Destaques do período</h3><p>Com <b>${fmtN(A.tentativas)} tentativas de contato</b> e <b>${fmtN(A.prospectadas)} administradoras prospectadas</b>, o período acumulado resultou em <b>${fmtN(A.demos.length)} demonstrações realizadas</b> e <b>${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "contrato fechado" : "contratos fechados"}</b>${listaUf ? `, com administradoras em <b>${esc(listaUf)}</b>` : ""}.</p>
+        ${top.length ? `<div class="rp-info"><i>i</i><span>As demonstrações contemplaram plataformas variadas, incluindo ${esc(top.join(", "))} e outros sistemas.</span></div>` : ""}</div></div>`, 0);
+      const grade = (cards, titulo, total, info) => {
+        add(`<div class="rp-topo"><div><h2 class="rp-t rp-h">${titulo}</h2><p class="rp-tot">TOTAL: ${total}</p></div><div class="rp-info"><i>i</i><span>${info}</span></div></div>`, 9, true);
+        if (!cards.length) { add(`<p class="rp-vazio">Nada registrado ainda.</p>`, 4); return; }
+        for (let i = 0; i < cards.length; i += 3) add(`<div class="rp-demos">${cards.slice(i, i + 3).join("")}</div>`, i ? 4 : 5);
+      };
+      grade(A.contratos.map((f) => { const d = (L.porFicha.get(f.id) || []).find((x) => x.tipo === "demo_realizada"); const em = f.contrato_em || (L.porFicha.get(f.id) || []).find((x) => x.tipo === "contrato")?.data || "";
+        return pdfCartao(f, d ? fmtD(f, d, "re") : "", em ? `<span class="rp-ok">Contrato fechado em ${ddmmaaaa(em)}</span>` : ""); }),
+        "Contratos Fechados", `${fmtN(A.contratos.length)} ${A.contratos.length === 1 ? "contrato" : "contratos"}`, "Administradoras que fecharam contrato com a PRG.");
+      grade(ordDemo(A.demos).map(({ f, r }) => pdfCartao(f, fmtD(f, r, "re"))), "Painel de Demonstrações Realizadas", `${fmtN(A.demos.length)} ${A.demos.length === 1 ? "demonstração" : "demonstrações"}`, "Painel de acompanhamento com as demonstrações registradas.");
+    }
+    return { B, P, quem };
+  }
+  function pdfFontes() {
+    if (!document.getElementById("rp-fontes")) document.head.insertAdjacentHTML("beforeend", '<link id="rp-fontes" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Sora:wght@400;600;700&display=block">');
+    const esp = ["600 20px Sora", "700 20px Sora", "400 20px Sora", "400 12px 'Plus Jakarta Sans'", "500 12px 'Plus Jakarta Sans'", "600 12px 'Plus Jakarta Sans'", "700 12px 'Plus Jakarta Sans'"];
+    const pronto = new Promise((ok) => { const l = document.getElementById("rp-fontes"); if (l.sheet) ok(); else { l.addEventListener("load", ok, { once: true }); l.addEventListener("error", ok, { once: true }); } })
+      .then(() => Promise.all(esp.map((f) => document.fonts.load(f).catch(() => null))));
+    return Promise.race([pronto, new Promise((ok) => setTimeout(ok, 4000))]);
+  }
+  async function baixarPdf() {
+    const dados = pdfBlocos(); if (!dados) { toast("Abra o relatório antes de baixar."); return; }
+    toast("Preparando o PDF…");
+    await pdfFontes();
+    const { B, P, quem } = dados, mm = 96 / 25.4, ALT = (297 - 16 - 21) * mm;
+    document.getElementById("rel-print")?.remove();
+    const box = document.createElement("div"); box.id = "rel-print"; document.body.appendChild(box);
+    // mede cada bloco na largura útil da página e distribui; se a última página ficar quase vazia,
+    // tenta de novo um pouco mais compacto para caber em menos páginas
+    const montar = (compacto) => {
+      box.className = compacto ? "rp-compacto" : "";
+      box.innerHTML = `<div class="rp-pg rp-medir"><div class="rp-corpo">${B.map((b) => `<div class="rp-bl">${b.html}</div>`).join("")}</div></div>`;
+      const alt = [...box.querySelectorAll(".rp-bl")].map((el) => el.getBoundingClientRect().height), gap = (k) => B[k].gap * mm * (compacto ? 0.7 : 1);
+      const pags = [[]]; let usado = 0;
+      for (let i = 0; i < B.length; i++) {
+        // um título vai junto com o que vem depois dele
+        const grupo = [i]; while (B[grupo[grupo.length - 1]].junto && grupo[grupo.length - 1] + 1 < B.length) grupo.push(grupo[grupo.length - 1] + 1);
+        const h = grupo.reduce((t, k, j) => t + alt[k] + (j || pags[pags.length - 1].length ? gap(k) : 0), 0);
+        if (usado + h > ALT && pags[pags.length - 1].length) { pags.push([]); usado = 0; }
+        const pg = pags[pags.length - 1];
+        grupo.forEach((k) => { usado += alt[k] + (pg.length ? gap(k) : 0); pg.push(k); });
+        i = grupo[grupo.length - 1];
+      }
+      return { pags, usado, compacto };
+    };
+    let res = montar(false);
+    if (res.pags.length > 1 && res.usado < ALT * 0.35) { const c = montar(true); if (c.pags.length < res.pags.length) res = c; else box.className = ""; }
+    const { pags, compacto } = res, fator = compacto ? 0.7 : 1;
+    const rot = `${P.nome} · ${P.rotulo}${quem ? ` · ${esc(quem)}` : ""}`;
+    box.innerHTML = pags.map((ks, n) => `<div class="rp-pg"><div class="rp-corpo">${ks.map((k, j) => `<div class="rp-bl" style="margin-top:${j ? (B[k].gap * fator).toFixed(2) : 0}mm">${B[k].html}</div>`).join("")}</div>
+      <div class="rp-rod"><span>${rot} · página ${n + 1} de ${pags.length}</span><span class="rp-selo">PRG Software · Grupo WorkOffice</span></div></div>`).join("");
+    const antes = document.title;
+    document.title = `${P.nome} - ${P.rotulo.replace(/\//g, "-")}${donoAtual() === "todos" ? " - Equipe" : ` - ${nomePessoa(donoAtual()) || ""}`}`;
+    document.head.insertAdjacentHTML("beforeend", '<style id="rp-pagina">@page { size: A4 portrait; margin: 0; }</style>');
+    document.body.classList.add("imprimindo");
+    const volta = () => { document.title = antes; document.body.classList.remove("imprimindo"); document.getElementById("rp-pagina")?.remove(); box.remove(); window.removeEventListener("afterprint", volta); };
+    window.addEventListener("afterprint", volta);
+    setTimeout(() => window.print(), 80);
+  }
+
 
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM" || !b.dataset.acao.startsWith("cc-")) return;

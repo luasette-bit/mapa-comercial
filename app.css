@@ -1943,3 +1943,74 @@ button.agn-ev { cursor: pointer; }
 .pv-sit-on.pv-sit-Insatisfeito { background: var(--vermelho); border-color: var(--vermelho); }
 @media (max-width: 760px) { .pv-linha { grid-template-columns: minmax(0, 1fr) auto; } .pv-linha > span:nth-child(2) { display: none; } }
 .op-barra .abas { flex-wrap: wrap; }
+
+/* PDF dos relatórios (A4 em pé, layout do Resumo Semanal). Montado só na hora de baixar. */
+#rel-print { position: absolute; left: -10000px; top: 0; }
+.rp-pg { width: 210mm; height: 297mm; padding: 16mm 17mm 21mm; position: relative; overflow: hidden; background: #F7F9FD; color: #1E2433; font: 400 11.5px/1.55 "Plus Jakarta Sans", "Segoe UI", sans-serif; break-after: page; page-break-after: always; box-sizing: border-box; }
+.rp-pg:last-child { break-after: auto; page-break-after: auto; }
+.rp-pg.rp-medir { height: auto; }
+.rp-pg::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 5px; background: linear-gradient(90deg, #1F2E7A, #3257B8); }
+.rp-pg *, .rp-pg *::before { box-sizing: border-box; }
+.rp-bl { display: flow-root; }
+.rp-t { font-family: Sora, "Segoe UI", sans-serif; font-weight: 600; color: #3257B8; margin: 0; line-height: 1.15; letter-spacing: -.01em; }
+.rp-capa { padding-bottom: 7mm; border-bottom: 1px solid #D9DFEE; }
+.rp-sobre { font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+.rp-data { font-size: 52px; font-weight: 400; color: #1E2433; margin: 3mm 0; letter-spacing: -.03em; }
+.rp-data b { font-weight: 700; color: #3257B8; }
+.rp-data small { font-size: 24px; color: #5B6475; letter-spacing: 0; }
+.rp-subt { font-size: 13px; color: #3B4252; margin: 0; max-width: 150mm; }
+.rp-quem { font-size: 11px; color: #5B6475; margin: 4mm 0 0; }
+.rp-quem b, .rp-lead b, .rp-dest b, .rp-demo b, .rp-tab td b { color: #1E2433; font-weight: 600; }
+.rp-h { font-size: 20px; margin: 0 0 4.5mm; }
+.rp-lead { margin: -1.5mm 0 0; font-size: 13px; color: #3B4252; }
+.rp-obs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5mm; }
+.rp-card { background: #fff; border: 1px solid #DCE2F0; border-left: 5px solid #1F2E7A; border-radius: 6px; padding: 14px 16px; }
+.rp-card h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: #1E2433; }
+.rp-card p { margin: 0; font-size: 11px; color: #3B4252; white-space: pre-line; }
+.rp-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+.rp-nums div { background: #fff; border: 1px solid #DCE2F0; border-radius: 8px; padding: 10px 8px 9px; text-align: center; }
+.rp-nums b { display: block; font-family: Sora, sans-serif; font-weight: 700; font-size: 32px; color: #1F2E7A; line-height: 1.1; margin-bottom: 4px; }
+.rp-nums span { font-size: 11px; font-weight: 500; color: #3B4252; }
+.rp-tag { display: inline-block; background: #D5DCF6; color: #1F2E7A; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; padding: 4px 10px; border-radius: 4px; margin-bottom: 5mm; font-weight: 700; }
+.rp-t2 { font-family: Sora, sans-serif; font-weight: 600; font-size: 16px; color: #1E2433; margin: 0 0 1mm; }
+.rp-duas { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+.rp-demos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+.rp-demo { background: #fff; border: 1px solid #DCE2F0; border-left: 5px solid #1F2E7A; border-radius: 6px; padding: 10px 12px; font-size: 9.8px; color: #3B4252; display: flex; flex-direction: column; gap: 2px; }
+.rp-demo h4 { margin: 0 0 4px; font-size: 11.5px; font-weight: 700; color: #1E2433; line-height: 1.3; }
+.rp-ok { margin-top: 4px; color: #17663A; font-weight: 700; }
+.rp-vazio { font-size: 11px; color: #5B6475; margin: 0; background: #fff; border: 1px dashed #C9D0E4; border-radius: 6px; padding: 12px 14px; }
+.rp-info { background: #DCEBFE; border-radius: 8px; padding: 12px 14px; font-size: 11px; color: #1E2433; display: flex; gap: 10px; align-items: flex-start; }
+.rp-info i { font-style: normal; flex: none; width: 18px; height: 18px; border-radius: 50%; background: #3257B8; color: #fff; font-weight: 700; font-size: 11px; display: grid; place-items: center; line-height: 1; }
+.rp-acum { display: grid; grid-template-columns: 1.15fr 1fr; gap: 7mm; align-items: stretch; }
+.rp-graf { background: #fff; border: 1px solid #DCE2F0; border-radius: 8px; padding: 14px; }
+.rp-svg { width: 100%; height: auto; display: block; }
+.rp-svg text { font-family: "Plus Jakarta Sans", sans-serif; }
+.rp-dest { display: flex; flex-direction: column; gap: 5mm; }
+.rp-dest h3 { font-family: Sora, sans-serif; font-weight: 600; color: #3257B8; font-size: 15px; margin: 0; }
+.rp-dest p { margin: 0; font-size: 11.5px; color: #3B4252; }
+.rp-topo { display: grid; grid-template-columns: 1fr 78mm; gap: 8mm; align-items: end; padding-bottom: 6mm; border-bottom: 1px solid #D9DFEE; }
+.rp-topo .rp-h { font-size: 22px; margin: 0 0 2mm; }
+.rp-tot { font-size: 12px; font-weight: 700; color: #1E2433; margin: 0; }
+.rp-tab { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; background: #fff; border: 1px solid #DCE2F0; border-top: none; }
+.rp-tab-cab { border-top: 1px solid #DCE2F0; border-radius: 8px 8px 0 0; }
+.rp-tab th { text-align: left; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: #1F2E7A; background: #EAEFFB; padding: 9px 10px; font-weight: 700; }
+.rp-tab td { padding: 8px 10px; border-top: 1px solid #E6EAF4; vertical-align: top; color: #3B4252; word-wrap: break-word; }
+.rp-tab td small { display: block; color: #5B6475; font-size: 9.5px; margin-top: 2px; }
+.rp-sel { display: inline-block; font-size: 9px; font-weight: 700; padding: 3px 7px; border-radius: 4px; background: #D5DCF6; color: #1F2E7A; }
+.rp-sel.rp-no { background: #FBE3E0; color: #A1281B; }
+.rp-rod { position: absolute; left: 17mm; right: 17mm; bottom: 8mm; display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #7A8398; padding-top: 3mm; border-top: 1px solid #E1E6F2; }
+.rp-selo { font-weight: 700; color: #1F2E7A; letter-spacing: .03em; }
+/* versão compacta: só quando assim sobra uma página a menos */
+.rp-compacto .rp-capa { padding-bottom: 5mm; }
+.rp-compacto .rp-data { font-size: 44px; margin: 2mm 0; }
+.rp-compacto .rp-h { font-size: 18px; margin-bottom: 3mm; }
+.rp-compacto .rp-nums div { padding: 7px 8px 6px; }
+.rp-compacto .rp-nums b { font-size: 27px; }
+.rp-compacto .rp-tab td { padding: 6px 10px; }
+.rp-compacto .rp-card, .rp-compacto .rp-demo { padding: 9px 12px; }
+.rp-compacto .rp-tag { margin-bottom: 3mm; }
+@media print {
+  body.imprimindo { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+  body.imprimindo > *:not(#rel-print) { display: none !important; }
+  body.imprimindo #rel-print { position: static; left: auto; }
+}
