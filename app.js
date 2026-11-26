@@ -2715,7 +2715,7 @@
       const ini = A.ref.slice(0, 8) + "01", fimM = (() => { const d = isoData(ini); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return d.toISOString().slice(0, 10); })();
       const dias = []; for (let d = segundaDe(ini); d <= somaDias(segundaDe(fimM), 6); d = somaDias(d, 1)) dias.push(d);
       corpo = `<div class="agn-grade">${["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => `<span class="agn-sem">${d}</span>`).join("")}${dias.map((d) => { const its = porDia.get(d) || [];
-        return `<div class="ag-dia agn-dia ${d.slice(0, 7) !== ini.slice(0, 7) ? "agn-fora" : ""} ${d === hj ? "agn-hoje" : ""} ${d === A.dia && d !== hj ? "agn-sel" : ""}" data-dia="${d}"><button type="button" class="agn-n num" data-acao="ag-dia" data-dia="${d}" aria-label="${ddmm(d)}: ${its.length} compromissos">${+d.slice(8)}</button>${(A.aberto === d ? its : its.slice(0, 3)).map(chip).join("")}${its.length > 3 ? `<button type="button" class="agn-mais" data-acao="agn-expandir" data-dia="${d}">${A.aberto === d ? "Mostrar menos" : `+${its.length - 3} mais`}</button>` : ""}</div>`; }).join("")}</div>`;
+        return `<div class="ag-dia agn-dia ${d.slice(0, 7) !== ini.slice(0, 7) ? "agn-fora" : ""} ${d === hj ? "agn-hoje" : ""} ${d === A.dia && d !== hj ? "agn-sel" : ""}" data-dia="${d}"><button type="button" class="agn-n num" data-acao="ag-dia" data-dia="${d}" aria-label="${ddmm(d)}: ${its.length} compromissos">${+d.slice(8)}</button>${its.slice(0, 3).map(chip).join("")}${its.length > 3 ? `<button type="button" class="agn-mais" data-acao="agn-expandir" data-dia="${d}">+${its.length - 3} mais</button>` : ""}${A.aberto === d ? `<div class="agn-pop ${[5, 6].includes((isoData(d).getUTCDay() + 6) % 7) ? "agn-pop-dir" : ""}" role="dialog" aria-label="Compromissos de ${ddmm(d)}"><div class="agn-pop-cab"><b>${+d.slice(8)} de ${MESES[+d.slice(5, 7) - 1]} de ${d.slice(0, 4)}</b><button type="button" class="agn-pop-x" data-acao="agn-fechar-pop" aria-label="Fechar">×</button></div><div class="agn-pop-lista">${its.map(chip).join("")}</div></div>` : ""}</div>`; }).join("")}</div>`;
     } else {
       const ini = segundaDe(A.ref), dias = [0, 1, 2, 3, 4, 5, 6].map((n) => somaDias(ini, n));
       corpo = `<div class="agn-grade agn-grade-sem">${dias.map((d) => `<span class="agn-sem">${DIAS[isoData(d).getUTCDay()].slice(0, 3)} ${ddmm(d)}</span>`).join("")}${dias.map((d) => { const its = porDia.get(d) || [];
@@ -2761,10 +2761,13 @@
       case "agn-escolher": A.novoFicha = b.dataset.id; render(); break;
       case "agn-trocar": A.novoFicha = null; render(); setTimeout(() => $("#agn-busca")?.focus(), 30); break;
       case "agn-todos": A.todosAtr = !A.todosAtr; render(); break;
-      case "agn-expandir": A.aberto = A.aberto === b.dataset.dia ? null : b.dataset.dia; A.dia = b.dataset.dia; render(); break;
+      case "agn-expandir": A.aberto = A.aberto === b.dataset.dia ? null : b.dataset.dia; render(); break;
+      case "agn-fechar-pop": A.aberto = null; render(); break;
       case "agn-lista": $("#agn-prioritarios")?.scrollIntoView({ behavior: "smooth", block: "start" }); break;
     }
   });
+  document.addEventListener("click", (ev) => { if (!S.ag.aberto || S.view !== "agenda") return; if (ev.target.closest?.(".agn-pop, .agn-mais")) return; S.ag.aberto = null; render(); }, true);
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && S.ag.aberto && S.view === "agenda") { S.ag.aberto = null; render(); } });
   app.addEventListener("input", (ev) => { if (ev.target.id !== "agn-busca") return; clearTimeout(S.ag.esperaNovo); S.ag.esperaNovo = setTimeout(() => { const el = $("#agn-busca"); if (!el) return; S.ag.novoBusca = el.value; const p = el.selectionStart; render(); const n = $("#agn-busca"); if (n) { n.focus(); try { n.setSelectionRange(p, p); } catch { /* */ } } }, 200); });
   app.addEventListener("submit", async (ev) => {
     const f = ev.target; if (f.dataset.acao !== "agn-salvar") return; ev.preventDefault();
