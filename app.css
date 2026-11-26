@@ -81,7 +81,7 @@ body.fora::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-
 .topo nav button:hover { color: var(--branco); }
 .topo nav button[aria-current="page"] { color: var(--branco); font-weight: 600; }
 .topo nav button[aria-current="page"]::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--ciano); }
-.usuario { position: relative; display: flex; align-items: center; gap: 10px; }
+.usuario { position: relative; display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .usuario > button { display: flex; align-items: center; gap: 10px; background: none; border: none; color: #AFC0E4; font-size: 13px; padding: 4px; border-radius: 10px; }
 .avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--ciano); color: var(--azul-escuro); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .menu { position: absolute; right: 0; top: calc(100% + 6px); background: var(--branco); color: var(--tinta); border: 1px solid var(--linha); border-radius: 12px; box-shadow: var(--sombra); padding: 8px; min-width: 200px; z-index: 1200; display: flex; flex-direction: column; }
@@ -1694,3 +1694,4 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .op-reg-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .op-reg p { margin: 4px 0 0; font-size: 13.5px; white-space: pre-wrap; }
 @media (max-width: 760px) { .op-linha { grid-template-columns: minmax(0, 1fr) auto; } .op-demo { display: none; } .op-ult { grid-column: 1; } .op-extra { grid-column: 2; grid-row: 1; } .op-data { margin-left: 0; } }
+.menu { max-width: calc(100vw - 24px); }
