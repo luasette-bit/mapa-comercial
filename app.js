@@ -2694,17 +2694,16 @@
     // foco do dia: ligar para quem tem retorno hoje ou atrasado; concluídas = administradoras com contato registrado hoje
     const aLigar = [...new Map([...atrasados, ...deHoje.filter((i) => i.tipo === "retorno")].map((i) => [i.f.id, i])).values()];
     const feitas = new Set((S.lg.regs || []).filter((r) => r.data === hj && r.usuario_id === S.user.id && LIGACAO.has(r.tipo)).map((r) => r.ficha_id));
-    const total = aLigar.length + [...feitas].filter((id) => !aLigar.some((i) => i.f.id === id)).length;
     const h = +localSP(new Date().toISOString()).slice(11, 13), saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
     const nome = (S.perfil?.nome || "").split(/\s+/)[0];
-    const demosHoje = deHoje.filter((i) => i.tipo === "demo").length;
-    const foco = aLigar.length ? `Hoje, seu foco recomendado é <span class="agn-azul">ligar para ${aLigar.length} ${aLigar.length === 1 ? "administradora" : "administradoras"}.</span>`
-      : demosHoje ? `Hoje você tem <span class="agn-azul">${demosHoje} ${demosHoje === 1 ? "demonstração" : "demonstrações"}.</span>` : `Nenhum retorno para hoje. <span class="agn-azul">Bom dia para prospectar.</span>`;
-    const sub = [atrasados.length ? `${atrasados.length} ${atrasados.length === 1 ? "retorno atrasado" : "retornos atrasados"}` : "", deHoje.filter((i) => i.tipo === "retorno").length ? `${deHoje.filter((i) => i.tipo === "retorno").length} para hoje` : "", demosHoje && aLigar.length ? `${demosHoje} ${demosHoje === 1 ? "demonstração" : "demonstrações"} hoje` : ""].filter(Boolean);
-    const pct = total ? Math.round((feitas.size / total) * 100) : 0;
-    const hero = `<section class="agn-hero"><div class="agn-hero-txt"><span class="agn-oi">${ICONE_SOL} ${saud}, ${esc(nome)}!</span><b class="agn-foco-t">Seu foco de hoje</b><p class="agn-foco">${foco}</p>${sub.length ? `<span class="agn-sub">Há ${sub.join(", ").replace(/, ([^,]*)$/, " e $1")}.</span>` : ""}
-      ${total ? `<div class="agn-prog"><span><b class="num">${fmtN(Math.min(feitas.size, total))}</b> de <b class="num">${fmtN(total)}</b> concluídas</span><span class="agn-trilho"><i style="width:${Math.min(100, pct)}%"></i></span></div>` : ""}</div>
-      <div class="agn-hero-acoes"><span class="agn-icones" aria-hidden="true">${ICONE_CAL}${ICONE_FONE}</span>${aLigar.length ? `<div class="linha-flex"><button type="button" class="btn btn-primario agn-comecar" data-acao="ag-abrir" data-id="${aLigar[0].f.id}">${ICONE_FONE_P} Começar ligações</button><button type="button" class="agn-link" data-acao="agn-lista">Ver lista →</button></div>` : ""}</div></section>`;
+    const demosHoje = deHoje.filter((i) => i.tipo === "demo").length, retHoje = deHoje.filter((i) => i.tipo === "retorno").length;
+    const pl = (n, um, varios) => `${fmtN(n)} ${n === 1 ? um : varios}`;
+    const partesHoje = [retHoje ? pl(retHoje, "retorno", "retornos") : "", demosHoje ? pl(demosHoje, "demonstração", "demonstrações") : ""].filter(Boolean);
+    const frase = partesHoje.length ? `Hoje você tem <span class="agn-azul">${partesHoje.join(" e ")}</span>.` : "Hoje você não tem retornos marcados.";
+    const extra = [atrasados.length ? `${pl(atrasados.length, "retorno atrasado", "retornos atrasados")} para colocar em dia` : "", feitas.size ? `${pl(feitas.size, "contato registrado", "contatos registrados")} hoje` : ""].filter(Boolean);
+    const primeiro = deHoje.find((i) => i.tipo === "retorno") || atrasados[0];
+    const hero = `<section class="agn-hero"><div class="agn-hero-txt"><span class="agn-oi">${ICONE_SOL} ${saud}, ${esc(nome)}!</span><p class="agn-foco">${frase}</p>${extra.length ? `<span class="agn-sub">${extra.join(" · ")}</span>` : ""}</div>
+      ${primeiro ? `<div class="agn-hero-acoes"><button type="button" class="btn btn-primario agn-comecar" data-acao="ag-abrir" data-id="${primeiro.f.id}">${ICONE_FONE_P} Começar ligações</button>${atrasados.length ? `<button type="button" class="agn-link" data-acao="agn-lista">Ver atrasados →</button>` : ""}</div>` : ""}</section>`;
     const card = (ic, rot, val, cls = "") => `<div class="agn-num ${cls}"><span class="agn-num-ic">${ic}</span><span class="pilha" style="gap:0"><span class="agn-num-r">${rot}</span><b>${val}</b></span></div>`;
     const nums = `<div class="agn-nums">${card(ICONE_CAL, "Hoje", `${deHoje.length} ${deHoje.length === 1 ? "compromisso" : "compromissos"}`)}${card(AGN_RELOGIO, "Pendentes", `${pendentes.length} ${pendentes.length === 1 ? "retorno" : "retornos"}`)}${card(ICONE_ALERTA, "Atrasados", `${atrasados.length} ${atrasados.length === 1 ? "item" : "itens"}`, atrasados.length ? "agn-num-atr" : "")}</div>`;
     // calendário
