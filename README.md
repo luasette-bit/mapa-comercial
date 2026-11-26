@@ -65,3 +65,10 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Filtros: Dia, Semana, Mês, Ano e Personalizado (com ← →), e Responsável. Tudo na página usa o mesmo período e responsável. Compara com o período anterior do mesmo tamanho (no período em andamento, até o mesmo dia).
 - Atualização: busca de novo ao abrir a aba (se passou 1 minuto), a cada 2 minutos com a aba aberta, no botão Atualizar e no "Atualizar dados" do menu.
 - Exportação: "Baixar PDF" (impressão do navegador, só o conteúdo) e "Baixar Excel" (SheetJS carregado na hora: Resumo, Funil, Por responsável, Evolução, Demonstrações).
+
+## Oportunidades (v48)
+- Aba **Oportunidades** no menu: administradoras que tiveram demo realizada (tabela `demos`) e ainda não fecharam. Abas: Em negociação, Retomar depois (com aviso quando chega o dia), Negaram e Fecharam.
+- Cada contato pós-demo vai para `oportunidade_contatos` com quem fez (`usuario_id`): a SDR e o vendedor aparecem com selos diferentes no histórico. "Como ficou?": Em negociação, Deixou para depois (data para retomar), Negou (motivo obrigatório: preço, contrato com o sistema atual, não é o momento, faltou funcionalidade, escolheu outro sistema, parou de responder, outro) ou Fechou contrato.
+- A situação atual fica em `oportunidades` (sem linha = em negociação). Fechou contrato chama `fechar_oportunidade()`, que grava o registro de Contrato fechado (entra nos Relatórios e Indicadores).
+- A lista vem de `lista_oportunidades()` (security definer, só para quem está liberado), porque o vendedor não enxerga as fichas da SDR pela regra normal. Ela devolve só o necessário para negociar: nome, cidade, sistema, condomínios, responsável, telefones, WhatsApp e e-mail.
+- Não usa as etapas importadas do Agendor.

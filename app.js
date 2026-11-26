@@ -416,7 +416,7 @@
   // a tela logada: o topo e cada parte que pode mudar sozinha quando chegam dados ficam num "pedaço" (data-pedaco)
   function htmlLogado() {
     if (S.view !== "concorrencia") S.cc.abertura = false; // ao voltar para a Concorrência, a abertura toca de novo
-    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "indicadores" ? telaIndicadores() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
+    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "oportunidades" ? telaOportunidades() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "indicadores" ? telaIndicadores() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
     return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${S.voltarAtivo && !(S.view === "adms" && S.lg.sel) ? '<div class="voltar-barra"><button type="button" class="fc-voltar" data-acao="voltar">← Voltar</button></div>' : ""}${tela}</div>`}</main>`;
   }
   const PEDACOS = new Map();
@@ -452,7 +452,7 @@
 
   function topo() {
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
-    const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"], ["concorrencia", (() => { const n = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0; return n ? `Concorrência <span class="contador">${n}</span>` : "Concorrência"; })()], ["listas", "Listas"]];
+    const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["oportunidades", (() => { if (!S.op.lista && !S.op.carregando && !S.op.erro && S.perfil?.aprovado) setTimeout(() => carregarOportunidades(true), 0); return rotuloNavOp(); })()], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"], ["concorrencia", (() => { const n = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0; return n ? `Concorrência <span class="contador">${n}</span>` : "Concorrência"; })()], ["listas", "Listas"]];
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
@@ -2793,7 +2793,7 @@
     if (S.lg.carregando || S.vd.carregando) return;
     Object.assign(S.lg, { carregado: false, textosFicha: new Set() });
     Object.assign(S.vd, { carregado: false });
-    S.fx.cache.clear(); S.listas = null; S.equipe = null; S.carregadoEm = Date.now(); if (S.ind) S.ind.em = 0;
+    S.fx.cache.clear(); S.listas = null; S.equipe = null; S.carregadoEm = Date.now(); if (S.ind) S.ind.em = 0; if (S.op) S.op.em = 0;
     S.inicio.desenhado = false; S.inicio.t0 = performance.now(); S.rowsProntas = !S.cidade || S.rowsProntas;
     carregarLig(); carregarVendas();
     if (!silencioso) toast("Atualizando os dados…");
@@ -3457,6 +3457,137 @@
     }
   });
 
+  /* ------------------------------------------------- Oportunidades (pós-demo) */
+  // Administradoras que viram a demo e ainda não fecharam. O time anota cada contato de negociação
+  // (cada anotação guarda quem fez) e marca como ficou: em negociação, deixou para depois, negou ou fechou.
+  S.op = { lista: null, contatos: [], pessoas: [], carregando: false, erro: false, em: 0, aba: "negociando", busca: "", sel: null, como: "negociando", salvando: false };
+  const OP_SIT = { negociando: "Em negociação", depois: "Deixou para depois", negou: "Negou", fechou: "Fechou contrato" };
+  const OP_ABAS = [["negociando", "Em negociação"], ["depois", "Retomar depois"], ["negou", "Negaram"], ["fechou", "Fecharam"]];
+  const OP_MOTIVOS = [["preco", "Preço"], ["contrato_atual", "Contrato com o sistema atual"], ["sem_momento", "Não é o momento"], ["funcionalidade", "Faltou alguma funcionalidade"], ["outro_sistema", "Escolheu outro sistema"], ["nao_responde", "Parou de responder"], ["outro", "Outro motivo"]];
+  const OP_MOTIVO = Object.fromEntries(OP_MOTIVOS);
+  const OP_CANAIS = [["ligacao", "Ligação"], ["whatsapp", "WhatsApp"], ["email", "E-mail"], ["reuniao", "Reunião"]];
+  const OP_CANAL = Object.fromEntries(OP_CANAIS);
+  const opDias = (d) => Math.round((isoData(hojeISO()) - isoData(d)) / 864e5);
+  const opQuando = (d) => { const n = opDias(d); return n <= 0 ? "hoje" : n === 1 ? "ontem" : `há ${n} dias`; };
+
+  async function carregarOportunidades(silencioso) {
+    const O = S.op; if (O.carregando) return; O.carregando = true; O.erro = false;
+    try {
+      const [lista, contatos, pessoas] = await Promise.all([
+        sb.rpc("lista_oportunidades"),
+        sb.from("oportunidade_contatos").select("id,ficha_id,usuario_id,data,canal,texto,situacao,motivo,retomar_em,criado_em").order("data", { ascending: false }).order("id", { ascending: false }).limit(5000),
+        sb.from("perfis").select("id,nome,funcao").eq("aprovado", true),
+      ]);
+      for (const r of [lista, contatos, pessoas]) if (r.error) throw r.error;
+      O.lista = lista.data || []; O.contatos = contatos.data || []; O.pessoas = pessoas.data || []; O.em = Date.now();
+    } catch (e) { console.error(e); O.erro = true; if (!silencioso) toast("Não deu para carregar as oportunidades. Tente de novo."); }
+    finally { O.carregando = false; if (S.view === "oportunidades") renderDados(); else if (S.user) atualizarContadorOp(); }
+  }
+  function atualizarContadorOp() { const b = app.querySelector('[data-view="oportunidades"]'); if (b) b.innerHTML = rotuloNavOp(); }
+  function opItens() {
+    const O = S.op, porFicha = new Map();
+    for (const c of O.contatos) { if (!porFicha.has(c.ficha_id)) porFicha.set(c.ficha_id, []); porFicha.get(c.ficha_id).push(c); }
+    return (O.lista || []).map((o) => { const cs = porFicha.get(o.ficha_id) || []; return { ...o, aba: o.contrato ? "fechou" : o.situacao === "fechou" ? "fechou" : o.situacao, contatos: cs, ultimo: cs[0] || null }; });
+  }
+  const opVence = (o) => o.aba === "depois" && o.retomar_em && o.retomar_em <= hojeISO();
+  function rotuloNavOp() { const n = S.op.lista ? opItens().filter(opVence).length : 0; return n ? `Oportunidades <span class="contador">${n}</span>` : "Oportunidades"; }
+  const opPessoa = (id) => { const p = S.op.pessoas.find((x) => x.id === id); return { nome: (p?.nome || "").split(/\s+/)[0] || "Alguém", funcao: p?.funcao || "sdr", eu: id === S.user.id }; };
+
+  function telaOportunidades() {
+    const O = S.op;
+    if (!O.lista && !O.carregando && !O.erro) carregarOportunidades(true);
+    else if (O.lista && !O.carregando && Date.now() - O.em > 60000) carregarOportunidades(true);
+    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Oportunidades</h1><p class="fraco" style="margin:0">Administradoras que viram a demo e ainda não fecharam. Anote cada contato e como ficou.</p></div></div>`;
+    if (!O.lista) return cab + `<div class="cartao vazio">${O.erro ? 'Não deu para carregar. <button type="button" class="mini" data-acao="op-recarregar">Tentar de novo</button>' : "Carregando…"}</div>`;
+    const todos = opItens(), q = O.busca.trim().toLowerCase();
+    const conta = (k) => todos.filter((o) => o.aba === k).length, vencem = todos.filter(opVence).length;
+    let lista = todos.filter((o) => o.aba === O.aba && (!q || `${o.nome} ${o.cidade || ""} ${o.uf || ""} ${o.sistema || ""}`.toLowerCase().includes(q)));
+    const ult = (o) => o.ultimo?.data || o.demo || "";
+    if (O.aba === "negociando") lista.sort((a, b) => (ult(a) < ult(b) ? -1 : 1)); // quem está há mais tempo sem contato primeiro
+    else if (O.aba === "depois") lista.sort((a, b) => ((a.retomar_em || "9") < (b.retomar_em || "9") ? -1 : 1));
+    else lista.sort((a, b) => ((b.contrato || ult(b)) < (a.contrato || ult(a)) ? -1 : 1));
+    const barra = `<section class="cartao op-barra"><div class="abas" role="tablist">${OP_ABAS.map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="op-aba" data-v="${k}" aria-selected="${O.aba === k}">${l} <span class="op-n">${conta(k)}</span>${k === "depois" && vencem ? ` <span class="contador">${vencem}</span>` : ""}</button>`).join("")}</div>
+      <input type="search" id="op-busca" class="input op-busca" placeholder="Procurar administradora, cidade ou sistema" value="${esc(O.busca)}" aria-label="Procurar"></section>`;
+    const linha = (o) => {
+      const u = o.ultimo, p = u ? opPessoa(u.usuario_id) : null;
+      const extra = o.aba === "depois" ? (o.retomar_em ? `<span class="selo ${opVence(o) ? "s-errado" : "s-nao"}">${opVence(o) ? "Hora de retomar" : "Retomar"} ${ddmm(o.retomar_em)}</span>` : "")
+        : o.aba === "negou" ? (o.motivo ? `<span class="selo s-neutro">${esc(OP_MOTIVO[o.motivo] || "")}</span>` : "")
+        : o.aba === "fechou" ? `<span class="selo s-conf">Contrato ${o.contrato ? ddmmaaaa(o.contrato) : ""}</span>` : "";
+      return `<button type="button" class="op-linha" data-acao="op-abrir" data-id="${o.ficha_id}">
+        <span class="op-nome"><b>${esc(o.nome)}</b><span class="t12 fraco">${esc([o.cidade, o.uf].filter(Boolean).join(" - "))}${o.sistema ? " · " + esc(o.sistema) : ""}</span></span>
+        <span class="t12 fraco op-demo">Demo ${o.demo ? ddmmaaaa(o.demo) : "—"}</span>
+        <span class="op-ult">${u ? `<span class="t13">${opQuando(u.data)}</span><span class="op-autor op-f-${p.funcao}">${esc(p.nome)}</span>` : `<span class="t13 fraco">Nenhum contato depois da demo</span>`}</span>
+        <span class="op-extra">${extra}</span></button>`;
+    };
+    const vazio = { negociando: "Nenhuma administradora em negociação.", depois: "Nenhuma deixou para depois.", negou: "Nenhuma negou até agora.", fechou: "Nenhum contrato fechado ainda." }[O.aba];
+    const corpo = `<section class="cartao op-lista">${lista.length ? lista.map(linha).join("") : `<div class="vazio">${q ? "Nada encontrado com essa busca." : vazio}</div>`}</section>`;
+    const sel = O.sel ? todos.find((o) => o.ficha_id === O.sel) : null;
+    return cab + barra + corpo + (sel ? gaveta(painelOp(sel), "op-fechar") : "");
+  }
+
+  function painelOp(o) {
+    const O = S.op, hj = hojeISO();
+    const tels = [...new Set(String([o.telefones, o.numero_responsavel].filter(Boolean).join(" / ")).split(/\s*[\/,;]\s*/).map((t) => t.trim()).filter(Boolean))];
+    const wpp = nacional(o.whatsapp || "");
+    const contato = `<div class="op-contato">${o.responsavel ? `<span>Responsável: <b>${esc(o.responsavel)}</b></span>` : ""}${tels.map((t) => { const n = nacional(t); return n ? `<a href="tel:+55${n}" class="mini">${esc(fmtTel(n))}</a>` : `<span class="t13">${esc(t)}</span>`; }).join("")}
+      ${wpp ? `<a href="https://wa.me/55${wpp}" target="_blank" rel="noopener" class="mini">WhatsApp ${esc(fmtTel(wpp))}</a>` : ""}${o.email ? `<a href="mailto:${esc(o.email)}" class="mini">${esc(o.email)}</a>` : ""}</div>`;
+    const como = O.como;
+    const form = o.aba === "fechou" ? "" : `<form class="op-form" data-acao="op-salvar" data-id="${o.ficha_id}">
+      <div class="linha-flex op-canais" role="radiogroup" aria-label="Por onde">${OP_CANAIS.map(([k, l], i) => `<label class="op-chip"><input type="radio" name="canal" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}
+        <input type="date" name="data" class="input op-data" value="${hj}" max="${hj}" aria-label="Dia do contato"></div>
+      <textarea name="texto" class="input op-texto" rows="3" maxlength="2000" placeholder="O que conversaram?"></textarea>
+      <div class="pilha" style="gap:6px"><span class="rotulo">Como ficou?</span><div class="linha-flex op-como" role="radiogroup">${Object.entries(OP_SIT).map(([k, l]) => `<label class="op-chip op-chip-${k}"><input type="radio" name="como" value="${k}" ${como === k ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>
+      ${como === "depois" ? `<div class="campo" style="max-width:220px"><label for="op-retomar">Retomar em</label><input id="op-retomar" name="retomar_em" type="date" class="input" min="${hj}" value="${esc(o.retomar_em && o.retomar_em >= hj ? o.retomar_em : "")}" required></div>` : ""}
+      ${como === "negou" ? `<div class="campo" style="max-width:320px"><label for="op-motivo">Por que não foi para frente?</label><select id="op-motivo" name="motivo" class="input" required><option value="">Escolha o motivo</option>${OP_MOTIVOS.map(([k, l]) => `<option value="${k}" ${o.motivo === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>` : ""}
+      ${como === "fechou" ? `<p class="t13 fraco" style="margin:0">Vai registrar o contrato na ficha (entra nos Relatórios e nos Indicadores) com o dia do contato.</p>` : ""}
+      <div><button type="submit" class="btn btn-primario" ${O.salvando ? "disabled" : ""}>${O.salvando ? "Salvando…" : "Salvar contato"}</button></div></form>`;
+    const hist = o.contatos.length ? o.contatos.map((c) => { const p = opPessoa(c.usuario_id);
+      const mud = c.situacao ? `<span class="selo ${c.situacao === "negou" ? "s-errado" : c.situacao === "fechou" ? "s-conf" : c.situacao === "depois" ? "s-nao" : "s-ident"}">${OP_SIT[c.situacao]}${c.situacao === "depois" && c.retomar_em ? ` · retomar ${ddmm(c.retomar_em)}` : ""}${c.situacao === "negou" && c.motivo ? ` · ${esc(OP_MOTIVO[c.motivo])}` : ""}</span>` : "";
+      return `<div class="op-reg"><div class="op-reg-top"><span class="op-autor op-f-${p.funcao}">${esc(p.nome)}${p.eu ? " (você)" : ""}</span><span class="t12 fraco">${ddmmaaaa(c.data)} · ${OP_CANAL[c.canal] || ""}</span>${mud}</div>${c.texto ? `<p>${esc(c.texto)}</p>` : ""}</div>`; }).join("")
+      : `<p class="fraco t13" style="margin:0">Nenhum contato registrado depois da demo.</p>`;
+    return `<aside class="cartao painel op-painel" aria-label="${esc(o.nome)}"><button type="button" class="mini fechar-painel" data-acao="op-fechar">Fechar ✕</button>
+      <div class="pilha" style="gap:2px"><h2>${esc(o.nome)}</h2><span class="t13 fraco">${esc([o.cidade, o.uf].filter(Boolean).join(" - "))}${o.sistema ? " · " + esc(o.sistema) : ""}${o.qtd_condominios ? ` · ${fmtN(o.qtd_condominios)} condomínios` : ""} · demo em ${o.demo ? ddmmaaaa(o.demo) : "—"} com ${esc(o.apresentador || "Leonardo")}</span>
+      <span class="t13">Agora: <b>${o.aba === "fechou" ? "Fechou contrato" : OP_SIT[o.situacao]}</b>${o.aba === "depois" && o.retomar_em ? ` · retomar em ${ddmmaaaa(o.retomar_em)}` : ""}${o.aba === "negou" && o.motivo ? ` · ${esc(OP_MOTIVO[o.motivo])}` : ""}</span></div>
+      ${contato}${form}<div class="pilha" style="gap:8px"><b class="t13">Histórico de contatos</b>${hist}</div></aside>`;
+  }
+
+  async function salvarContatoOp(form) {
+    const O = S.op; if (O.salvando) return;
+    const fd = new FormData(form), id = form.dataset.id, como = String(fd.get("como") || "negociando"), texto = String(fd.get("texto") || "").trim(), hj = hojeISO();
+    const data = String(fd.get("data") || hj) > hj ? hj : String(fd.get("data") || hj);
+    const item = opItens().find((o) => o.ficha_id === id); if (!item) return;
+    const mudou = como !== item.situacao;
+    if (!texto && !mudou) { toast("Escreva o que conversaram ou mude como ficou."); form.elements.texto?.focus(); return; }
+    const retomar = como === "depois" ? String(fd.get("retomar_em") || "") : null, motivo = como === "negou" ? String(fd.get("motivo") || "") : null;
+    if (como === "depois" && !retomar) { toast("Escolha quando retomar."); form.elements.retomar_em?.focus(); return; }
+    if (como === "negou" && !motivo) { toast("Escolha o motivo."); form.elements.motivo?.focus(); return; }
+    O.salvando = true; render();
+    try {
+      const c = await sb.from("oportunidade_contatos").insert({ ficha_id: id, usuario_id: S.user.id, data, canal: String(fd.get("canal") || "ligacao"), texto: texto || null, situacao: mudou || como !== "negociando" ? como : null, motivo, retomar_em: retomar });
+      if (c.error) throw c.error;
+      const s = await sb.from("oportunidades").upsert({ ficha_id: id, situacao: como, motivo, retomar_em: retomar, atualizado_por: S.user.id, atualizado_em: new Date().toISOString() });
+      if (s.error) throw s.error;
+      if (como === "fechou") { const f = await sb.rpc("fechar_oportunidade", { p_ficha: id, p_data: data, p_texto: texto || null }); if (f.error) throw f.error; S.lg.carregado = false; if (S.ind) S.ind.em = 0; }
+      toast(como === "fechou" ? "Contrato registrado." : "Contato salvo.");
+      O.como = como === "fechou" ? "negociando" : como;
+      await carregarOportunidades(true);
+    } catch (e) { console.error(e); toast("Não foi possível salvar. Tente de novo."); }
+    finally { O.salvando = false; render(); }
+  }
+  app.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM" || !b.dataset.acao.startsWith("op-")) return;
+    const O = S.op;
+    switch (b.dataset.acao) {
+      case "op-aba": O.aba = b.dataset.v; render(); break;
+      case "op-abrir": { O.sel = b.dataset.id; const o = opItens().find((x) => x.ficha_id === O.sel); O.como = o?.aba === "fechou" ? "negociando" : o?.situacao || "negociando"; render(); break; }
+      case "op-fechar": O.sel = null; render(); break;
+      case "op-recarregar": carregarOportunidades(); break;
+    }
+  });
+  app.addEventListener("change", (ev) => { const t = ev.target; if (t.name === "como" && t.closest(".op-form")) { S.op.como = t.value; const f = t.closest("form"), txt = f.elements.texto?.value || "", dia = f.elements.data?.value, canal = f.querySelector('[name="canal"]:checked')?.value; render(); const n = app.querySelector(".op-form"); if (n) { if (n.elements.texto) n.elements.texto.value = txt; if (dia && n.elements.data) n.elements.data.value = dia; const r = canal && n.querySelector(`[name="canal"][value="${canal}"]`); if (r) r.checked = true; } } });
+  app.addEventListener("input", (ev) => { if (ev.target.id !== "op-busca") return; clearTimeout(S.op.espera); S.op.espera = setTimeout(() => { const el = $("#op-busca"); if (!el) return; S.op.busca = el.value; const pos = el.selectionStart; renderDados(); const n = $("#op-busca"); if (n && document.activeElement !== n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } } }, 200); });
+  app.addEventListener("submit", (ev) => { const f = ev.target; if (f.dataset.acao !== "op-salvar") return; ev.preventDefault(); salvarContatoOp(f); });
+
   /* ------------------------------------------------- Indicadores Comerciais */
   // Central de indicadores para a gestão. Nada é digitado aqui além das metas: tudo sai dos registros de contato,
   // das demonstrações (tabela demos, preenchida pelos gatilhos), do histórico de etapas dos negócios e dos contratos.
@@ -4055,7 +4186,7 @@
 
   /* ------------------------------------------------------------- início */
   /* ---- rota: a tela atual fica no endereço (#/vendas?funil=SCC). F5 volta para o mesmo lugar e o Voltar do navegador funciona */
-  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "agenda", "relatorios", "indicadores", "concorrencia", "listas", "equipe"];
+  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "oportunidades", "agenda", "relatorios", "indicadores", "concorrencia", "listas", "equipe"];
   const ROTA = {
     mapeamento: { emp: [() => S.sel, (v) => { S.rotaEmp = v; }] },
     adms: {
@@ -4069,6 +4200,9 @@
       status: [() => (S.vd.status !== "em_andamento" ? S.vd.status : null), (v) => { S.vd.status = v; }],
       resp: [() => (S.vd.resp !== "todos" ? S.vd.resp : null), (v) => { S.vd.resp = v; }],
       busca: [() => S.vd.busca || null, (v) => { S.vd.busca = v; }],
+    },
+    oportunidades: {
+      aba: [() => (S.op.aba !== "negociando" ? S.op.aba : null), (v) => { if (OP_ABAS.some(([k]) => k === v)) S.op.aba = v; }],
     },
     indicadores: {
       periodo: [() => (S.ind.per !== "mes" ? S.ind.per : null), (v) => { if (["dia", "semana", "mes", "ano", "custom"].includes(v)) S.ind.per = v; }],
