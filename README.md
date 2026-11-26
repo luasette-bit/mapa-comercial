@@ -72,3 +72,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - A situação atual fica em `oportunidades` (sem linha = em negociação). Fechou contrato chama `fechar_oportunidade()`, que grava o registro de Contrato fechado (entra nos Relatórios e Indicadores).
 - A lista vem de `lista_oportunidades()` (security definer, só para quem está liberado), porque o vendedor não enxerga as fichas da SDR pela regra normal. Ela devolve só o necessário para negociar: nome, cidade, sistema, condomínios, responsável, telefones, WhatsApp e e-mail.
 - Não usa as etapas importadas do Agendor.
+
+## Início do vendedor (v61)
+- Quem tem a função **Vendedor** abre o sistema numa tela própria: saudação com as demos e retomadas do dia, as demonstrações de hoje em destaque (sistema, tamanho, responsável, contato, quem agendou e a anotação da SDR), as próximas demos, demos sem resultado, a semana (demos, retomadas das Oportunidades e retornos dele), Concorrência agora (brecha ativa + quantas administradoras que já viram a demo usam aquele sistema), Retomar hoje e Seu mês.
+- Menu do vendedor sem Mapeamento, Região e Listas.
+- Dados: `agenda_vendedor()` (security definer, só o necessário das fichas da SDR). "Registrar resultado" chama `resultado_demo()`: Aconteceu grava o registro de Demo realizada na ficha da SDR (os relatórios dela continuam certos) com o vendedor como apresentador; Reagendar muda a data da demo; Não aconteceu marca a demo.
+- As classes das telas de Indicadores que tinham o mesmo nome do Início (in-cab, in-cartao, in-data, in-eixo, in-grade, in-trilho) passaram a se chamar bi-*.

@@ -430,7 +430,7 @@
   let contaRedesenho = 0, contaPedaco = 0;
   function renderDados() {
     if (S.user && !S.perfil) return; // o perfil ainda não chegou: a primeira tela sai junto com ele
-    if (S.view === "inicio" && S.user && S.perfil?.aprovado && app.querySelector("main")) { if (!S.inicio.desenhado) tentarInicio(); return; }
+    if (S.view === "inicio" && S.user && S.perfil?.aprovado && app.querySelector("main") && !ehVendedor()) { if (!S.inicio.desenhado) tentarInicio(); return; }
     if (!S.user || S.recuperando || !S.perfil?.aprovado || S.view === "regiao" || !app.dataset.pedacos) return render();
     const t = document.createElement("template"); t.innerHTML = htmlLogado();
     const novos = [...t.content.querySelectorAll("[data-pedaco]")];
@@ -453,6 +453,7 @@
   function topo() {
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
     const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["oportunidades", (() => { if (!S.op.lista && !S.op.carregando && !S.op.erro && S.perfil?.aprovado) setTimeout(() => carregarOportunidades(true), 0); return rotuloNavOp(); })()], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"], ["concorrencia", (() => { const n = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0; return n ? `Concorrência <span class="contador">${n}</span>` : "Concorrência"; })()], ["listas", "Listas"]];
+    if (ehVendedor()) for (const k of ["mapeamento", "regiao", "listas"]) { const i = nav.findIndex((x) => x[0] === k); if (i >= 0) nav.splice(i, 1); }
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
@@ -1816,6 +1817,7 @@
       <div class="in-cartoes">${cartao()}${cartao()}${cartao()}</div></div>`;
   }
   function telaInicio() {
+    if (ehVendedor()) return telaInicioVendedor();
     if (!S.inicio.desenhado && !inicioPronto()) {
       if (!S.lg.carregado && !S.lg.carregando) carregarLig();
       if (!S.vd.carregado && !S.vd.carregando) carregarVendas();
@@ -3523,6 +3525,111 @@
     }
   });
 
+  /* ------------------------------------------------- Início do vendedor */
+  // Quem é Vendedor abre o sistema nas demonstrações: as que a SDR agendou (via agenda_vendedor, só o necessário
+  // para apresentar), a semana, a concorrência e as oportunidades para retomar.
+  const ehVendedor = () => S.perfil?.funcao === "vendedor";
+  S.vend = { demos: null, carregando: false, erro: false, em: 0, res: null, salvando: false };
+  async function carregarVendedor(silencioso) {
+    const V = S.vend; if (V.carregando) return; V.carregando = true; V.erro = false;
+    try { const { data, error } = await sb.rpc("agenda_vendedor"); if (error) throw error; V.demos = (data || []).map((d) => ({ ...d, dia: d.demo_em ? localSP(d.demo_em).slice(0, 10) : "", hora: d.demo_em ? localSP(d.demo_em).slice(11, 16) : "" })); V.em = Date.now(); }
+    catch (e) { console.error(e); V.erro = true; if (!silencioso) toast("Não deu para carregar as demonstrações."); }
+    finally { V.carregando = false; if (S.view === "inicio") renderDados(); }
+  }
+  const normSis = (s) => String(s || "").toLowerCase().replace(/group software|\(|\)/g, " ").replace(/condom[ií]nio21/, "cond21").trim().split(/\s+/)[0] || "";
+  function telaInicioVendedor() {
+    const V = S.vend, hj = hojeISO();
+    if (!V.demos && !V.carregando && !V.erro) carregarVendedor(true); else if (V.demos && !V.carregando && Date.now() - V.em > 60000) carregarVendedor(true);
+    if (!S.op.lista && !S.op.carregando && !S.op.erro) carregarOportunidades(true);
+    if (!S.cc.carregado && !S.cc.carregando) carregarConcorrencia();
+    if (!S.ag.carregado) carregarAgenda();
+    const h = +localSP(new Date().toISOString()).slice(11, 13), saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+    const nome = (S.perfil?.nome || "").split(/\s+/)[0];
+    if (!V.demos) return `<div class="vn pedaco" data-pedaco="vend"><section class="vn-hero"><span class="agn-oi">${ICONE_SOL} ${saud}, ${esc(nome)}!</span><p class="agn-foco">${V.erro ? 'Não deu para carregar. <button type="button" class="mini" data-acao="vn-recarregar">Tentar de novo</button>' : "Carregando suas demonstrações…"}</p></section></div>`;
+    const futuras = V.demos.filter((d) => d.status === "agendada" && d.dia >= hj).sort((a, b) => (a.demo_em < b.demo_em ? -1 : 1));
+    const hojeD = futuras.filter((d) => d.dia === hj), depois = futuras.filter((d) => d.dia > hj).slice(0, 8);
+    const pendentes = V.demos.filter((d) => d.status === "agendada" && d.dia && d.dia < hj);
+    const ops = S.op.lista ? opItens() : [], retomar = ops.filter(opVence);
+    const opsHoje = ops.filter((o) => o.aba === "depois" && o.retomar_em === hj).length;
+    const brechas = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva) : [], movs = S.cc.carregado ? S.cc.eventos.filter((e) => e.categoria !== "brecha").slice(0, 3) : [];
+    const pl = (n, um, v) => `${fmtN(n)} ${n === 1 ? um : v}`;
+    const partes = [hojeD.length ? `<span class="roxo">${pl(hojeD.length, "demonstração", "demonstrações")}</span>` : "", retomar.length ? `<span class="agn-azul">${pl(retomar.length, "retomada", "retomadas")}</span>` : ""].filter(Boolean);
+    const frase = partes.length ? `Hoje você tem ${partes.join(" e ")}.` : "Hoje você não tem demonstrações marcadas.";
+    const prox = hojeD.find((d) => new Date(d.demo_em) > new Date(Date.now() - 60 * 60e3)) || depois[0];
+    const sub = [prox ? `Próxima: ${prox.dia === hj ? "hoje" : ddmm(prox.dia)} às ${prox.hora}, ${esc(prox.nome)}` : "", brechas.length ? pl(brechas.length, "alerta da concorrência", "alertas da concorrência") : "", pendentes.length ? `${pl(pendentes.length, "demo sem resultado", "demos sem resultado")}` : ""].filter(Boolean).join(" · ");
+    const hero = `<section class="vn-hero"><div><span class="agn-oi">${ICONE_SOL} ${saud}, ${esc(nome)}!</span><p class="agn-foco">${frase}</p>${sub ? `<span class="agn-sub">${sub}</span>` : ""}</div>
+      <div class="linha-flex">${prox ? `<a class="btn vn-bt-roxo" href="#vn-demo-${prox.demo_id}">Ver a próxima demo</a>` : ""}<button type="button" class="btn btn-sec" data-acao="ir" data-view="agenda">Minha agenda</button></div></section>`;
+    const tels = (d) => { const n = nacional(d.whatsapp || "") || nacional(String(d.numero_responsavel || "").split(/[\/,;]/)[0]) || nacional(String(d.telefones || "").split(/[\/,;]/)[0]); return n; };
+    const falta = (d) => { const ms = new Date(d.demo_em) - Date.now(); if (ms < -30 * 60e3) return "Já passou"; if (ms < 0) return "Agora"; const m = Math.round(ms / 60e3); return m < 60 ? `Daqui a ${m} min` : m < 24 * 60 ? `Daqui a ${Math.round(m / 60)} h` : ""; };
+    const cartaoDemo = (d) => { const w = tels(d);
+      return `<article class="vn-demo" id="vn-demo-${d.demo_id}"><div class="vn-demo-t"><span>Demonstração ${d.formato === "presencial" ? "presencial" : "virtual"}</span>${falta(d) ? `<span class="vn-pill">${falta(d)}</span>` : ""}</div>
+        <div class="vn-demo-h"><b class="num">${d.hora}</b><span>${esc(d.nome)}</span></div>
+        <dl><dt>Sistema</dt><dd>${esc(d.sistema || "—")}</dd><dt>Tamanho</dt><dd>${d.qtd_condominios ? `${fmtN(d.qtd_condominios)} condomínios${d.qtd_unidades ? ` · ${fmtN(d.qtd_unidades)} unidades` : ""}` : "—"}</dd><dt>Responsável</dt><dd>${esc(d.responsavel || "—")}${w ? ` · ${esc(fmtTel(w))}` : ""}</dd><dt>Cidade</dt><dd>${esc([d.cidade, d.uf].filter(Boolean).join(" - ") || "—")}</dd></dl>
+        <span class="vn-por">Agendada${d.agendada_por ? ` pela ${esc(d.agendada_por)}` : ""}${d.agendada_em ? ` em ${ddmm(localSP(d.agendada_em).slice(0, 10))}` : ""}${d.nota ? ` · "${esc(d.nota.length > 140 ? d.nota.slice(0, 140) + "…" : d.nota)}"` : ""}</span>
+        <div class="vn-demo-ac"><button type="button" data-acao="vn-resultado" data-id="${d.demo_id}">Registrar resultado</button>${w ? `<a href="https://wa.me/55${w}" target="_blank" rel="noopener">WhatsApp</a>` : ""}${d.email ? `<a href="mailto:${esc(d.email)}">E-mail</a>` : ""}</div></article>`; };
+    const linhaProx = (d) => `<div class="vn-pl"><span class="vn-pl-h num">${d.hora}</span><span class="vn-pl-t"><b>${esc(d.nome)}</b><small>${esc([d.sistema, d.qtd_condominios ? `${fmtN(d.qtd_condominios)} condomínios` : "", [d.cidade, d.uf].filter(Boolean).join(" - ")].filter(Boolean).join(" · "))}</small></span><span class="selo ${d.formato === "presencial" ? "s-ident" : "s-roxo"}">${d.formato === "presencial" ? "Presencial" : "Virtual"}</span></div>`;
+    let proxHtml = "", diaAnt = "";
+    for (const d of depois) { if (d.dia !== diaAnt) { diaAnt = d.dia; const dd = d.dia === somaDias(hj, 1) ? "Amanhã" : DIAS[isoData(d.dia).getUTCDay()]; proxHtml += `<div class="vn-dia-t">${dd[0].toUpperCase() + dd.slice(1)} · ${ddmm(d.dia)}</div>`; } proxHtml += linhaProx(d); }
+    const pend = pendentes.length ? `<div class="vn-pend"><b>Sem resultado registrado</b>${pendentes.slice(0, 5).map((d) => `<div class="vn-pl"><span class="vn-pl-h num">${ddmm(d.dia)}</span><span class="vn-pl-t"><b>${esc(d.nome)}</b><small>Demo às ${d.hora}</small></span><button type="button" class="mini" data-acao="vn-resultado" data-id="${d.demo_id}">Registrar</button></div>`).join("")}</div>` : "";
+    const secDemos = `<section class="cartao vn-cartao"><h2>Suas demonstrações de hoje</h2><p class="vn-leg">Agendadas pela SDR. Tudo o que você precisa saber antes de entrar.</p>
+      ${hojeD.length ? `<div class="vn-demos">${hojeD.map(cartaoDemo).join("")}</div>` : `<p class="agn-vazio">Nenhuma demonstração hoje.</p>`}
+      ${pend}${depois.length ? `<div class="vn-prox">${proxHtml}</div>` : ""}</section>`;
+    // semana: demos + retomadas das oportunidades + retornos dele
+    const seg = segundaDe(hj), dias = [0, 1, 2, 3, 4].map((n) => somaDias(seg, n));
+    const evs = new Map(dias.map((d) => [d, []]));
+    for (const d of V.demos) if (evs.has(d.dia) && d.status !== "reagendada") evs.get(d.dia).push({ h: d.hora, t: d.nome, s: d.status === "realizada" ? "Demo · feita" : d.status === "nao_realizada" ? "Demo · não aconteceu" : "Demonstração", c: "agn-ev-demo" });
+    for (const o of ops) if (o.aba === "depois" && evs.has(o.retomar_em)) evs.get(o.retomar_em).push({ h: "", t: o.nome, s: "Retomar oportunidade", c: "" });
+    if (S.ag.carregado) for (const i of itensAgenda()) if (i.tipo === "retorno" && evs.has(i.dia)) evs.get(i.dia).push({ h: i.hora, t: i.f.nome, s: i.f.retorno_nota || "Retorno", c: "", id: i.f.id });
+    const semana = `<section class="cartao vn-cartao"><div class="vn-cab"><div><h2>Sua semana</h2><p class="vn-leg">Demonstrações e retornos, de segunda a sexta</p></div><button type="button" class="agn-link" data-acao="ir" data-view="agenda">Abrir a agenda →</button></div>
+      <div class="vn-semana">${dias.map((d) => `<div class="vn-sd ${d === hj ? "vn-hoje" : ""}"><span class="vn-sd-t">${DIAS[isoData(d).getUTCDay()].slice(0, 3)} ${+d.slice(8)}${d === hj ? " · hoje" : ""}</span>${(evs.get(d) || []).sort((a, b) => (a.h || "99") < (b.h || "99") ? -1 : 1).map((e) => `<div class="agn-ev ${e.c}"><span class="agn-ev-l1">${e.h ? `<b class="num">${e.h}</b> ` : ""}${esc(e.t)}</span><span class="agn-ev-l2">${esc(e.s)}</span></div>`).join("") || '<span class="t12 fraco">—</span>'}</div>`).join("")}</div></section>`;
+    // concorrência: brecha ativa e quantas que já viram a demo usam aquele sistema
+    const alerta = (e) => { const viu = ops.filter((o) => o.aba !== "fechou" && normSis(o.sistema) && normSis(o.sistema) === normSis(e.sistema)).length;
+      return `<div class="vn-alerta"><span class="vn-alerta-s"><i></i>Brecha · ${esc(e.sistema)} · ${ddmm(localSP(e.inicio).slice(0, 10))}</span><b>${esc(e.titulo)}</b>${viu ? `<p><b>${pl(viu, "administradora", "administradoras")}</b> que já viram a nossa demo ${viu === 1 ? "usa" : "usam"} ${esc(e.sistema)}. Boa hora para ligar.</p><button type="button" class="btn vn-bt-verm" data-acao="vn-ops-sis" data-sis="${esc(e.sistema)}">Ver ${viu === 1 ? "ela" : `as ${viu}`} e ligar</button>` : ""}</div>`; };
+    const conc = `<section class="cartao vn-cartao"><div class="vn-cab"><h2>Concorrência agora</h2><button type="button" class="agn-link" data-acao="ir" data-view="concorrencia">Ver tudo →</button></div>
+      ${!S.cc.carregado ? '<p class="agn-vazio">Carregando…</p>' : brechas.length ? brechas.slice(0, 2).map(alerta).join("") : '<p class="agn-vazio">Nenhuma brecha aberta agora.</p>'}
+      ${movs.length ? `<div class="vn-movs">${movs.map((e) => `<div>${esc(e.titulo)}<small>${esc(e.sistema)} · ${ddmm(localSP(e.inicio).slice(0, 10))}</small></div>`).join("")}</div>` : ""}</section>`;
+    const ret = `<section class="cartao vn-cartao"><div class="vn-cab"><h2>Retomar hoje</h2><button type="button" class="agn-link" data-acao="ir" data-view="oportunidades">Oportunidades →</button></div><p class="vn-leg">Quem já viu a demo e pediu para voltar a falar</p>
+      ${retomar.length ? retomar.slice(0, 6).map((o) => `<button type="button" class="vn-rt" data-acao="vn-op" data-id="${o.ficha_id}"><span><b>${esc(o.nome)}</b><small>${esc(o.ultimo?.texto ? (o.ultimo.texto.length > 70 ? o.ultimo.texto.slice(0, 70) + "…" : o.ultimo.texto) : o.sistema || "")}</small></span><span class="selo ${o.retomar_em < hj ? "s-errado" : "s-nao"}">${o.retomar_em < hj ? "Atrasado" : "Hoje"}</span></button>`).join("") : '<p class="agn-vazio">Ninguém para retomar hoje.</p>'}</section>`;
+    const mes = hj.slice(0, 8) + "01", eu = nome.toLowerCase();
+    const feitasMes = V.demos.filter((d) => d.status === "realizada" && d.realizada_em >= mes && String(d.apresentador || "").toLowerCase() === eu).length;
+    const nums = `<section class="cartao vn-cartao"><h2>Seu mês</h2><p class="vn-leg">${MESES[+hj.slice(5, 7) - 1][0].toUpperCase() + MESES[+hj.slice(5, 7) - 1].slice(1)}, até hoje</p><div class="vn-nums"><div><b class="num">${fmtN(feitasMes)}</b><span>demos feitas</span></div><div><b class="num">${fmtN(ops.filter((o) => o.aba === "negociando").length)}</b><span>em negociação</span></div><div><b class="num">${fmtN(ops.filter((o) => o.contrato && o.contrato >= mes).length)}</b><span>contratos</span></div></div></section>`;
+    const d = V.res ? V.demos.find((x) => x.demo_id === V.res) : null;
+    return `<div class="vn pedaco" data-pedaco="vend">${hero}<div class="vn-duas"><div class="vn-col">${secDemos}${semana}</div><div class="vn-col">${conc}${ret}${nums}</div></div></div>` + (d ? gaveta(painelResultadoDemo(d), "vn-fechar") : "");
+  }
+  function painelResultadoDemo(d) {
+    const V = S.vend, como = V.como || "realizada";
+    return `<aside class="cartao painel vn-res" aria-label="Resultado da demonstração"><button type="button" class="mini fechar-painel" data-acao="vn-fechar">Fechar ✕</button>
+      <div class="pilha" style="gap:2px"><h2>${esc(d.nome)}</h2><span class="t13 fraco">Demonstração ${d.dia ? `de ${ddmmaaaa(d.dia)} às ${d.hora}` : ""}</span></div>
+      <form class="op-form" data-acao="vn-salvar" data-id="${d.demo_id}"><div class="pilha" style="gap:6px"><span class="rotulo">Como foi?</span><div class="linha-flex op-como">${[["realizada", "Aconteceu"], ["reagendada", "Reagendar"], ["nao_realizada", "Não aconteceu"]].map(([k, l]) => `<label class="op-chip ${k === "nao_realizada" ? "op-chip-negou" : k === "reagendada" ? "op-chip-depois" : "op-chip-fechou"}"><input type="radio" name="como" value="${k}" ${como === k ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>
+        ${como === "reagendada" ? `<div class="campo" style="max-width:260px"><label for="vn-nova">Nova data e hora</label><input id="vn-nova" name="nova" type="datetime-local" class="input" required></div>` : ""}
+        ${como === "realizada" ? `<textarea name="texto" class="input op-texto" rows="3" maxlength="2000" placeholder="Como foi? O que ficou combinado?"></textarea><p class="t12 fraco" style="margin:0">Entra nos relatórios da SDR como demo realizada por você, e a administradora vai para Oportunidades.</p>` : ""}
+        <div><button type="submit" class="btn btn-primario" ${V.salvando ? "disabled" : ""}>${V.salvando ? "Salvando…" : "Salvar"}</button></div></form></aside>`;
+  }
+  app.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM" || !b.dataset.acao.startsWith("vn-")) return;
+    const V = S.vend;
+    switch (b.dataset.acao) {
+      case "vn-recarregar": carregarVendedor(); break;
+      case "vn-resultado": V.res = +b.dataset.id; V.como = "realizada"; render(); break;
+      case "vn-fechar": V.res = null; render(); break;
+      case "vn-op": { S.op.aba = "depois"; S.op.sel = b.dataset.id; const o = opItens().find((x) => x.ficha_id === b.dataset.id); S.op.como = o?.situacao || "negociando"; S.voltarAtivo = true; S.view = "oportunidades"; render(); break; }
+      case "vn-ops-sis": S.op.aba = "negociando"; S.op.busca = b.dataset.sis.split(/\s+/)[0]; S.voltarAtivo = true; S.view = "oportunidades"; render(); break;
+    }
+  });
+  app.addEventListener("change", (ev) => { const t = ev.target; if (t.name === "como" && t.closest('[data-acao="vn-salvar"]')) { S.vend.como = t.value; render(); } });
+  app.addEventListener("submit", async (ev) => {
+    const f = ev.target; if (f.dataset.acao !== "vn-salvar") return; ev.preventDefault();
+    const V = S.vend; if (V.salvando) return;
+    const fd = new FormData(f), como = String(fd.get("como") || "realizada"), nova = String(fd.get("nova") || "");
+    if (como === "reagendada" && (!nova || new Date(nova + ":00-03:00") <= new Date())) { toast("Escolha uma data e hora que ainda vão chegar."); return; }
+    V.salvando = true; render();
+    const { error } = await sb.rpc("resultado_demo", { p_demo: +f.dataset.id, p_resultado: como, p_texto: String(fd.get("texto") || "") || null, p_nova: como === "reagendada" ? nova + ":00-03:00" : null });
+    V.salvando = false;
+    if (error) { console.error(error); toast("Não foi possível salvar. Tente de novo."); render(); return; }
+    toast(como === "realizada" ? "Demo registrada como realizada." : como === "reagendada" ? "Demo reagendada." : "Marcada como não aconteceu.");
+    V.res = null; S.op.em = 0; if (S.ind) S.ind.em = 0; await carregarVendedor(true); carregarOportunidades(true);
+  });
+
   /* ------------------------------------------------- Oportunidades (pós-demo) */
   // Administradoras que viram a demo e ainda não fecharam. O time anota cada contato de negociação
   // (cada anotação guarda quem fez) e marca como ficou: em negociação, deixou para depois, negou ou fechou.
@@ -3843,9 +3950,9 @@
     const mx = Math.max(1, ...serie.flatMap((p) => chaves.map((k) => val(p, k)))) * 1.12;
     const X = (i) => pl + (n < 2 ? (W - pl - pr) / 2 : (i * (W - pl - pr)) / (n - 1)), Y = (v) => pt + (H - pt - pb) * (1 - v / mx);
     let g = "";
-    for (let k = 0; k <= 4; k++) { const v = (mx * k) / 4; g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" class="in-grade"/><text x="${pl - 6}" y="${Y(v) + 4}" text-anchor="end" class="in-eixo">${taxa ? Math.round(v) + "%" : mx < 10 ? f1(v) : fmtN(Math.round(v))}</text>`; }
+    for (let k = 0; k <= 4; k++) { const v = (mx * k) / 4; g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" class="bi-grade"/><text x="${pl - 6}" y="${Y(v) + 4}" text-anchor="end" class="bi-eixo">${taxa ? Math.round(v) + "%" : mx < 10 ? f1(v) : fmtN(Math.round(v))}</text>`; }
     const passo = Math.ceil(n / 10);
-    serie.forEach((p, i) => { if (i % passo === 0 || i === n - 1) g += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" class="in-eixo">${esc(p.r)}</text>`; });
+    serie.forEach((p, i) => { if (i % passo === 0 || i === n - 1) g += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" class="bi-eixo">${esc(p.r)}</text>`; });
     const linhas = chaves.map((k, j) => { const d = serie.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(val(p, k)).toFixed(1)}`).join("");
       return (j === 0 && !taxa ? `<path d="${d}L${X(n - 1)},${Y(0)}L${X(0)},${Y(0)}Z" class="in-area"/>` : "") + `<path d="${d}" pathLength="1" class="in-linha" style="stroke:${cores[j]}"/>` + serie.map((p, i) => `<circle cx="${X(i)}" cy="${Y(val(p, k))}" r="3.5" style="fill:${cores[j]}" class="in-ponto"><title>${esc(p.r)} · ${nomes[j]}: ${taxa ? fP(val(p, k)) : fmtN(val(p, k))}</title></circle>`).join(""); }).join("");
     return `<svg viewBox="0 0 ${W} ${H}" class="in-svg" role="img" aria-label="${esc(nomes.join(" e "))} ao longo do período">${g}${linhas}</svg>`;
@@ -3854,11 +3961,11 @@
     const W = 640, H = 240, pl = 34, pb = 28, pt = 16, n = itens.length; if (!n) return '<p class="fraco t13">Sem dados no período.</p>';
     const mx = Math.max(1, ...itens.flatMap((i) => [i[1], i[2]])) * 1.15, cw = (W - pl) / n, bw = Math.min(28, cw * 0.32), Y = (v) => pt + (H - pt - pb) * (1 - v / mx);
     let g = "";
-    for (let k = 0; k <= 4; k++) { const v = (mx * k) / 4; g += `<line x1="${pl}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" class="in-grade"/><text x="${pl - 6}" y="${Y(v) + 4}" text-anchor="end" class="in-eixo">${mx < 10 ? f1(v) : Math.round(v)}</text>`; }
+    for (let k = 0; k <= 4; k++) { const v = (mx * k) / 4; g += `<line x1="${pl}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" class="bi-grade"/><text x="${pl - 6}" y="${Y(v) + 4}" text-anchor="end" class="bi-eixo">${mx < 10 ? f1(v) : Math.round(v)}</text>`; }
     itens.forEach(([r, a, b], i) => { const cx = pl + cw * i + cw / 2, b0 = H - pb;
       g += `<rect x="${cx - bw - 2}" y="${Y(b)}" width="${bw}" height="${Math.max(0, b0 - Y(b))}" rx="4" class="in-barra in-barra-ant"><title>${esc(r)} · período anterior: ${fmtN(b)}</title></rect>`;
       g += `<rect x="${cx + 2}" y="${Y(a)}" width="${bw}" height="${Math.max(0, b0 - Y(a))}" rx="4" class="in-barra"><title>${esc(r)}: ${fmtN(a)} · anterior: ${fmtN(b)}</title></rect>`;
-      if (n <= 14 || i % 2 === 0) g += `<text x="${cx}" y="${H - 8}" text-anchor="middle" class="in-eixo">${esc(r)}</text>`; });
+      if (n <= 14 || i % 2 === 0) g += `<text x="${cx}" y="${H - 8}" text-anchor="middle" class="bi-eixo">${esc(r)}</text>`; });
     return `<svg viewBox="0 0 ${W} ${H}" class="in-svg" role="img" aria-label="Comparação com o período anterior">${g}</svg>`;
   }
   function rosca(id, itens, rotulo, vazio) {
@@ -3894,12 +4001,12 @@
     if (!D && !I.carregando && !I.erro) carregarIndicadores(true);
     else if (D && !I.carregando && Date.now() - I.em > 60000) carregarIndicadores(true);
     const P = indPeriodo();
-    const cab = `<div class="cabeca in-cab"><div class="pilha" style="gap:4px"><h1>Indicadores Comerciais</h1><p class="fraco" style="margin:0">Calculados sozinhos a partir das ligações, demonstrações, propostas e contratos registrados. Só as metas são digitadas, pela gestão.</p></div>
+    const cab = `<div class="cabeca bi-cab"><div class="pilha" style="gap:4px"><h1>Indicadores Comerciais</h1><p class="fraco" style="margin:0">Calculados sozinhos a partir das ligações, demonstrações, propostas e contratos registrados. Só as metas são digitadas, pela gestão.</p></div>
       <div class="linha-flex in-tela">${ehGestao() ? '<button type="button" class="btn btn-sec" data-acao="in-metas">Metas e parâmetros</button>' : ""}<button type="button" class="btn btn-sec" data-acao="in-excel">Baixar Excel</button><button type="button" class="btn btn-primario" data-acao="in-pdf">Baixar PDF</button></div></div>`;
     if (!D) return cab + `<div class="cartao vazio">${I.erro ? 'Não deu para carregar. <button type="button" class="mini" data-acao="in-recarregar">Tentar de novo</button>' : "Carregando os indicadores…"}</div>`;
     const Q = indQuem();
     const filtros = `<section class="cartao in-filtros in-tela"><div class="abas" role="tablist">${[["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"], ["ano", "Ano"], ["custom", "Personalizado"]].map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="in-per" data-v="${k}" aria-selected="${I.per === k}">${l}</button>`).join("")}</div>
-      ${I.per === "custom" ? `<div class="linha-flex"><input type="date" class="input in-data" id="in-ini" value="${esc(P.ini)}" aria-label="De"><span class="fraco">até</span><input type="date" class="input in-data" id="in-fim" value="${esc(P.fim)}" aria-label="Até"></div>`
+      ${I.per === "custom" ? `<div class="linha-flex"><input type="date" class="input bi-data" id="in-ini" value="${esc(P.ini)}" aria-label="De"><span class="fraco">até</span><input type="date" class="input bi-data" id="in-fim" value="${esc(P.fim)}" aria-label="Até"></div>`
       : `<div class="linha-flex"><button type="button" class="mini" data-acao="in-ant" aria-label="Período anterior">←</button><b class="num in-per-nome">${esc(P.nome)}</b><button type="button" class="mini" data-acao="in-prox" aria-label="Próximo período">→</button>${P.corre ? "" : '<button type="button" class="mini" data-acao="in-hoje">Atual</button>'}</div>`}
       <div class="campo in-resp"><label for="in-resp">Responsável</label><select id="in-resp" class="input"><option value="todos">Toda a equipe</option>${D.pessoas.map((p) => `<option value="${esc(p.k)}" ${I.resp === p.k ? "selected" : ""}>${esc(p.curto)} · ${esc(rotuloFuncao(p.funcao))}${p.id ? "" : " (sem conta)"}</option>`).join("")}</select></div>
       <span class="in-atual t12 fraco"><i class="in-vivo"></i>${I.carregando ? "Atualizando…" : `Atualizado às ${localSP(new Date(I.em).toISOString()).slice(11, 16)}`} <button type="button" class="mini" data-acao="in-recarregar">Atualizar</button></span></section>`;
@@ -3954,7 +4061,7 @@
       ["Demos realizadas", "Vendedor", M.realizadas.length, metaDoPeriodo("demos_realizadas_mes"), "vend"],
       ["Contratos fechados", "Vendedor", M.contratos.length, metaDoPeriodo("contratos_mes"), "vend"],
     ];
-    if (Q.papel === "gestor") return `<section class="in-sec"><div class="in-tit"><h2>Metas do período</h2></div><div class="cartao in-cartao"><p class="fraco" style="margin:0">O gestor não tem meta própria. Aqui aparecem só as demos que ele apresentou cobrindo as férias do vendedor: <b>${fmtN(M.realizadas.length)}</b> neste período.</p></div></section>`;
+    if (Q.papel === "gestor") return `<section class="in-sec"><div class="in-tit"><h2>Metas do período</h2></div><div class="cartao bi-cartao"><p class="fraco" style="margin:0">O gestor não tem meta própria. Aqui aparecem só as demos que ele apresentou cobrindo as férias do vendedor: <b>${fmtN(M.realizadas.length)}</b> neste período.</p></div></section>`;
     const lista = todos.filter((t) => Q.todos || (Q.papel === "sdr" ? t[4] === "sdr" : t[4] === "vend"));
     const comMeta = lista.filter((t) => t[3] != null), semMeta = lista.filter((t) => t[3] == null);
     const totU = uteisEntre(P.ini, P.fim), passou = uteisEntre(P.ini, P.corre ? hj : P.fim), resta = P.corre ? Math.max(0, totU - uteisEntre(P.ini, hj)) : 0;
@@ -3964,7 +4071,7 @@
       const p = pct(r, m), [cl, tx] = selo(p), falta = Math.max(0, m - r), proj = P.corre && passou >= 3 && resta > 0 ? (r / passou) * totU : null;
       return `<div class="cartao in-meta"><div class="in-meta-top"><div><b>${n}</b><span class="t12 fraco">${papel}</span></div><span class="selo ${cl}">${tx}</span></div>
         <div class="in-meta-num"><b class="num">${fmtN(r)}</b> <span class="fraco">de ${f1(m)} · ${fP(p)}</span></div>
-        <div class="in-trilho" title="O traço mostra onde deveria estar hoje"><b style="--w:${Math.min(100, p || 0)}%"></b>${P.corre ? `<i style="left:${esperado}%"></i>` : ""}</div>
+        <div class="bi-trilho" title="O traço mostra onde deveria estar hoje"><b style="--w:${Math.min(100, p || 0)}%"></b>${P.corre ? `<i style="left:${esperado}%"></i>` : ""}</div>
         <div class="in-meta-det"><span>Falta <b class="num">${falta ? f1(falta) : "nada"}</b></span><span>Diferença <b class="num">${r - m > 0 ? "+" : ""}${f1(r - m)}</b></span>
         <span>Precisa por dia útil <b class="num">${resta && falta ? f1(falta / resta) : "–"}</b></span><span>Projeção <b class="num">${proj != null ? `${fmtN(proj)} (${fP(pct(proj, m))})` : P.corre ? "pouco histórico" : "período fechado"}</b></span></div></div>`;
     });
@@ -3985,8 +4092,8 @@
       for (const r of M.tent) { const k = r.tipo === "sem_contato" ? "Sem contato" : r.tipo === "negativa" ? "Negativa" : r.tipo === "demo_agendada" ? "Demo agendada" : r.detalhe === "pediu_retorno" ? "Pediu retorno" : r.detalhe === "material_enviado" ? "Só por e-mail/WhatsApp" : "Conversou"; c[k]++; }
       return [["Conversou", c["Conversou"], "#087CF0"], ["Demo agendada", c["Demo agendada"], "#39C8FF"], ["Pediu retorno", c["Pediu retorno"], "#5B7FBF"], ["Só por e-mail/WhatsApp", c["Só por e-mail/WhatsApp"], "#2FA6A0"], ["Negativa", c["Negativa"], "#0D2854"], ["Sem contato", c["Sem contato"], "#C9D2E3"]]; })(),
       "tentativas", M.Q.papel === "vendedor" || M.Q.papel === "gestor" ? "Contatos de prospecção são da SDR." : "Nenhuma tentativa de contato registrada neste período.");
-    return `<section class="in-sec in-duas"><div class="cartao in-cartao"><h3>Funil comercial</h3><p class="in-leg">Cada administradora conta uma vez, em todas as etapas que já alcançou. Em vermelho, onde mais se perde.</p><div class="in-funil">${linhas}</div><p class="t12 fraco" style="margin:8px 0 0">${nota}</p></div>
-      <div class="cartao in-cartao"><h3>Resultado dos contatos</h3><p class="in-leg">O que aconteceu em cada tentativa do período</p>${res}</div></section>`;
+    return `<section class="in-sec in-duas"><div class="cartao bi-cartao"><h3>Funil comercial</h3><p class="in-leg">Cada administradora conta uma vez, em todas as etapas que já alcançou. Em vermelho, onde mais se perde.</p><div class="in-funil">${linhas}</div><p class="t12 fraco" style="margin:8px 0 0">${nota}</p></div>
+      <div class="cartao bi-cartao"><h3>Resultado dos contatos</h3><p class="in-leg">O que aconteceu em cada tentativa do período</p>${res}</div></section>`;
   }
 
   function secGraficos(M, A, P) {
@@ -3996,13 +4103,13 @@
     if (vend) { chaves = ["real", "ctr"]; nomes = ["Demos realizadas", "Contratos"]; cores = ["#087CF0", "#0D2854"]; }
     else if (I.graf === "taxa") { chaves = ["tc", "ta"]; nomes = ["Contato efetivo", "Tentativa → demo"]; cores = ["#087CF0", "#0D2854"]; taxa = true; }
     else { chaves = ["tent", "cont"]; nomes = ["Tentativas", "Contatos efetivados"]; cores = ["#087CF0", "#39C8FF"]; }
-    const linha = `<div class="cartao in-cartao"><div class="in-cab-g"><div><h3>Evolução ${titPasso}</h3><p class="in-leg">${esc(P.nome)}</p></div>${vend ? "" : `<div class="abas in-tela" role="tablist"><button type="button" class="aba" data-acao="in-graf" data-v="vol" aria-selected="${I.graf !== "taxa"}">Volume</button><button type="button" class="aba" data-acao="in-graf" data-v="taxa" aria-selected="${I.graf === "taxa"}">Taxas</button></div>`}</div>
+    const linha = `<div class="cartao bi-cartao"><div class="in-cab-g"><div><h3>Evolução ${titPasso}</h3><p class="in-leg">${esc(P.nome)}</p></div>${vend ? "" : `<div class="abas in-tela" role="tablist"><button type="button" class="aba" data-acao="in-graf" data-v="vol" aria-selected="${I.graf !== "taxa"}">Volume</button><button type="button" class="aba" data-acao="in-graf" data-v="taxa" aria-selected="${I.graf === "taxa"}">Taxas</button></div>`}</div>
       <div class="in-mini-leg">${nomes.map((n, i) => `<span style="--c:${cores[i]}">${n}</span>`).join("")}</div>${svgLinha(S1.pontos, chaves, nomes, cores, taxa)}</div>`;
     // barras: cada pedaço do período com o mesmo pedaço do período anterior
     const opcoes = vend ? [["real", "Demos realizadas"], ["ctr", "Contratos"]] : [["tent", "Tentativas"], ["cont", "Contatos"], ["ag", "Demos agendadas"], ["real", "Demos realizadas"], ["ctr", "Contratos"]];
     if (!opcoes.some((o) => o[0] === I.bar)) I.bar = opcoes[0][0];
     const S2 = indSerie(A), itens = S1.pontos.map((p, i) => [p.r, p[I.bar], S2.pontos[i]?.[I.bar] || 0]);
-    const barras = `<div class="cartao in-cartao"><div class="in-cab-g"><div><h3>Comparação com o período anterior</h3><p class="in-leg">${titPasso[0].toUpperCase() + titPasso.slice(1)} · ${opcoes.find((o) => o[0] === I.bar)[1].toLowerCase()}</p></div></div>
+    const barras = `<div class="cartao bi-cartao"><div class="in-cab-g"><div><h3>Comparação com o período anterior</h3><p class="in-leg">${titPasso[0].toUpperCase() + titPasso.slice(1)} · ${opcoes.find((o) => o[0] === I.bar)[1].toLowerCase()}</p></div></div>
       <div class="in-chips in-tela">${opcoes.map(([k, l]) => `<button type="button" class="aba" data-acao="in-bar" data-v="${k}" aria-selected="${I.bar === k}">${l}</button>`).join("")}</div>
       <div class="in-mini-leg"><span style="--c:#087CF0">Período escolhido</span><span style="--c:#B9C6DC">Período anterior</span></div>${svgBarras(itens)}</div>`;
     // roscas
@@ -4014,9 +4121,9 @@
     const topo = sisOrd.slice(0, 7), resto = sisOrd.slice(7).reduce((s, x) => s + x[1], 0);
     const sistemas = rosca("sis", topo.map(([n, v], i) => [n, v, n === "Não informado" ? "#DCE2EC" : IND_CORES[i % IND_CORES.length]]).concat(resto ? [["Outros", resto, "#9AA6BD"]] : []), "empresas", vend ? "Prospecção é da SDR." : "Nenhuma empresa abordada neste período.");
     return `<section class="in-sec in-duas">${linha}${barras}</section>
-      <section class="in-sec in-tres"><div class="cartao in-cartao"><h3>Situação das demos agendadas</h3><p class="in-leg">O que aconteceu com as demos marcadas no período${M.reag.length ? ` · ${M.reag.length} reagendamento(s), sem contar de novo` : ""}</p>${situacao}</div>
-      <div class="cartao in-cartao"><h3>Propostas enviadas</h3><p class="in-leg">Situação hoje das propostas enviadas no período</p>${props}</div>
-      <div class="cartao in-cartao"><h3>Sistemas das empresas abordadas</h3><p class="in-leg">Do campo “Sistema usado” da ficha</p>${sistemas}</div></section>`;
+      <section class="in-sec in-tres"><div class="cartao bi-cartao"><h3>Situação das demos agendadas</h3><p class="in-leg">O que aconteceu com as demos marcadas no período${M.reag.length ? ` · ${M.reag.length} reagendamento(s), sem contar de novo` : ""}</p>${situacao}</div>
+      <div class="cartao bi-cartao"><h3>Propostas enviadas</h3><p class="in-leg">Situação hoje das propostas enviadas no período</p>${props}</div>
+      <div class="cartao bi-cartao"><h3>Sistemas das empresas abordadas</h3><p class="in-leg">Do campo “Sistema usado” da ficha</p>${sistemas}</div></section>`;
   }
 
   // cada um na sua parte: meta × realizado de cada função
@@ -4046,8 +4153,8 @@
       ["Taxa de perda comercial", fP(pct(M.naoFeitas.length + M.propostas.filter((p) => p.situacao === "recusada").length, M.agendadas.length + M.realizadas.length ? Math.max(M.agendadas.length, M.realizadas.length) : 0)), "(demos que não aconteceram + propostas recusadas) ÷ demos"],
       ["Tempo médio demo → fechamento", isFinite(media(fech)) ? `${Math.round(media(fech))} dias` : "sem contratos", "data do contrato − data da demo realizada"],
     ]);
-    return `<section class="in-sec in-duas"><div class="cartao in-cartao"><h3>Cada um na sua parte</h3><p class="in-leg">Meta × realizado de cada função · o traço escuro é a meta</p><div class="in-partes">${blocos.join('<hr class="in-sep">') || '<p class="fraco t13">Sem dados.</p>'}</div></div>
-      <div class="cartao in-cartao"><h3>Indicadores de eficiência</h3><p class="in-leg">Fórmulas abertas, para qualquer um conferir</p><table class="in-efic"><tbody>${linhas.map(([n, v, f]) => `<tr><td>${n}<span>${f}</span></td><td class="num">${v}</td></tr>`).join("")}</tbody></table></div></section>`;
+    return `<section class="in-sec in-duas"><div class="cartao bi-cartao"><h3>Cada um na sua parte</h3><p class="in-leg">Meta × realizado de cada função · o traço escuro é a meta</p><div class="in-partes">${blocos.join('<hr class="in-sep">') || '<p class="fraco t13">Sem dados.</p>'}</div></div>
+      <div class="cartao bi-cartao"><h3>Indicadores de eficiência</h3><p class="in-leg">Fórmulas abertas, para qualquer um conferir</p><table class="in-efic"><tbody>${linhas.map(([n, v, f]) => `<tr><td>${n}<span>${f}</span></td><td class="num">${v}</td></tr>`).join("")}</tbody></table></div></section>`;
   }
 
   // análise: só frases que os números sustentam, sempre com o número
@@ -4107,7 +4214,7 @@
           <td>${pode(d) && d.status !== "reagendada" ? `<select class="input in-apres" data-id="${d.id}" aria-label="Quem apresenta">${[...new Set(["Leonardo", "Matheus", d.apresentador])].map((n) => `<option ${n === d.apresentador ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>` : esc(d.apresentador)}</td>
           <td><span class="selo ${st[0]}">${st[1]}</span>${pode(d) && d.status === "agendada" && d.dia && d.dia < hj ? `<div class="linha-flex in-tela" style="margin-top:6px"><button type="button" class="mini mini-erro" data-acao="in-naofeita" data-id="${d.id}">Não aconteceu</button><button type="button" class="mini" data-acao="in-ficha" data-id="${d.ficha_id}">Registrar realizada na ficha</button></div>` : ""}</td></tr>`; }).join("")}</tbody></table>`; };
     const bloco = (k) => (k === "resp" ? tResp() : k === "sem" ? tSem() : tDemos());
-    return `<section class="in-sec"><div class="cartao in-cartao"><div class="in-cab-g"><div><h3>Detalhamento</h3><p class="in-leg">Mesmo período e responsável de toda a página</p></div><div class="abas in-tela" role="tablist">${abas.map(([k, l]) => `<button type="button" class="aba" role="tab" data-acao="in-tab" data-v="${k}" aria-selected="${I.tab === k}">${l}</button>`).join("")}</div></div>
+    return `<section class="in-sec"><div class="cartao bi-cartao"><div class="in-cab-g"><div><h3>Detalhamento</h3><p class="in-leg">Mesmo período e responsável de toda a página</p></div><div class="abas in-tela" role="tablist">${abas.map(([k, l]) => `<button type="button" class="aba" role="tab" data-acao="in-tab" data-v="${k}" aria-selected="${I.tab === k}">${l}</button>`).join("")}</div></div>
       <div class="rolagem in-tela">${bloco(I.tab)}</div>${abas.map(([k, l]) => `<div class="in-so-print"><h3>${l}</h3>${bloco(k)}</div>`).join("")}</div></section>`;
   }
 
