@@ -416,7 +416,7 @@
   // a tela logada: o topo e cada parte que pode mudar sozinha quando chegam dados ficam num "pedaço" (data-pedaco)
   function htmlLogado() {
     if (S.view !== "concorrencia") S.cc.abertura = false; // ao voltar para a Concorrência, a abertura toca de novo
-    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "oportunidades" ? telaOportunidades() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "indicadores" ? telaIndicadores() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
+    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "oportunidades" ? telaOportunidades() : S.view === "clientes" ? telaClientes() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "indicadores" ? telaIndicadores() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
     return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${S.voltarAtivo && !(S.view === "adms" && S.lg.sel) ? '<div class="voltar-barra"><button type="button" class="fc-voltar" data-acao="voltar">← Voltar</button></div>' : ""}${tela}</div>`}</main>`;
   }
   const PEDACOS = new Map();
@@ -430,7 +430,7 @@
   let contaRedesenho = 0, contaPedaco = 0;
   function renderDados() {
     if (S.user && !S.perfil) return; // o perfil ainda não chegou: a primeira tela sai junto com ele
-    if (S.view === "inicio" && S.user && S.perfil?.aprovado && app.querySelector("main") && !ehVendedor()) { if (!S.inicio.desenhado) tentarInicio(); return; }
+    if (S.view === "inicio" && S.user && S.perfil?.aprovado && app.querySelector("main") && !ehVendedor() && !ehPos()) { if (!S.inicio.desenhado) tentarInicio(); return; }
     if (!S.user || S.recuperando || !S.perfil?.aprovado || S.view === "regiao" || !app.dataset.pedacos) return render();
     const t = document.createElement("template"); t.innerHTML = htmlLogado();
     const novos = [...t.content.querySelectorAll("[data-pedaco]")];
@@ -454,6 +454,8 @@
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
     const nav = [["inicio", "Início"], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["adms", "Administradoras"], ["vendas", "Vendas"], ["oportunidades", (() => { if (!S.op.lista && !S.op.carregando && !S.op.erro && S.perfil?.aprovado) setTimeout(() => carregarOportunidades(true), 0); return rotuloNavOp(); })()], ["agenda", nAg ? `Agenda <span class="contador">${nAg}</span>` : "Agenda"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"], ["concorrencia", (() => { const n = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0; return n ? `Concorrência <span class="contador">${n}</span>` : "Concorrência"; })()], ["listas", "Listas"]];
     if (ehVendedor()) for (const k of ["mapeamento", "regiao", "listas"]) { const i = nav.findIndex((x) => x[0] === k); if (i >= 0) nav.splice(i, 1); }
+    if (ehPos() || S.perfil?.papel === "admin") nav.splice(nav.findIndex((x) => x[0] === "vendas") + 1, 0, ["clientes", "Clientes"]);
+    if (ehPos()) { const fica = ["inicio", "agenda", "clientes", "vendas", "adms"]; for (let i = nav.length - 1; i >= 0; i--) if (!fica.includes(nav[i][0])) nav.splice(i, 1); }
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
@@ -1818,6 +1820,7 @@
   }
   function telaInicio() {
     if (ehVendedor()) return telaInicioVendedor();
+    if (ehPos()) return telaInicioPos();
     if (!S.inicio.desenhado && !inicioPronto()) {
       if (!S.lg.carregado && !S.lg.carregando) carregarLig();
       if (!S.vd.carregado && !S.vd.carregando) carregarVendas();
@@ -2663,6 +2666,8 @@
       if (f.retorno_em) { const l = localSP(f.retorno_em); out.push({ tipo: "retorno", f, ts: f.retorno_em, dia: l.slice(0, 10), hora: l.slice(11, 16) }); }
       if (f.demo_em && f.etapa === "demo_agendada") { const l = localSP(f.demo_em); out.push({ tipo: "demo", f, ts: f.demo_em, dia: l.slice(0, 10), hora: l.slice(11, 16) }); }
     }
+    // visitas e ligações do pós-vendas (as da própria pessoa)
+    if (S.pv?.clientes) for (const v of S.pv.visitas) if (v.usuario_id === S.user?.id && v.status === "agendada") { const c = pvCliente(v.ficha_id); out.push({ tipo: "visita", vid: v.id, f: { id: v.ficha_id, nome: c?.nome || "Cliente", cidade: c?.cidade, retorno_nota: v.objetivo || (v.tipo === "visita" ? "Visita" : "Ligação de acompanhamento") }, ts: v.quando, dia: v.dia, hora: v.hora }); }
     return out.sort((a, b) => (a.dia + a.hora < b.dia + b.hora ? -1 : 1));
   }
   const pendentesAgenda = () => itensAgenda().filter((i) => i.tipo === "retorno" && i.dia <= hojeISO()).length;
@@ -2688,6 +2693,7 @@
     const botaoAviso = st === "granted" ? "" : st === "denied" || st === "sem" ? "" : `<button type="button" class="btn btn-sec" data-acao="av-ativar">${ICONE.sino.replace('width="20" height="20"', 'width="18" height="18"')} Ativar avisos</button>`;
     const cab = `<div class="cabeca agn-cab"><div class="pilha" style="gap:4px"><h1>Agenda</h1><p class="fraco" style="margin:0">Organize seus contatos e próximos passos</p></div><div class="linha-flex">${botaoAviso}<button type="button" class="btn btn-primario agn-novo" data-acao="agn-novo">+ Novo compromisso</button></div></div>`;
     if (!A.carregado) { carregarAgenda(); return cab + `<div class="cartao vazio">Carregando a agenda…</div>`; }
+    if (ehPos() && !S.pv.clientes && !S.pv.carregando && !S.pv.erro) carregarPos(true);
     const itens = itensAgenda(), porDia = new Map();
     for (const i of itens) { if (!porDia.has(i.dia)) porDia.set(i.dia, []); porDia.get(i.dia).push(i); }
     const atrasados = itens.filter((i) => i.tipo === "retorno" && i.dia < hj);
@@ -2711,7 +2717,7 @@
     // calendário
     let corpo;
     const chip = (i) => { const atr = i.tipo === "retorno" && i.dia < hj;
-      return `<button type="button" class="agn-ev ${i.tipo === "demo" ? "agn-ev-demo" : atr ? "agn-ev-atr" : ""}" data-acao="ag-abrir" data-id="${i.f.id}" ${i.tipo === "retorno" ? 'draggable="true" data-arrastar="1"' : ""} title="${esc(`${i.hora} · ${i.f.nome}${i.tipo === "demo" ? " (demonstração)" : i.f.retorno_nota ? " · " + i.f.retorno_nota : ""}`)}"><span class="agn-ev-l1"><b class="num">${i.hora}</b> ${esc(i.f.nome)}</span><span class="agn-ev-l2">${i.tipo === "demo" ? "Demonstração" : esc(i.f.retorno_nota || i.f.responsavel || "Retorno")}</span></button>`; };
+      return `<button type="button" class="agn-ev ${i.tipo === "demo" ? "agn-ev-demo" : i.tipo === "visita" ? "pv-ev" : atr ? "agn-ev-atr" : ""}" data-acao="${i.vid ? "pv-registrar" : "ag-abrir"}" data-id="${i.vid || i.f.id}" ${i.tipo === "retorno" ? 'draggable="true" data-arrastar="1"' : ""} title="${esc(`${i.hora} · ${i.f.nome}${i.tipo === "demo" ? " (demonstração)" : i.f.retorno_nota ? " · " + i.f.retorno_nota : ""}`)}"><span class="agn-ev-l1"><b class="num">${i.hora}</b> ${esc(i.f.nome)}</span><span class="agn-ev-l2">${i.tipo === "demo" ? "Demonstração" : esc(i.f.retorno_nota || i.f.responsavel || "Retorno")}</span></button>`; };
     if (A.modo === "mes") {
       const ini = A.ref.slice(0, 8) + "01", fimM = (() => { const d = isoData(ini); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return d.toISOString().slice(0, 10); })();
       const dias = []; for (let d = segundaDe(ini); d <= somaDias(segundaDe(fimM), 6); d = somaDias(d, 1)) dias.push(d);
@@ -2730,16 +2736,16 @@
     const linhaLado = (i, comData) => { const atr = i.tipo === "retorno" && i.dia < hj;
       return `<button type="button" class="agn-li" data-acao="ag-abrir" data-id="${i.f.id}"><span class="agn-li-h num">${comData ? ddmm(i.dia) : i.hora}</span><span class="agn-li-t"><b>${esc(i.f.nome)}</b><span>${i.tipo === "demo" ? `Demonstração ${i.f.demo_formato === "presencial" ? "presencial" : "virtual"}` : esc(i.f.retorno_nota || "Ligar de novo")}</span></span><i class="agn-pt ${i.tipo === "demo" ? "agn-pt-demo" : atr ? "agn-pt-atr" : ""}"></i></button>`; };
     const nomeDiaLado = A.dia === hj ? "Hoje" : `${DIAS[isoData(A.dia).getUTCDay()][0].toUpperCase() + DIAS[isoData(A.dia).getUTCDay()].slice(1)}`;
-    const doDiaL = porDia.get(A.dia) || [], demosL = doDiaL.filter((i) => i.tipo === "demo"), retL = doDiaL.filter((i) => i.tipo === "retorno");
+    const doDiaL = porDia.get(A.dia) || [], demosL = doDiaL.filter((i) => i.tipo === "demo"), retL = doDiaL.filter((i) => i.tipo !== "demo");
     const demoCard = (i) => `<button type="button" class="agn-demo" data-acao="ag-abrir" data-id="${i.f.id}"><span class="agn-demo-r">Demonstração ${i.f.demo_formato === "presencial" ? "presencial" : "virtual"}</span><span class="agn-demo-l"><b class="num">${i.hora}</b><span>${esc(i.f.nome)}</span></span>${i.f.responsavel || i.f.cidade ? `<span class="agn-demo-s">${esc([i.f.responsavel, i.f.cidade].filter(Boolean).join(" · "))}</span>` : ""}</button>`;
     const verAtr = A.verAtr;
     const lado = `<aside class="agn-lado"><section><h2>${nomeDiaLado}<span class="agn-lado-data">${ddmm(A.dia)}</span></h2>
         ${demosL.length ? `<div class="agn-bloco">${demosL.map(demoCard).join("")}</div>` : ""}
-        <div class="agn-bloco"><span class="agn-bloco-t">${retL.length ? `Retornos · ${retL.length}` : "Retornos"}</span>${retL.length ? retL.map(chip).join("") : `<p class="agn-vazio">Nenhum retorno ${A.dia === hj ? "para hoje" : "neste dia"}.</p>`}</div>
+        <div class="agn-bloco"><span class="agn-bloco-t">${ehPos() ? "Visitas e ligações" : "Retornos"}${retL.length ? ` · ${retL.length}` : ""}</span>${retL.length ? retL.map(chip).join("") : `<p class="agn-vazio">Nenhum retorno ${A.dia === hj ? "para hoje" : "neste dia"}.</p>`}</div>
         ${!doDiaL.length && A.dia !== hj ? "" : ""}</section>
       ${atrasados.length ? `<section id="agn-prioritarios"><button type="button" class="agn-atr-cab" data-acao="agn-veratr" aria-expanded="${!!verAtr}"><span><b>Atrasados</b> · ${fmtN(atrasados.length)}</span><span class="agn-link">${verAtr ? "Esconder" : "Ver"}</span></button>
         ${verAtr ? `<div class="agn-bloco agn-atr-lista">${atrasados.slice(0, A.todosAtr ? atrasados.length : 30).map((i) => chip(i).replace('<b class="num">' + i.hora + "</b>", `<b class="num">${ddmm(i.dia)}</b>`)).join("")}${atrasados.length > 30 && !A.todosAtr ? `<button type="button" class="agn-mais" data-acao="agn-todos">Ver todos os ${fmtN(atrasados.length)}</button>` : ""}</div>` : ""}</section>` : ""}</aside>`;
-    return cab + `<div class="agn-duas"><div class="agn-esq">${hero}${nums}${cal}</div>${lado}</div>` + (A.novo ? gaveta(painelNovoCompromisso(), "agn-fechar") : "");
+    return cab + `<div class="agn-duas"><div class="agn-esq">${hero}${nums}${cal}</div>${lado}</div>` + (A.novo ? gaveta(painelNovoCompromisso(), "agn-fechar") : S.pv.vis || S.pv.sel ? pvGavetas() : "");
   }
   const ICONE_SOL = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   const ICONE_CAL = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg>';
@@ -2861,7 +2867,7 @@
     if (S.lg.carregando || S.vd.carregando) return;
     Object.assign(S.lg, { carregado: false, textosFicha: new Set() });
     Object.assign(S.vd, { carregado: false });
-    S.fx.cache.clear(); S.listas = null; S.equipe = null; S.carregadoEm = Date.now(); if (S.ind) S.ind.em = 0; if (S.op) S.op.em = 0;
+    S.fx.cache.clear(); S.listas = null; S.equipe = null; S.carregadoEm = Date.now(); if (S.ind) S.ind.em = 0; if (S.op) S.op.em = 0; if (S.pv) S.pv.em = 0;
     S.inicio.desenhado = false; S.inicio.t0 = performance.now(); S.rowsProntas = !S.cidade || S.rowsProntas;
     carregarLig(); carregarVendas();
     if (!silencioso) toast("Atualizando os dados…");
@@ -3630,6 +3636,193 @@
     V.res = null; S.op.em = 0; if (S.ind) S.ind.em = 0; await carregarVendedor(true); carregarOportunidades(true);
   });
 
+  /* ------------------------------------------------- Pós-vendas: carteira, visitas e Início */
+  // Quem é Pós-vendas cuida dos clientes (Funil de Acompanhamento): visitas presenciais, ligações de acompanhamento,
+  // como o cliente está (satisfeito, em acompanhamento, insatisfeito) e venda de produtos adicionais.
+  const ehPos = () => S.perfil?.funcao === "pos_vendas";
+  S.pv = { clientes: null, visitas: [], adicionais: [], produtos: [], pessoas: [], carregando: false, erro: false, em: 0, aba: "todos", busca: "", sel: null, vis: null, como: "feita", salvando: false };
+  const PV_SIT = [["Contato", "Para contatar", "s-neutro"], ["Acompanhamento", "Em acompanhamento", "s-ident"], ["Satisfeito", "Satisfeito", "s-conf"], ["Insatisfeito", "Insatisfeito", "s-errado"]];
+  const PV_SIT_NOME = Object.fromEntries(PV_SIT.map(([k, l]) => [k, l])), PV_SIT_COR = Object.fromEntries(PV_SIT.map(([k, , c]) => [k, c]));
+  const PV_ADICIONAIS = ["Boleto por Whatsapp", "Comprovantes", "Aplicativo administradora", "Integração Bancária", "Checkpay", "Condoconta", "Bureau", "Directbank"];
+  async function carregarPos(silencioso) {
+    const P = S.pv; if (P.carregando) return; P.carregando = true; P.erro = false;
+    try {
+      const desde = new Date(Date.now() - 120 * 864e5).toISOString();
+      const [c, v, a, p, pe] = await Promise.all([
+        sb.rpc("carteira_clientes"), sb.from("visitas").select("*").or(`status.eq.agendada,quando.gte.${desde}`).order("quando").limit(3000),
+        sb.rpc("funil_adicionais"), sb.from("produtos").select("id,nome").eq("ativo", true).order("nome"), sb.from("perfis").select("id,nome").eq("aprovado", true),
+      ]);
+      for (const r of [c, v, a, p, pe]) if (r.error) throw r.error;
+      P.clientes = c.data || []; P.visitas = (v.data || []).map((x) => ({ ...x, dia: localSP(x.quando).slice(0, 10), hora: localSP(x.quando).slice(11, 16) }));
+      P.adicionais = a.data || []; P.produtos = p.data || []; P.pessoas = pe.data || []; P.em = Date.now();
+    } catch (e) { console.error(e); P.erro = true; if (!silencioso) toast("Não deu para carregar os clientes."); }
+    finally { P.carregando = false; if (["inicio", "clientes", "agenda"].includes(S.view)) renderDados(); }
+  }
+  const pvCliente = (id) => (S.pv.clientes || []).find((c) => c.ficha_id === id);
+  const pvTel = (c) => nacional(c.whatsapp || "") || nacional(String(c.numero_responsavel || "").split(/[\/,;]/)[0]) || nacional(String(c.telefones || "").split(/[\/,;]/)[0]);
+  const pvMapa = (c) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([c.endereco, c.cidade, c.uf].filter(Boolean).join(", ") || c.nome)}`;
+  const pvSemContato = (c) => (c.ultimo_contato ? opDias(c.ultimo_contato) : 999);
+  function pvAtencao() {
+    const futuras = new Set(S.pv.visitas.filter((v) => v.status === "agendada" && v.dia >= hojeISO()).map((v) => v.ficha_id));
+    return (S.pv.clientes || []).filter((c) => !futuras.has(c.ficha_id) && (c.situacao === "Insatisfeito" || pvSemContato(c) > 90))
+      .sort((a, b) => (a.situacao === "Insatisfeito") - (b.situacao === "Insatisfeito") || pvSemContato(a) - pvSemContato(b)).reverse();
+  }
+  function pvSugestao() {
+    const inf = (S.pv.clientes || []).filter((c) => c.produtos.length); if (inf.length < 3) return null;
+    let melhor = null; for (const p of PV_ADICIONAIS) { const n = inf.filter((c) => !c.produtos.includes(p)).length; if (!melhor || n > melhor[1]) melhor = [p, n]; }
+    return melhor && melhor[1] ? melhor : null;
+  }
+  const pvRotuloSem = (c) => { const d = pvSemContato(c); return d >= 999 ? "Nenhum contato registrado" : d === 0 ? "Contato hoje" : `Sem contato há ${d} ${d === 1 ? "dia" : "dias"}`; };
+
+  function telaInicioPos() {
+    const P = S.pv, hj = hojeISO();
+    if (!P.clientes && !P.carregando && !P.erro) carregarPos(true); else if (P.clientes && !P.carregando && Date.now() - P.em > 60000) carregarPos(true);
+    const h = +localSP(new Date().toISOString()).slice(11, 13), saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite", nome = (S.perfil?.nome || "").split(/\s+/)[0];
+    if (!P.clientes) return `<div class="vn pedaco" data-pedaco="pos"><section class="vn-hero"><span class="agn-oi">${ICONE_SOL} ${saud}, ${esc(nome)}!</span><p class="agn-foco">${P.erro ? 'Não deu para carregar. <button type="button" class="mini" data-acao="pv-recarregar">Tentar de novo</button>' : "Carregando seus clientes…"}</p></section></div>`;
+    const minhas = P.visitas.filter((v) => v.usuario_id === S.user.id && v.status === "agendada");
+    const hoje = minhas.filter((v) => v.dia === hj), visHoje = hoje.filter((v) => v.tipo === "visita"), ligHoje = hoje.filter((v) => v.tipo === "ligacao");
+    const depois = minhas.filter((v) => v.dia > hj).slice(0, 8), pend = minhas.filter((v) => v.dia < hj);
+    const aten = pvAtencao(), insat = aten.filter((c) => c.situacao === "Insatisfeito").length;
+    const pl = (n, um, v) => `${fmtN(n)} ${n === 1 ? um : v}`;
+    const partes = [visHoje.length ? `<span class="pv-verde">${pl(visHoje.length, "visita", "visitas")}</span>` : "", ligHoje.length ? `<span class="agn-azul">${pl(ligHoje.length, "cliente para ligar", "clientes para ligar")}</span>` : ""].filter(Boolean);
+    const prox = hoje.find((v) => new Date(v.quando) > new Date(Date.now() - 60 * 60e3)) || depois[0];
+    const proxC = prox ? pvCliente(prox.ficha_id) : null;
+    const sub = [prox && proxC ? `Próxima: ${prox.dia === hj ? "hoje" : ddmm(prox.dia)} às ${prox.hora}, ${esc(proxC.nome)}` : "", insat ? pl(insat, "cliente insatisfeito precisa de atenção", "clientes insatisfeitos precisam de atenção") : "", pend.length ? pl(pend.length, "visita sem resultado", "visitas sem resultado") : ""].filter(Boolean).join(" · ");
+    const hero = `<section class="vn-hero"><div><span class="agn-oi">${ICONE_SOL} ${saud}, ${esc(nome)}!</span><p class="agn-foco">${partes.length ? `Hoje você tem ${partes.join(" e ")}.` : "Hoje você não tem visitas marcadas."}</p>${sub ? `<span class="agn-sub">${sub}</span>` : ""}</div>
+      <div class="linha-flex">${prox ? `<a class="btn pv-bt" href="#pv-v-${prox.id}">Ver a próxima</a>` : ""}<button type="button" class="btn btn-sec" data-acao="ir" data-view="clientes">Meus clientes</button></div></section>`;
+    const falta = (v) => { const ms = new Date(v.quando) - Date.now(); if (ms < -30 * 60e3) return "Já passou"; if (ms < 0) return "Agora"; const m = Math.round(ms / 60e3); return m < 60 ? `Daqui a ${m} min` : m < 1440 ? `Daqui a ${Math.round(m / 60)} h` : ""; };
+    const cartao = (v) => { const c = pvCliente(v.ficha_id) || { nome: "Cliente", produtos: [] }, w = pvTel(c), faltam = PV_ADICIONAIS.filter((p) => c.produtos.length && !c.produtos.includes(p)).slice(0, 2);
+      return `<article class="pv-vis ${v.tipo === "ligacao" ? "pv-vis-lig" : ""}" id="pv-v-${v.id}"><div class="vn-demo-t"><span>${v.tipo === "visita" ? "Visita presencial" : "Ligação de acompanhamento"}</span>${falta(v) ? `<span class="vn-pill">${falta(v)}</span>` : ""}</div>
+        <div class="vn-demo-h"><b class="num">${v.hora}</b><span>${esc(c.nome)}</span></div>
+        <dl>${v.tipo === "visita" ? `<dt>Endereço</dt><dd>${esc([c.endereco, [c.cidade, c.uf].filter(Boolean).join(" - ")].filter(Boolean).join(" · ") || "—")}</dd>` : ""}<dt>Contato</dt><dd>${esc(c.responsavel || "—")}${w ? ` · ${esc(fmtTel(w))}` : ""}</dd><dt>Cliente</dt><dd>${c.cliente_desde ? `desde ${MESES[+c.cliente_desde.slice(5, 7) - 1].slice(0, 3)}/${c.cliente_desde.slice(0, 4)}` : "—"}${c.qtd_condominios ? ` · ${fmtN(c.qtd_condominios)} condomínios` : ""} · ${esc(PV_SIT_NOME[c.situacao] || "")}</dd></dl>
+        <div class="pv-chips">${c.produtos.length ? c.produtos.map((p) => `<span>${esc(p)}</span>`).join("") : '<span class="pv-chip-vazio">Produtos não marcados</span>'}</div>
+        ${v.objetivo ? `<div class="pv-oferta"><b>Objetivo</b>${esc(v.objetivo)}</div>` : faltam.length ? `<div class="pv-oferta"><b>Dá para oferecer</b>${esc(faltam.join(" e "))} (ainda não tem)</div>` : ""}
+        <div class="vn-demo-ac"><button type="button" data-acao="pv-registrar" data-id="${v.id}">Registrar ${v.tipo === "visita" ? "visita" : "ligação"}</button>${v.tipo === "visita" ? `<a href="${esc(pvMapa(c))}" target="_blank" rel="noopener">Como chegar</a>` : ""}${w ? `<a href="https://wa.me/55${w}" target="_blank" rel="noopener">WhatsApp</a>` : ""}</div></article>`; };
+    const linha = (v) => { const c = pvCliente(v.ficha_id) || { nome: "Cliente" }; return `<div class="vn-pl"><span class="vn-pl-h pv-h num">${v.hora}</span><span class="vn-pl-t"><b>${esc(c.nome)}</b><small>${esc(v.objetivo || [c.cidade, c.uf].filter(Boolean).join(" - "))}</small></span><span class="selo ${v.tipo === "visita" ? "pv-selo" : "s-ident"}">${v.tipo === "visita" ? "Visita" : "Ligação"}</span></div>`; };
+    let proxHtml = "", ant = ""; for (const v of depois) { if (v.dia !== ant) { ant = v.dia; const dd = v.dia === somaDias(hj, 1) ? "Amanhã" : DIAS[isoData(v.dia).getUTCDay()]; proxHtml += `<div class="vn-dia-t">${dd[0].toUpperCase() + dd.slice(1)} · ${ddmm(v.dia)}</div>`; } proxHtml += linha(v); }
+    const pendHtml = pend.length ? `<div class="vn-pend"><b>Sem resultado registrado</b>${pend.slice(0, 5).map((v) => `<div class="vn-pl"><span class="vn-pl-h num">${ddmm(v.dia)}</span><span class="vn-pl-t"><b>${esc(pvCliente(v.ficha_id)?.nome || "Cliente")}</b><small>${v.tipo === "visita" ? "Visita" : "Ligação"} às ${v.hora}</small></span><button type="button" class="mini" data-acao="pv-registrar" data-id="${v.id}">Registrar</button></div>`).join("")}</div>` : "";
+    const secHoje = `<section class="cartao vn-cartao"><h2>Suas visitas de hoje</h2><p class="vn-leg">Tudo sobre o cliente antes de chegar: o que ele já tem e o que dá para oferecer.</p>
+      ${hoje.length ? `<div class="vn-demos">${hoje.map(cartao).join("")}</div>` : `<p class="agn-vazio">Nada marcado para hoje. Marque visitas e ligações em <button type="button" class="agn-link" data-acao="ir" data-view="clientes">Meus clientes</button>.</p>`}
+      ${pendHtml}${depois.length ? `<div class="vn-prox">${proxHtml}</div>` : ""}</section>`;
+    const seg = segundaDe(hj), dias = [0, 1, 2, 3, 4].map((n) => somaDias(seg, n));
+    const semana = `<section class="cartao vn-cartao"><div class="vn-cab"><div><h2>Sua semana</h2><p class="vn-leg">Visitas e ligações de acompanhamento, de segunda a sexta</p></div></div>
+      <div class="vn-semana">${dias.map((d) => `<div class="vn-sd ${d === hj ? "vn-hoje" : ""}"><span class="vn-sd-t">${DIAS[isoData(d).getUTCDay()].slice(0, 3)} ${+d.slice(8)}${d === hj ? " · hoje" : ""}</span>${P.visitas.filter((v) => v.usuario_id === S.user.id && v.dia === d && v.status !== "cancelada").map((v) => `<button type="button" class="agn-ev ${v.tipo === "visita" ? "pv-ev" : ""}" data-acao="pv-registrar" data-id="${v.id}"><span class="agn-ev-l1"><b class="num">${v.hora}</b> ${esc(pvCliente(v.ficha_id)?.nome || "Cliente")}</span><span class="agn-ev-l2">${v.tipo === "visita" ? "Visita" : "Ligação"}${v.status === "feita" ? " · feita" : ""}</span></button>`).join("") || '<span class="t12 fraco">—</span>'}</div>`).join("")}</div>
+      <div class="pv-leg"><span><i class="pv-leg-v"></i>Visita</span><span><i></i>Ligação de acompanhamento</span></div></section>`;
+    const atenHtml = `<section class="cartao vn-cartao"><div class="vn-cab"><h2>Clientes que precisam de atenção</h2></div><p class="vn-leg">Insatisfeitos ou há mais de 90 dias sem contato</p>
+      ${aten.length ? aten.slice(0, 6).map((c) => `<button type="button" class="vn-rt" data-acao="pv-cliente" data-id="${c.ficha_id}"><span><b>${esc(c.nome)}</b><small>${esc(pvRotuloSem(c))}</small></span><span class="selo ${c.situacao === "Insatisfeito" ? "s-errado" : "s-nao"}">${c.situacao === "Insatisfeito" ? "Insatisfeito" : pvSemContato(c) >= 999 ? "Sem contato" : `${pvSemContato(c)} dias`}</span></button>`).join("") + (aten.length > 6 ? `<button type="button" class="agn-link" data-acao="pv-ver-atencao">Ver todos os ${aten.length}</button>` : "") : '<p class="agn-vazio">Todos os clientes estão em dia.</p>'}</section>`;
+    const mx = Math.max(1, ...P.adicionais.map((a) => +a.n)), sug = pvSugestao();
+    const adic = `<section class="cartao vn-cartao"><div class="vn-cab"><h2>Produtos adicionais</h2><button type="button" class="agn-link" data-acao="ir" data-view="vendas">Ver funil →</button></div><p class="vn-leg">Vendas para quem já é cliente</p>
+      <div class="pv-funil">${P.adicionais.filter((a) => a.etapa !== "Sem interesse").map((a) => `<div><span>${esc(a.etapa.replace(" Serviços Adicionais", ""))}<i><b style="width:${(a.n / mx) * 100}%"></b></i></span><b class="num">${fmtN(a.n)}</b></div>`).join("")}</div>
+      ${sug ? `<div class="pv-sug"><b>Ideia para vender:</b> ${pl(sug[1], "cliente ainda não tem", "clientes ainda não têm")} ${esc(sug[0])}.</div>` : `<div class="pv-sug">Marque os produtos de cada cliente em <b>Meus clientes</b> para ver sugestões de venda.</div>`}</section>`;
+    const cnt = (k) => P.clientes.filter((c) => c.situacao === k).length;
+    const cart = `<section class="cartao vn-cartao"><h2>Sua carteira</h2><p class="vn-leg">${pl(P.clientes.length, "cliente", "clientes")} no acompanhamento</p><div class="pv-cart"><div class="pv-ok"><b class="num">${cnt("Satisfeito")}</b><span>satisfeitos</span></div><div><b class="num">${cnt("Acompanhamento")}</b><span>em acompanhamento</span></div><div class="pv-ruim"><b class="num">${cnt("Insatisfeito")}</b><span>insatisfeitos</span></div><div><b class="num">${cnt("Contato")}</b><span>para contatar</span></div></div></section>`;
+    return `<div class="vn pedaco" data-pedaco="pos">${hero}<div class="vn-duas"><div class="vn-col">${secHoje}${semana}</div><div class="vn-col">${atenHtml}${adic}${cart}</div></div></div>` + pvGavetas();
+  }
+  function pvGavetas() { const P = S.pv; const v = P.vis ? P.visitas.find((x) => x.id === P.vis) : null; const c = P.sel ? pvCliente(P.sel) : null; return v ? gaveta(painelVisita(v), "pv-fechar") : c ? gaveta(painelCliente(c), "pv-fechar") : ""; }
+
+  function telaClientes() {
+    const P = S.pv;
+    if (!P.clientes && !P.carregando && !P.erro) carregarPos(true); else if (P.clientes && !P.carregando && Date.now() - P.em > 60000) carregarPos(true);
+    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Clientes</h1><p class="fraco" style="margin:0">A carteira do pós-vendas. Marque visitas e ligações, anote como o cliente está e o que ele já usa.</p></div></div>`;
+    if (!P.clientes) return cab + `<div class="cartao vazio">${P.erro ? 'Não deu para carregar. <button type="button" class="mini" data-acao="pv-recarregar">Tentar de novo</button>' : "Carregando…"}</div>`;
+    const aten = new Set(pvAtencao().map((c) => c.ficha_id)), q = P.busca.trim().toLowerCase();
+    const abas = [["todos", "Todos"], ["atencao", "Precisam de atenção"], ...PV_SIT.map(([k, l]) => [k, l])];
+    const conta = (k) => k === "todos" ? P.clientes.length : k === "atencao" ? aten.size : P.clientes.filter((c) => c.situacao === k).length;
+    const lista = P.clientes.filter((c) => (P.aba === "todos" || (P.aba === "atencao" ? aten.has(c.ficha_id) : c.situacao === P.aba)) && (!q || `${c.nome} ${c.cidade || ""} ${c.responsavel || ""}`.toLowerCase().includes(q))).sort((a, b) => pvSemContato(b) - pvSemContato(a));
+    const prox = new Map(); for (const v of P.visitas) if (v.status === "agendada" && v.dia >= hojeISO() && !prox.has(v.ficha_id)) prox.set(v.ficha_id, v);
+    const barra = `<section class="cartao op-barra"><div class="abas" role="tablist">${abas.map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="pv-aba" data-v="${k}" aria-selected="${P.aba === k}">${l} <span class="op-n">${conta(k)}</span></button>`).join("")}</div>
+      <input type="search" id="pv-busca" class="input op-busca" placeholder="Procurar cliente, cidade ou responsável" value="${esc(P.busca)}" aria-label="Procurar"></section>`;
+    const linhas = lista.map((c) => { const v = prox.get(c.ficha_id); return `<button type="button" class="op-linha pv-linha" data-acao="pv-cliente" data-id="${c.ficha_id}">
+      <span class="op-nome"><b>${esc(c.nome)}</b><span class="t12 fraco">${esc([c.cidade, c.uf].filter(Boolean).join(" - "))}${c.qtd_condominios ? ` · ${fmtN(c.qtd_condominios)} condomínios` : ""}</span></span>
+      <span class="t12 fraco">${c.produtos.length ? esc(c.produtos.slice(0, 2).join(", ")) + (c.produtos.length > 2 ? ` +${c.produtos.length - 2}` : "") : "Produtos não marcados"}</span>
+      <span class="t13 ${pvSemContato(c) > 90 ? "pv-atr" : ""}">${v ? `${v.tipo === "visita" ? "Visita" : "Ligação"} ${ddmm(v.dia)} ${v.hora}` : esc(pvRotuloSem(c))}</span>
+      <span class="op-extra"><span class="selo ${PV_SIT_COR[c.situacao] || "s-neutro"}">${esc(PV_SIT_NOME[c.situacao] || c.situacao)}</span></span></button>`; }).join("");
+    return cab + barra + `<section class="cartao op-lista">${linhas || '<div class="vazio">Nenhum cliente aqui.</div>'}</section>` + pvGavetas();
+  }
+
+  function painelCliente(c) {
+    const P = S.pv, hj = hojeISO(), w = pvTel(c), vis = P.visitas.filter((v) => v.ficha_id === c.ficha_id).sort((a, b) => (a.quando < b.quando ? 1 : -1));
+    const nomeP = (id) => (P.pessoas.find((p) => p.id === id)?.nome || "").split(/\s+/)[0];
+    const tels = [...new Set(String([c.telefones, c.numero_responsavel].filter(Boolean).join(" / ")).split(/\s*[\/,;]\s*/).map((t) => t.trim()).filter(Boolean))];
+    return `<aside class="cartao painel op-painel" aria-label="${esc(c.nome)}"><button type="button" class="mini fechar-painel" data-acao="pv-fechar">Fechar ✕</button>
+      <div class="pilha" style="gap:2px"><h2>${esc(c.nome)}</h2><span class="t13 fraco">${esc([c.endereco, [c.cidade, c.uf].filter(Boolean).join(" - ")].filter(Boolean).join(" · "))}</span><span class="t13 fraco">${c.cliente_desde ? `Cliente desde ${ddmmaaaa(c.cliente_desde)} · ` : ""}${esc(pvRotuloSem(c))}</span></div>
+      <div class="op-contato">${c.responsavel ? `<span>Responsável: <b>${esc(c.responsavel)}</b></span>` : ""}${tels.map((t) => { const n = nacional(t); return n ? `<a href="tel:+55${n}" class="mini">${esc(fmtTel(n))}</a>` : `<span class="t13">${esc(t)}</span>`; }).join("")}${w ? `<a href="https://wa.me/55${w}" target="_blank" rel="noopener" class="mini">WhatsApp</a>` : ""}<a href="${esc(pvMapa(c))}" target="_blank" rel="noopener" class="mini">Como chegar</a></div>
+      <div class="pilha" style="gap:6px"><span class="rotulo">Como está o cliente</span><div class="linha-flex">${PV_SIT.map(([k, l]) => `<button type="button" class="pv-sit ${c.situacao === k ? "pv-sit-on" : ""} pv-sit-${k}" data-acao="pv-situacao" data-v="${k}" data-id="${c.ficha_id}" ${!c.negocio_id ? "disabled" : ""}>${l}</button>`).join("")}</div></div>
+      <div class="pilha" style="gap:6px"><span class="rotulo">Produtos que já usa</span><div class="pv-prods">${P.produtos.map((p) => `<label class="op-chip"><input type="checkbox" data-pv-prod="${p.id}" data-id="${c.ficha_id}" ${c.produtos.includes(p.nome) ? "checked" : ""}><span>${esc(p.nome)}</span></label>`).join("")}</div></div>
+      <form class="op-form" data-acao="pv-agendar" data-id="${c.ficha_id}"><span class="rotulo">Marcar visita ou ligação</span>
+        <div class="linha-flex">${[["visita", "Visita"], ["ligacao", "Ligação"]].map(([k, l], i) => `<label class="op-chip"><input type="radio" name="tipo" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}<input type="date" name="dia" class="input op-data" min="${hj}" value="${hj}" required aria-label="Dia"><input type="time" name="hora" class="input op-data" value="10:00" required aria-label="Hora" style="margin-left:0"></div>
+        <input name="objetivo" class="input" maxlength="500" placeholder="Objetivo (ex.: apresentar o Aplicativo administradora)">
+        <div><button type="submit" class="btn btn-primario" ${P.salvando ? "disabled" : ""}>Marcar</button></div></form>
+      <div class="pilha" style="gap:8px"><b class="t13">Visitas e ligações</b>${vis.length ? vis.map((v) => `<div class="op-reg"><div class="op-reg-top"><span class="op-autor op-f-pos_vendas">${esc(nomeP(v.usuario_id))}</span><span class="t12 fraco">${ddmmaaaa(v.dia)} ${v.hora} · ${v.tipo === "visita" ? "Visita" : "Ligação"}</span><span class="selo ${v.status === "feita" ? "s-conf" : v.status === "cancelada" ? "s-errado" : "s-ident"}">${v.status === "feita" ? "Feita" : v.status === "cancelada" ? "Cancelada" : "Marcada"}</span>${v.situacao_cliente ? `<span class="selo ${PV_SIT_COR[v.situacao_cliente]}">${PV_SIT_NOME[v.situacao_cliente]}</span>` : ""}${v.status === "agendada" ? `<button type="button" class="mini" data-acao="pv-registrar" data-id="${v.id}">Registrar</button>` : ""}</div>${v.objetivo ? `<p class="fraco">${esc(v.objetivo)}</p>` : ""}${v.resultado ? `<p>${esc(v.resultado)}</p>` : ""}</div>`).join("") : '<p class="fraco t13" style="margin:0">Nenhuma visita ou ligação registrada aqui ainda.</p>'}</div></aside>`;
+  }
+  function painelVisita(v) {
+    const P = S.pv, c = pvCliente(v.ficha_id) || { nome: "Cliente", situacao: "Contato" }, como = P.como;
+    return `<aside class="cartao painel op-painel" aria-label="Registrar"><button type="button" class="mini fechar-painel" data-acao="pv-fechar">Fechar ✕</button>
+      <div class="pilha" style="gap:2px"><h2>${esc(c.nome)}</h2><span class="t13 fraco">${v.tipo === "visita" ? "Visita" : "Ligação"} de ${ddmmaaaa(v.dia)} às ${v.hora}${v.objetivo ? ` · ${esc(v.objetivo)}` : ""}</span></div>
+      <form class="op-form" data-acao="pv-resultado" data-id="${v.id}"><div class="linha-flex op-como">${[["feita", "Aconteceu", "op-chip-fechou"], ["remarcar", "Remarcar", "op-chip-depois"], ["cancelada", "Não aconteceu", "op-chip-negou"]].map(([k, l, cl]) => `<label class="op-chip ${cl}"><input type="radio" name="como" value="${k}" ${como === k ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+        ${como === "feita" ? `<textarea name="resultado" class="input op-texto" rows="4" maxlength="3000" placeholder="Como foi? O que o cliente falou? Alguma oportunidade de produto adicional?"></textarea>
+          <div class="pilha" style="gap:6px"><span class="rotulo">Como está o cliente?</span><div class="linha-flex">${PV_SIT.filter(([k]) => k !== "Contato").map(([k, l]) => `<label class="op-chip ${k === "Insatisfeito" ? "op-chip-negou" : k === "Satisfeito" ? "op-chip-fechou" : ""}"><input type="radio" name="sit" value="${k}" ${c.situacao === k ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></div>` : ""}
+        ${como === "remarcar" ? `<div class="linha-flex"><input type="date" name="dia" class="input" min="${hojeISO()}" required aria-label="Novo dia"><input type="time" name="hora" class="input" value="${v.hora}" required aria-label="Nova hora"></div>` : ""}
+        <div><button type="submit" class="btn btn-primario" ${P.salvando ? "disabled" : ""}>${P.salvando ? "Salvando…" : "Salvar"}</button></div></form></aside>`;
+  }
+  app.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM" || !b.dataset.acao.startsWith("pv-")) return;
+    const P = S.pv;
+    switch (b.dataset.acao) {
+      case "pv-recarregar": carregarPos(); break;
+      case "pv-aba": P.aba = b.dataset.v; render(); break;
+      case "pv-ver-atencao": P.aba = "atencao"; S.voltarAtivo = true; S.view = "clientes"; render(); break;
+      case "pv-cliente": P.sel = b.dataset.id; P.vis = null; render(); break;
+      case "pv-registrar": P.vis = +b.dataset.id; P.como = "feita"; render(); break;
+      case "pv-fechar": if (P.vis && P.sel) P.vis = null; else { P.vis = null; P.sel = null; } render(); break;
+      case "pv-situacao": {
+        const c = pvCliente(b.dataset.id); if (!c?.negocio_id || c.situacao === b.dataset.v) break;
+        const { error } = await sb.rpc("situacao_cliente", { p_negocio: c.negocio_id, p_etapa: b.dataset.v });
+        if (error) { console.error(error); toast("Não foi possível salvar."); break; }
+        c.situacao = b.dataset.v; toast(`Cliente marcado como ${PV_SIT_NOME[b.dataset.v].toLowerCase()}.`); render(); break;
+      }
+    }
+  });
+  app.addEventListener("change", async (ev) => {
+    const t = ev.target;
+    if (t.name === "como" && t.closest('[data-acao="pv-resultado"]')) { S.pv.como = t.value; render(); return; }
+    if (t.dataset.pvProd) {
+      const id = t.dataset.id, prod = +t.dataset.pvProd, c = pvCliente(id), nomeProd = S.pv.produtos.find((p) => p.id === prod)?.nome;
+      const r = t.checked ? await sb.from("cliente_produtos").insert({ ficha_id: id, produto_id: prod }) : await sb.from("cliente_produtos").delete().eq("ficha_id", id).eq("produto_id", prod);
+      if (r.error) { console.error(r.error); toast("Não foi possível salvar."); t.checked = !t.checked; return; }
+      if (c && nomeProd) c.produtos = t.checked ? [...new Set([...c.produtos, nomeProd])].sort() : c.produtos.filter((p) => p !== nomeProd);
+    }
+  });
+  app.addEventListener("input", (ev) => { if (ev.target.id !== "pv-busca") return; clearTimeout(S.pv.espera); S.pv.espera = setTimeout(() => { const el = $("#pv-busca"); if (!el) return; S.pv.busca = el.value; const pos = el.selectionStart; renderDados(); const n = $("#pv-busca"); if (n && document.activeElement !== n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } } }, 200); });
+  app.addEventListener("submit", async (ev) => {
+    const f = ev.target, a = f.dataset.acao; if (a !== "pv-agendar" && a !== "pv-resultado") return; ev.preventDefault();
+    const P = S.pv; if (P.salvando) return; const fd = new FormData(f);
+    P.salvando = true; render();
+    try {
+      if (a === "pv-agendar") {
+        const dia = String(fd.get("dia") || ""), hora = String(fd.get("hora") || "10:00");
+        if (!dia || dia < hojeISO()) throw new Error("dia");
+        const { error } = await sb.from("visitas").insert({ ficha_id: f.dataset.id, usuario_id: S.user.id, tipo: String(fd.get("tipo") || "visita"), quando: tsSP(dia, hora), objetivo: String(fd.get("objetivo") || "").trim() || null });
+        if (error) throw error; toast(`Marcado para ${ddmm(dia)} às ${hora}.`);
+      } else {
+        const id = +f.dataset.id, v = P.visitas.find((x) => x.id === id), como = String(fd.get("como") || "feita");
+        if (como === "feita") {
+          const sit = String(fd.get("sit") || "") || null;
+          const { error } = await sb.from("visitas").update({ status: "feita", feita_em: new Date().toISOString(), resultado: String(fd.get("resultado") || "").trim() || null, situacao_cliente: sit }).eq("id", id);
+          if (error) throw error;
+          const c = pvCliente(v.ficha_id); if (sit && c?.negocio_id && c.situacao !== sit) { const r = await sb.rpc("situacao_cliente", { p_negocio: c.negocio_id, p_etapa: sit }); if (r.error) throw r.error; }
+          toast("Registrado.");
+        } else if (como === "remarcar") {
+          const dia = String(fd.get("dia") || ""), hora = String(fd.get("hora") || v.hora); if (!dia || dia < hojeISO()) throw new Error("dia");
+          const { error } = await sb.from("visitas").update({ quando: tsSP(dia, hora) }).eq("id", id); if (error) throw error; toast(`Remarcado para ${ddmm(dia)} às ${hora}.`);
+        } else { const { error } = await sb.from("visitas").update({ status: "cancelada" }).eq("id", id); if (error) throw error; toast("Marcada como não aconteceu."); }
+        P.vis = null;
+      }
+      P.salvando = false; await carregarPos(true);
+    } catch (e) { console.error(e); toast(e.message === "dia" ? "Escolha hoje ou um dia que ainda vai chegar." : "Não foi possível salvar. Tente de novo."); }
+    finally { P.salvando = false; render(); }
+  });
+
   /* ------------------------------------------------- Oportunidades (pós-demo) */
   // Administradoras que viram a demo e ainda não fecharam. O time anota cada contato de negociação
   // (cada anotação guarda quem fez) e marca como ficou: em negociação, deixou para depois, negou ou fechou.
@@ -4359,7 +4552,7 @@
 
   /* ------------------------------------------------------------- início */
   /* ---- rota: a tela atual fica no endereço (#/vendas?funil=SCC). F5 volta para o mesmo lugar e o Voltar do navegador funciona */
-  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "oportunidades", "agenda", "relatorios", "indicadores", "concorrencia", "listas", "equipe"];
+  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "oportunidades", "clientes", "agenda", "relatorios", "indicadores", "concorrencia", "listas", "equipe"];
   const ROTA = {
     mapeamento: { emp: [() => S.sel, (v) => { S.rotaEmp = v; }] },
     adms: {

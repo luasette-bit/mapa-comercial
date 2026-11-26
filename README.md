@@ -78,3 +78,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Menu do vendedor sem Mapeamento, Região e Listas.
 - Dados: `agenda_vendedor()` (security definer, só o necessário das fichas da SDR). "Registrar resultado" chama `resultado_demo()`: Aconteceu grava o registro de Demo realizada na ficha da SDR (os relatórios dela continuam certos) com o vendedor como apresentador; Reagendar muda a data da demo; Não aconteceu marca a demo.
 - As classes das telas de Indicadores que tinham o mesmo nome do Início (in-cab, in-cartao, in-data, in-eixo, in-grade, in-trilho) passaram a se chamar bi-*.
+
+## Pós-vendas (v62)
+- Quem tem a função **Pós-vendas** abre o sistema numa tela própria: visitas e ligações de hoje em destaque (endereço, contato, desde quando é cliente, produtos que já usa, o que dá para oferecer, Como chegar e WhatsApp), visitas sem resultado, próximas, a semana, Clientes que precisam de atenção (insatisfeitos ou 90+ dias sem contato), Produtos adicionais (funil de Serviços Adicionais + sugestão de venda) e Sua carteira.
+- Aba **Clientes** (pós-vendas e admin): a carteira = fichas no Funil de Acompanhamento, vinda de `carteira_clientes()` (security definer). Na ficha do cliente: como está (Para contatar, Em acompanhamento, Satisfeito, Insatisfeito, via `situacao_cliente()`), produtos que já usa (`cliente_produtos`), marcar visita ou ligação e o histórico.
+- `visitas`: visita presencial ou ligação de acompanhamento, com resultado e como o cliente ficou. As da pessoa aparecem também na Agenda (verde).
+- Menu do pós-vendas: Início, Agenda, Clientes, Vendas e Administradoras.
