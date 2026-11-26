@@ -3463,7 +3463,7 @@
   S.op = { lista: null, contatos: [], pessoas: [], carregando: false, erro: false, em: 0, aba: "negociando", busca: "", sel: null, como: "negociando", salvando: false };
   const OP_SIT = { negociando: "Em negociação", depois: "Deixou para depois", negou: "Negou", fechou: "Fechou contrato" };
   const OP_ABAS = [["negociando", "Em negociação"], ["depois", "Retomar depois"], ["negou", "Negaram"], ["fechou", "Fecharam"]];
-  const OP_MOTIVOS = [["preco", "Preço"], ["contrato_atual", "Contrato com o sistema atual"], ["sem_momento", "Não é o momento"], ["funcionalidade", "Faltou alguma funcionalidade"], ["outro_sistema", "Escolheu outro sistema"], ["nao_responde", "Parou de responder"], ["outro", "Outro motivo"]];
+  const OP_MOTIVOS = [["preco", "Preço"], ["contrato_atual", "Contrato com o sistema atual"], ["sem_momento", "Não é o momento"], ["funcionalidade", "Faltou alguma funcionalidade"], ["nao_gostou", "Não gostou do sistema (uso ou visual)"], ["sem_diferencial", "Não viu vantagem sobre o atual"], ["outro_sistema", "Escolheu outro sistema"], ["nao_responde", "Parou de responder"], ["outro", "Outro motivo"]];
   const OP_MOTIVO = Object.fromEntries(OP_MOTIVOS);
   const OP_CANAIS = [["ligacao", "Ligação"], ["whatsapp", "WhatsApp"], ["email", "E-mail"], ["reuniao", "Reunião"]];
   const OP_CANAL = Object.fromEntries(OP_CANAIS);
