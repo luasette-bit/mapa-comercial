@@ -3490,7 +3490,7 @@
     return (O.lista || []).map((o) => { const cs = porFicha.get(o.ficha_id) || []; return { ...o, aba: o.contrato ? "fechou" : o.situacao === "fechou" ? "fechou" : o.situacao, contatos: cs, ultimo: cs[0] || null }; });
   }
   const opVence = (o) => o.aba === "depois" && o.retomar_em && o.retomar_em <= hojeISO();
-  function rotuloNavOp() { const n = S.op.lista ? opItens().filter(opVence).length : 0; return n ? `Oportunidades <span class="contador">${n}</span>` : "Oportunidades"; }
+  function rotuloNavOp() { return "Oportunidades"; }
   const opPessoa = (id) => { const p = S.op.pessoas.find((x) => x.id === id); return { nome: (p?.nome || "").split(/\s+/)[0] || "Alguém", funcao: p?.funcao || "sdr", eu: id === S.user.id }; };
 
   function telaOportunidades() {
@@ -3506,7 +3506,7 @@
     if (O.aba === "negociando") lista.sort((a, b) => (ult(a) < ult(b) ? -1 : 1)); // quem está há mais tempo sem contato primeiro
     else if (O.aba === "depois") lista.sort((a, b) => ((a.retomar_em || "9") < (b.retomar_em || "9") ? -1 : 1));
     else lista.sort((a, b) => ((b.contrato || ult(b)) < (a.contrato || ult(a)) ? -1 : 1));
-    const barra = `<section class="cartao op-barra"><div class="abas" role="tablist">${OP_ABAS.map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="op-aba" data-v="${k}" aria-selected="${O.aba === k}">${l} <span class="op-n">${conta(k)}</span>${k === "depois" && vencem ? ` <span class="contador">${vencem}</span>` : ""}</button>`).join("")}</div>
+    const barra = `<section class="cartao op-barra"><div class="abas" role="tablist">${OP_ABAS.map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="op-aba" data-v="${k}" aria-selected="${O.aba === k}">${l} <span class="op-n">${conta(k)}</span></button>`).join("")}</div>
       <input type="search" id="op-busca" class="input op-busca" placeholder="Procurar administradora, cidade ou sistema" value="${esc(O.busca)}" aria-label="Procurar"></section>`;
     const linha = (o) => {
       const u = o.ultimo, p = u ? opPessoa(u.usuario_id) : null;
