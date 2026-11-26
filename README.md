@@ -98,3 +98,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Banco: gatilhos `registro_corrigido_*` atualizam a ficha e o negócio quando o resultado muda (só avançam, como no registro novo).
 - "Conversei" / "Consegui contato" passou a se chamar **Contato realizado**.
 - Banco: "sem_contato" aceito em `registros.detalhes` (o Salvar com "Sem contato" falhava).
+
+## v65 — Calendário de escolher data no visual da Agenda
+- Todos os campos de data (e data com hora) usam um calendário próprio no computador: grade igual à da Agenda, dia escolhido em azul, hoje destacado, pontinho roxo nos dias que já têm retorno ou demo, atalhos (Amanhã, 1 semana, 1 mês, 6 meses), Limpar / Hoje / Escolher. Campos com hora ganham o campo Hora dentro do calendário.
+- O campo mostra o dia da semana ao lado da data (some em campo estreito). Continua dando para digitar a data.
+- No celular fica o calendário do próprio aparelho.
+- Feito sem mexer nas telas: cada campo de data é preparado sozinho quando aparece (MutationObserver), respeitando min/max.

@@ -4838,5 +4838,93 @@
     if (evento === "SIGNED_IN" && !S.user && !S.recuperando && !iniciando) { iniciar(); return; }
     if (evento === "SIGNED_OUT") { S.user = null; S.perfil = null; S.pendentes = 0; S.equipe = null; S.lg = { ...S.lg, dono: null, carregado: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, sel: null, novo: false }; S.ag = { ...S.ag, fichas: [], carregado: false, cnpjs: new Set() }; S.rows = []; S.sel = null; S.selRow = null; S.menu = false; render(); }
   });
+
+  /* ---- Calendário de escolher data, no visual da Agenda (troca o calendário do navegador nos campos de data).
+     No celular continua o calendário do próprio aparelho, que é melhor para o dedo. */
+  const DP = { el: null, input: null, mes: null, sel: null };
+  const dpFino = () => window.matchMedia("(pointer: fine)").matches;
+  const dpIso = (d) => d.toISOString().slice(0, 10);
+  function dpMarcados() {
+    const set = new Set(), add = (ts) => { if (ts) set.add(localSP(ts).slice(0, 10)); };
+    for (const f of S.lg?.fichas || []) { add(f.retorno_em); if (f.etapa === "demo_agendada") add(f.demo_em); }
+    return set;
+  }
+  function dpDesenhar() {
+    const P = DP.el, inp = DP.input; if (!P || !inp) return;
+    const ini = isoData(DP.mes + "-01"), dow = ini.getUTCDay(), hoje = hojeISO(), min = (inp.min || "").slice(0, 10), max = (inp.max || "").slice(0, 10), marc = dpMarcados();
+    const cel = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(ini); d.setUTCDate(1 - dow + i); const iso = dpIso(d), fora = iso.slice(0, 7) !== DP.mes, off = (min && iso < min) || (max && iso > max);
+      cel.push(`<button type="button" class="dp-d${fora ? " fora" : ""}${[0, 6].includes(d.getUTCDay()) ? " fds" : ""}${iso === hoje ? " hoje" : ""}${iso === DP.sel ? " sel" : ""}${marc.has(iso) ? " tem" : ""}" data-dp="dia" data-v="${iso}" ${off ? "disabled" : ""}><span>${d.getUTCDate()}</span></button>`);
+    }
+    const nome = MESES[+DP.mes.slice(5, 7) - 1];
+    const comHora = inp.type === "datetime-local", hora = comHora ? (inp.value.slice(11, 16) || DP.hora || "09:00") : "";
+    P.innerHTML = `<div class="dp-cab"><b class="dp-mes">${nome[0].toUpperCase() + nome.slice(1)} de ${DP.mes.slice(0, 4)}</b><button type="button" class="dp-nav" data-dp="ant" aria-label="Mês anterior">‹</button><button type="button" class="dp-nav" data-dp="prox" aria-label="Próximo mês">›</button></div>
+      <div class="dp-g">${["D", "S", "T", "Q", "Q", "S", "S"].map((x) => `<span class="dp-s">${x}</span>`).join("")}${cel.join("")}</div>
+      ${marc.size ? `<div class="dp-leg"><i></i> dia que já tem retorno ou demo marcados</div>` : ""}
+      ${comHora ? `<div class="dp-hora"><label for="dp-hora">Hora</label><input id="dp-hora" type="time" class="input" value="${hora}" step="300"></div>` : ""}
+      <div class="dp-atalhos">${[["1", "Amanhã"], ["7", "1 semana"], ["30", "1 mês"], ["182", "6 meses"]].map(([n, l]) => `<button type="button" data-dp="atalho" data-v="${n}" class="${DP.sel === somaDias(hoje, +n) ? "on" : ""}">${l}</button>`).join("")}</div>
+      <div class="dp-rod"><button type="button" class="dp-lk" data-dp="limpar">Limpar</button><button type="button" class="dp-lk" data-dp="hoje">Hoje</button><button type="button" class="dp-ok" data-dp="ok">Escolher</button></div>`;
+  }
+  function dpPosicionar() {
+    const P = DP.el, inp = DP.input; if (!P || !inp?.isConnected) return dpFechar();
+    const r = inp.getBoundingClientRect(), w = P.offsetWidth, h = P.offsetHeight, vw = innerWidth, vh = innerHeight;
+    let top = r.bottom + 8; if (top + h > vh - 8 && r.top - h - 8 > 8) top = r.top - h - 8; top = Math.max(8, Math.min(top, vh - h - 8));
+    P.style.top = top + "px"; P.style.left = Math.max(8, Math.min(r.left, vw - w - 8)) + "px";
+  }
+  function dpAbrir(inp) {
+    if (DP.input === inp && DP.el) return;
+    dpFechar();
+    DP.input = inp; DP.sel = inp.value ? inp.value.slice(0, 10) : null; DP.mes = (DP.sel || hojeISO()).slice(0, 7);
+    DP.el = document.createElement("div"); DP.el.className = "dp"; DP.el.setAttribute("role", "dialog"); DP.el.setAttribute("aria-label", "Escolher data");
+    document.body.appendChild(DP.el); dpDesenhar(); dpPosicionar();
+    inp.closest(".dp-wrap")?.classList.add("dp-aberto");
+  }
+  function dpFechar() { DP.input?.closest(".dp-wrap")?.classList.remove("dp-aberto"); DP.el?.remove(); DP.el = null; DP.input = null; }
+  function dpAplicar(valor) {
+    const inp = DP.input; if (!inp) return;
+    if (valor && inp.type === "datetime-local") valor += "T" + ($("#dp-hora")?.value || "09:00");
+    inp.value = valor || "";
+    inp.dispatchEvent(new Event("input", { bubbles: true })); inp.dispatchEvent(new Event("change", { bubbles: true }));
+    dpSemana(inp); dpFechar(); inp.focus({ preventScroll: true });
+  }
+  function dpSemana(inp) {
+    const w = inp.closest(".dp-wrap"), sp = w?.querySelector(".dp-sem"); if (!sp) return;
+    const v = inp.value.slice(0, 10); sp.textContent = v && inp.type === "date" ? DIAS[isoData(v).getUTCDay()] : "";
+  }
+  // campo estreito: esconde o dia da semana para não encostar na data
+  const dpTamanho = new ResizeObserver((es) => es.forEach((e) => e.target.classList.toggle("dp-estreito", e.contentRect.width < 250)));
+  // embrulha cada campo de data (uma vez) com o ícone e o dia da semana
+  function dpPreparar(raiz) {
+    if (!dpFino()) return;
+    raiz.querySelectorAll('input[type="date"]:not([data-dp-ok]), input[type="datetime-local"]:not([data-dp-ok])').forEach((inp) => {
+      inp.dataset.dpOk = "1"; inp.classList.add("dp-on");
+      const w = document.createElement("span"); w.className = "dp-wrap"; inp.parentNode.insertBefore(w, inp); w.appendChild(inp);
+      w.insertAdjacentHTML("beforeend", `<span class="dp-sem" aria-hidden="true"></span><button type="button" class="dp-ico" tabindex="-1" aria-label="Abrir calendário"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>`);
+      dpSemana(inp); dpTamanho.observe(w);
+    });
+  }
+  new MutationObserver(() => { dpPreparar(app); if (DP.input && !DP.input.isConnected) dpFechar(); }).observe(app, { childList: true, subtree: true });
+  dpPreparar(app);
+  document.addEventListener("mousedown", (ev) => {
+    if (DP.el && !DP.el.contains(ev.target) && !ev.target.closest?.(".dp-wrap")) dpFechar();
+  });
+  document.addEventListener("click", (ev) => {
+    const ico = ev.target.closest?.(".dp-ico"); if (ico) { ev.preventDefault(); const inp = ico.parentNode.querySelector("input"); if (DP.input === inp) dpFechar(); else dpAbrir(inp); return; }
+    const inp = ev.target.closest?.("input.dp-on"); if (inp && !inp.disabled && !inp.readOnly) { dpAbrir(inp); return; }
+    const b = ev.target.closest?.("[data-dp]"); if (!b || !DP.el?.contains(b)) return;
+    const k = b.dataset.dp;
+    if (k === "ant" || k === "prox") { const d = isoData(DP.mes + "-01"); d.setUTCMonth(d.getUTCMonth() + (k === "ant" ? -1 : 1)); DP.hora = $("#dp-hora")?.value; DP.mes = dpIso(d).slice(0, 7); dpDesenhar(); dpPosicionar(); }
+    else if (k === "dia") { DP.sel = b.dataset.v; DP.hora = $("#dp-hora")?.value; DP.mes = DP.sel.slice(0, 7); dpDesenhar(); }
+    else if (k === "atalho") { DP.sel = somaDias(hojeISO(), +b.dataset.v); DP.hora = $("#dp-hora")?.value; DP.mes = DP.sel.slice(0, 7); dpDesenhar(); dpPosicionar(); }
+    else if (k === "hoje") { DP.sel = hojeISO(); DP.hora = $("#dp-hora")?.value; DP.mes = DP.sel.slice(0, 7); dpDesenhar(); dpPosicionar(); }
+    else if (k === "limpar") dpAplicar("");
+    else if (k === "ok") { if (!DP.sel) { toast("Escolha um dia."); return; } dpAplicar(DP.sel); }
+  });
+  document.addEventListener("dblclick", (ev) => { const b = ev.target.closest?.('[data-dp="dia"]'); if (b && DP.el?.contains(b)) dpAplicar(b.dataset.v); });
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && DP.el) { ev.stopPropagation(); dpFechar(); } }, true);
+  document.addEventListener("input", (ev) => { if (ev.target.classList?.contains("dp-on")) dpSemana(ev.target); });
+  addEventListener("resize", () => DP.el && dpPosicionar());
+  document.addEventListener("scroll", () => DP.el && dpPosicionar(), true);
   iniciar();
 })();
