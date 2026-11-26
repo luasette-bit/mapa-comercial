@@ -2683,43 +2683,99 @@
   function telaAgenda() {
     const A = S.ag, hj = hojeISO();
     const st = avisosStatus();
-    const botaoAviso = st === "granted" ? `<span class="selo s-conf" style="align-self:center">Avisos ligados neste aparelho</span>`
-      : st === "denied" ? `<span class="t12 fraco" style="max-width:300px">Os avisos estão bloqueados neste navegador. Libere em Configurações do site → Notificações.</span>`
-      : st === "sem" ? "" : `<button type="button" class="btn btn-sec" data-acao="av-ativar">${ICONE.sino.replace('width="20" height="20"', 'width="18" height="18"')} Ativar avisos na hora</button>`;
-    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Agenda</h1><p class="fraco" style="margin:0">Os retornos que você marcou e as demonstrações agendadas. Clique para abrir a ficha. No computador, arraste um retorno para outro dia para remarcar.</p></div><div class="linha-flex">${botaoAviso}</div></div>`;
+    const botaoAviso = st === "granted" ? "" : st === "denied" || st === "sem" ? "" : `<button type="button" class="btn btn-sec" data-acao="av-ativar">${ICONE.sino.replace('width="20" height="20"', 'width="18" height="18"')} Ativar avisos</button>`;
+    const cab = `<div class="cabeca agn-cab"><div class="pilha" style="gap:4px"><h1>Agenda</h1><p class="fraco" style="margin:0">Organize seus contatos e próximos passos</p></div><div class="linha-flex">${botaoAviso}<button type="button" class="btn btn-primario agn-novo" data-acao="agn-novo">+ Novo compromisso</button></div></div>`;
     if (!A.carregado) { carregarAgenda(); return cab + `<div class="cartao vazio">Carregando a agenda…</div>`; }
     const itens = itensAgenda(), porDia = new Map();
     for (const i of itens) { if (!porDia.has(i.dia)) porDia.set(i.dia, []); porDia.get(i.dia).push(i); }
     const atrasados = itens.filter((i) => i.tipo === "retorno" && i.dia < hj);
-    const doDia = porDia.get(A.dia) || [];
-    const nomeDia = A.dia === hj ? "Hoje" : A.dia === somaDias(hj, 1) ? "Amanhã" : DIAS[isoData(A.dia).getUTCDay()];
-    const proximos = itens.filter((i) => i.dia > A.dia).slice(0, 6);
-    const lista = `<section class="cartao ag-lado pad pilha" style="gap:14px">
-      ${atrasados.length ? `<div class="pilha" style="gap:8px"><b class="t13" style="color:var(--vermelho)">Atrasados · ${atrasados.length}</b><span class="t12 fraco">Retornos que passaram do dia sem contato registrado.</span>${atrasados.map(itemLista).join("")}</div>` : ""}
-      <div class="pilha" style="gap:8px"><b class="t13">${nomeDia}, ${ddmm(A.dia)} · ${doDia.length} ${doDia.length === 1 ? "compromisso" : "compromissos"}</b>${doDia.length ? doDia.map(itemLista).join("") : `<span class="t13 fraco">Nada marcado ${A.dia === hj ? "para hoje" : "neste dia"}.</span>`}</div>
-      ${proximos.length ? `<div class="pilha" style="gap:8px"><b class="t13">Depois</b>${proximos.map((i) => itemLista(i).replace('class="ag-hora num">' + i.hora, `class="ag-hora num">${ddmm(i.dia)}<br>${i.hora}`)).join("")}</div>` : ""}
-    </section>`;
+    const deHoje = porDia.get(hj) || [];
+    const pendentes = itens.filter((i) => i.tipo === "retorno" && i.dia >= hj);
+    // foco do dia: ligar para quem tem retorno hoje ou atrasado; concluídas = administradoras com contato registrado hoje
+    const aLigar = [...new Map([...atrasados, ...deHoje.filter((i) => i.tipo === "retorno")].map((i) => [i.f.id, i])).values()];
+    const feitas = new Set((S.lg.regs || []).filter((r) => r.data === hj && r.usuario_id === S.user.id && LIGACAO.has(r.tipo)).map((r) => r.ficha_id));
+    const total = aLigar.length + [...feitas].filter((id) => !aLigar.some((i) => i.f.id === id)).length;
+    const h = +localSP(new Date().toISOString()).slice(11, 13), saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+    const nome = (S.perfil?.nome || "").split(/\s+/)[0];
+    const demosHoje = deHoje.filter((i) => i.tipo === "demo").length;
+    const foco = aLigar.length ? `Hoje, seu foco recomendado é <span class="agn-azul">ligar para ${aLigar.length} ${aLigar.length === 1 ? "administradora" : "administradoras"}.</span>`
+      : demosHoje ? `Hoje você tem <span class="agn-azul">${demosHoje} ${demosHoje === 1 ? "demonstração" : "demonstrações"}.</span>` : `Nenhum retorno para hoje. <span class="agn-azul">Bom dia para prospectar.</span>`;
+    const sub = [atrasados.length ? `${atrasados.length} ${atrasados.length === 1 ? "retorno atrasado" : "retornos atrasados"}` : "", deHoje.filter((i) => i.tipo === "retorno").length ? `${deHoje.filter((i) => i.tipo === "retorno").length} para hoje` : "", demosHoje && aLigar.length ? `${demosHoje} ${demosHoje === 1 ? "demonstração" : "demonstrações"} hoje` : ""].filter(Boolean);
+    const pct = total ? Math.round((feitas.size / total) * 100) : 0;
+    const hero = `<section class="agn-hero"><div class="agn-hero-txt"><span class="agn-oi">${ICONE_SOL} ${saud}, ${esc(nome)}!</span><b class="agn-foco-t">Seu foco de hoje</b><p class="agn-foco">${foco}</p>${sub.length ? `<span class="agn-sub">Há ${sub.join(", ").replace(/, ([^,]*)$/, " e $1")}.</span>` : ""}
+      ${total ? `<div class="agn-prog"><span><b class="num">${fmtN(Math.min(feitas.size, total))}</b> de <b class="num">${fmtN(total)}</b> concluídas</span><span class="agn-trilho"><i style="width:${Math.min(100, pct)}%"></i></span></div>` : ""}</div>
+      <div class="agn-hero-acoes"><span class="agn-icones" aria-hidden="true">${ICONE_CAL}${ICONE_FONE}</span>${aLigar.length ? `<div class="linha-flex"><button type="button" class="btn btn-primario agn-comecar" data-acao="ag-abrir" data-id="${aLigar[0].f.id}">${ICONE_FONE_P} Começar ligações</button><button type="button" class="agn-link" data-acao="agn-lista">Ver lista →</button></div>` : ""}</div></section>`;
+    const card = (ic, rot, val, cls = "") => `<div class="agn-num ${cls}"><span class="agn-num-ic">${ic}</span><span class="pilha" style="gap:0"><span class="agn-num-r">${rot}</span><b>${val}</b></span></div>`;
+    const nums = `<div class="agn-nums">${card(ICONE_CAL, "Hoje", `${deHoje.length} ${deHoje.length === 1 ? "compromisso" : "compromissos"}`)}${card(AGN_RELOGIO, "Pendentes", `${pendentes.length} ${pendentes.length === 1 ? "retorno" : "retornos"}`)}${card(ICONE_ALERTA, "Atrasados", `${atrasados.length} ${atrasados.length === 1 ? "item" : "itens"}`, atrasados.length ? "agn-num-atr" : "")}</div>`;
+    // calendário
     let corpo;
+    const chip = (i) => { const atr = i.tipo === "retorno" && i.dia < hj;
+      return `<button type="button" class="agn-ev ${i.tipo === "demo" ? "agn-ev-demo" : atr ? "agn-ev-atr" : ""}" data-acao="ag-abrir" data-id="${i.f.id}" ${i.tipo === "retorno" ? 'draggable="true" data-arrastar="1"' : ""} title="${esc(`${i.hora} · ${i.f.nome}${i.tipo === "demo" ? " (demonstração)" : i.f.retorno_nota ? " · " + i.f.retorno_nota : ""}`)}"><span class="agn-ev-l1"><b class="num">${i.hora}</b> ${esc(i.f.nome)}</span><span class="agn-ev-l2">${i.tipo === "demo" ? "Demonstração" : esc(i.f.retorno_nota || i.f.responsavel || "Retorno")}</span></button>`; };
     if (A.modo === "mes") {
       const ini = A.ref.slice(0, 8) + "01", fimM = (() => { const d = isoData(ini); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return d.toISOString().slice(0, 10); })();
       const dias = []; for (let d = segundaDe(ini); d <= somaDias(segundaDe(fimM), 6); d = somaDias(d, 1)) dias.push(d);
-      corpo = `<div class="ag-grade">${["seg", "ter", "qua", "qui", "sex", "sáb", "dom"].map((d) => `<span class="ag-sem">${d}</span>`).join("")}${dias.map((d) => { const its = porDia.get(d) || [];
-        return `<div class="ag-dia ${d.slice(0, 7) !== ini.slice(0, 7) ? "ag-fora" : ""} ${d === hj ? "ag-hoje" : ""} ${d === A.dia ? "ag-sel" : ""}" data-dia="${d}"><button type="button" class="ag-num num" data-acao="ag-dia" data-dia="${d}" aria-label="${ddmm(d)}: ${its.length} compromissos">${+d.slice(8)}</button>${its.slice(0, 3).map(itemCal).join("")}${its.length > 3 ? `<button type="button" class="ag-mais" data-acao="ag-dia" data-dia="${d}">+${its.length - 3} mais</button>` : ""}</div>`; }).join("")}</div>`;
+      corpo = `<div class="agn-grade">${["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => `<span class="agn-sem">${d}</span>`).join("")}${dias.map((d) => { const its = porDia.get(d) || [];
+        return `<div class="ag-dia agn-dia ${d.slice(0, 7) !== ini.slice(0, 7) ? "agn-fora" : ""} ${d === hj ? "agn-hoje" : ""} ${d === A.dia && d !== hj ? "agn-sel" : ""}" data-dia="${d}"><button type="button" class="agn-n num" data-acao="ag-dia" data-dia="${d}" aria-label="${ddmm(d)}: ${its.length} compromissos">${+d.slice(8)}</button>${its.slice(0, 3).map(chip).join("")}${its.length > 3 ? `<button type="button" class="agn-mais" data-acao="ag-dia" data-dia="${d}">+${its.length - 3} mais</button>` : ""}</div>`; }).join("")}</div>`;
     } else {
       const ini = segundaDe(A.ref), dias = [0, 1, 2, 3, 4, 5, 6].map((n) => somaDias(ini, n));
-      corpo = `<div class="ag-semana">${dias.map((d) => { const its = porDia.get(d) || [];
-        return `<div class="ag-dia ag-col ${d === hj ? "ag-hoje" : ""} ${d === A.dia ? "ag-sel" : ""}" data-dia="${d}"><button type="button" class="ag-num" data-acao="ag-dia" data-dia="${d}"><span class="t12 fraco">${DIAS[isoData(d).getUTCDay()].slice(0, 3)}</span> <b class="num">${ddmm(d)}</b></button>${its.map(itemCal).join("") || '<span class="t12 fraco" style="padding:4px 2px">—</span>'}</div>`; }).join("")}</div>`;
+      corpo = `<div class="agn-grade agn-grade-sem">${dias.map((d) => `<span class="agn-sem">${DIAS[isoData(d).getUTCDay()].slice(0, 3)} ${ddmm(d)}</span>`).join("")}${dias.map((d) => { const its = porDia.get(d) || [];
+        return `<div class="ag-dia agn-dia agn-col ${d === hj ? "agn-hoje" : ""} ${d === A.dia && d !== hj ? "agn-sel" : ""}" data-dia="${d}">${its.map(chip).join("") || '<span class="t12 fraco" style="padding:6px">—</span>'}</div>`; }).join("")}</div>`;
     }
     const mesNome = MESES[+A.ref.slice(5, 7) - 1], titulo = A.modo === "mes" ? `${mesNome[0].toUpperCase() + mesNome.slice(1)} de ${A.ref.slice(0, 4)}` : `${ddmm(segundaDe(A.ref))} a ${ddmm(somaDias(segundaDe(A.ref), 6))}`;
-    const cal = `<section class="cartao ag-cal pad pilha" style="gap:12px">
-      <div class="linha-flex" style="justify-content:space-between">
-        <div class="abas" role="tablist">${[["mes", "Mês"], ["semana", "Semana"]].map(([k, l]) => `<button type="button" role="tab" class="aba" data-acao="ag-modo" data-v="${k}" aria-selected="${A.modo === k}">${l}</button>`).join("")}</div>
-        <div class="linha-flex"><button type="button" class="mini" data-acao="ag-nav" data-v="-1" aria-label="Anterior">←</button><b style="min-width:170px;text-align:center">${titulo}</b><button type="button" class="mini" data-acao="ag-nav" data-v="1" aria-label="Próximo">→</button><button type="button" class="mini" data-acao="ag-hoje">Hoje</button></div>
-      </div>${corpo}
-      <span class="linha-flex t12 fraco" style="gap:14px"><span><i class="ag-leg"></i>Retorno</span><span><i class="ag-leg ag-leg-demo"></i>Demonstração</span><span><i class="ag-leg ag-leg-atr"></i>Atrasado</span></span>
-    </section>`;
-    return cab + `<div class="ag-duas">${lista}${cal}</div>`;
+    const cal = `<section class="agn-cal"><div class="agn-cal-top"><div class="linha-flex"><button type="button" class="agn-seta" data-acao="ag-nav" data-v="-1" aria-label="Anterior">‹</button><button type="button" class="agn-seta" data-acao="ag-nav" data-v="1" aria-label="Próximo">›</button><b class="agn-mes">${titulo}</b></div>
+      <div class="linha-flex"><div class="agn-seg" role="tablist">${[["mes", "Mês"], ["semana", "Semana"]].map(([k, l]) => `<button type="button" role="tab" data-acao="ag-modo" data-v="${k}" aria-selected="${A.modo === k}">${l}</button>`).join("")}</div><button type="button" class="agn-hojebt" data-acao="ag-hoje">Hoje</button></div></div>${corpo}</section>`;
+    // lado direito: compromissos do dia escolhido e retornos prioritários (atrasados)
+    const doDia = (porDia.get(A.dia) || []).filter((i) => A.dia !== hj || i.tipo === "demo" || !i.ts || new Date(i.ts) >= new Date(Date.now() - 30 * 60e3) || true);
+    const linhaLado = (i, comData) => { const atr = i.tipo === "retorno" && i.dia < hj;
+      return `<button type="button" class="agn-li" data-acao="ag-abrir" data-id="${i.f.id}"><span class="agn-li-h num">${comData ? ddmm(i.dia) : i.hora}</span><span class="agn-li-t"><b>${esc(i.f.nome)}</b><span>${i.tipo === "demo" ? `Demonstração ${i.f.demo_formato === "presencial" ? "presencial" : "virtual"}` : esc(i.f.retorno_nota || "Ligar de novo")}</span></span><i class="agn-pt ${i.tipo === "demo" ? "agn-pt-demo" : atr ? "agn-pt-atr" : ""}"></i></button>`; };
+    const titLado = A.dia === hj ? "Próximos compromissos" : `${DIAS[isoData(A.dia).getUTCDay()][0].toUpperCase() + DIAS[isoData(A.dia).getUTCDay()].slice(1)}, ${ddmm(A.dia)}`;
+    const prior = A.todosAtr ? atrasados : atrasados.slice(0, 5);
+    const lado = `<aside class="agn-lado"><section><h2>${titLado}</h2>${doDia.length ? doDia.map((i) => linhaLado(i)).join("") : `<p class="agn-vazio">Nada marcado ${A.dia === hj ? "para hoje" : "neste dia"}.</p>`}</section>
+      <section id="agn-prioritarios"><div class="agn-lado-cab"><h2>Retornos prioritários</h2>${atrasados.length > 5 ? `<button type="button" class="agn-link" data-acao="agn-todos">${A.todosAtr ? "Ver menos" : "Ver todos"}</button>` : ""}</div>${prior.length ? prior.map((i) => linhaLado(i, true)).join("") : '<p class="agn-vazio">Nenhum retorno atrasado.</p>'}</section></aside>`;
+    return cab + `<div class="agn-duas"><div class="agn-esq">${hero}${nums}${cal}</div>${lado}</div>` + (A.novo ? gaveta(painelNovoCompromisso(), "agn-fechar") : "");
   }
+  const ICONE_SOL = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  const ICONE_CAL = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg>';
+  const ICONE_FONE = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/><path d="M15 3a6 6 0 0 1 6 6M15 6.5a2.5 2.5 0 0 1 2.5 2.5"/></svg>';
+  const ICONE_FONE_P = ICONE_FONE.replace(/width="24" height="24"/, 'width="18" height="18"');
+  const AGN_RELOGIO = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>';
+  const ICONE_ALERTA = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a6 6 0 0 0-6 6v3.5L4.5 15.5h15L18 12.5V9a6 6 0 0 0-6-6zM10 18a2 2 0 0 0 4 0z"/></svg>';
+  function painelNovoCompromisso() {
+    const A = S.ag, q = (A.novoBusca || "").trim().toLowerCase(), hj = hojeISO();
+    const sel = A.novoFicha ? A.fichas.find((f) => f.id === A.novoFicha) : null;
+    const achadas = q.length >= 2 ? A.fichas.filter((f) => `${f.nome} ${f.cidade || ""}`.toLowerCase().includes(q)).slice(0, 8) : [];
+    return `<aside class="cartao painel agn-novo-p" aria-label="Novo compromisso"><button type="button" class="mini fechar-painel" data-acao="agn-fechar">Fechar ✕</button>
+      <div class="pilha" style="gap:2px"><h2>Novo compromisso</h2><span class="t13 fraco">Marca um retorno para uma administradora sua. Ele aparece na agenda e avisa na hora.</span></div>
+      ${sel ? `<div class="agn-escolhida"><span class="pilha" style="gap:0"><b>${esc(sel.nome)}</b><span class="t12 fraco">${esc([sel.cidade, sel.uf].filter(Boolean).join(" - "))}</span></span><button type="button" class="mini" data-acao="agn-trocar">Trocar</button></div>`
+      : `<div class="campo"><label for="agn-busca">Administradora</label><input id="agn-busca" class="input" placeholder="Digite o nome" value="${esc(A.novoBusca || "")}" autocomplete="off"></div><div class="agn-achadas">${achadas.map((f) => `<button type="button" class="agn-li" data-acao="agn-escolher" data-id="${f.id}"><span class="agn-li-t"><b>${esc(f.nome)}</b><span>${esc([f.cidade, f.uf].filter(Boolean).join(" - "))}</span></span></button>`).join("") || (q.length >= 2 ? '<p class="agn-vazio">Nenhuma administradora com esse nome.</p>' : "")}</div>`}
+      <form class="pilha" style="gap:12px" data-acao="agn-salvar"><div class="linha-flex"><div class="campo"><label for="agn-dia">Dia</label><input id="agn-dia" name="dia" type="date" class="input" min="${hj}" value="${hj}" required></div><div class="campo"><label for="agn-hora">Hora</label><input id="agn-hora" name="hora" type="time" class="input" value="09:00" required></div></div>
+        <div class="campo"><label for="agn-nota">O que fazer</label><input id="agn-nota" name="nota" class="input" maxlength="300" placeholder="Ex.: retornar sobre a proposta"></div>
+        <div><button type="submit" class="btn btn-primario" ${sel ? "" : "disabled"}>Salvar compromisso</button></div></form></aside>`;
+  }
+  app.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-acao]"); if (!b || b.tagName === "FORM" || !b.dataset.acao.startsWith("agn-")) return;
+    const A = S.ag;
+    switch (b.dataset.acao) {
+      case "agn-novo": A.novo = true; A.novoFicha = null; A.novoBusca = ""; render(); setTimeout(() => $("#agn-busca")?.focus(), 30); break;
+      case "agn-fechar": A.novo = false; render(); break;
+      case "agn-escolher": A.novoFicha = b.dataset.id; render(); break;
+      case "agn-trocar": A.novoFicha = null; render(); setTimeout(() => $("#agn-busca")?.focus(), 30); break;
+      case "agn-todos": A.todosAtr = !A.todosAtr; render(); break;
+      case "agn-lista": $("#agn-prioritarios")?.scrollIntoView({ behavior: "smooth", block: "start" }); break;
+    }
+  });
+  app.addEventListener("input", (ev) => { if (ev.target.id !== "agn-busca") return; clearTimeout(S.ag.esperaNovo); S.ag.esperaNovo = setTimeout(() => { const el = $("#agn-busca"); if (!el) return; S.ag.novoBusca = el.value; const p = el.selectionStart; render(); const n = $("#agn-busca"); if (n) { n.focus(); try { n.setSelectionRange(p, p); } catch { /* */ } } }, 200); });
+  app.addEventListener("submit", async (ev) => {
+    const f = ev.target; if (f.dataset.acao !== "agn-salvar") return; ev.preventDefault();
+    const A = S.ag, ficha = A.fichas.find((x) => x.id === A.novoFicha); if (!ficha) { toast("Escolha a administradora."); return; }
+    const fd = new FormData(f), dia = String(fd.get("dia") || ""), hora = String(fd.get("hora") || "09:00"), nota = String(fd.get("nota") || "").trim() || null;
+    if (!dia || dia < hojeISO()) { toast("Escolha hoje ou um dia que ainda vai chegar."); return; }
+    const btn = f.querySelector("button[type=submit]"); if (btn) btn.disabled = true;
+    const { data, error } = await sb.from("fichas").update({ retorno_em: tsSP(dia, hora), retorno_nota: nota }).eq("id", ficha.id).select("retorno_em,retorno_nota").single();
+    if (error) { console.error(error); toast("Não foi possível salvar. Tente de novo."); if (btn) btn.disabled = false; return; }
+    Object.assign(ficha, data); const lf = S.lg.fichas.find((x) => x.id === ficha.id); if (lf) Object.assign(lf, data); S.dv = (S.dv || 0) + 1;
+    A.novo = false; A.dia = dia; A.ref = dia; toast(`Compromisso marcado: ${ddmm(dia)} às ${hora}, ${ficha.nome}.`); render();
+  });
   async function remarcar(id, dia) {
     const f = S.ag.fichas.find((x) => x.id === id); if (!f?.retorno_em) return;
     const hora = localSP(f.retorno_em).slice(11, 16);
