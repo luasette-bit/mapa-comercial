@@ -104,3 +104,8 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - O campo mostra o dia da semana ao lado da data (some em campo estreito). Continua dando para digitar a data.
 - No celular fica o calendário do próprio aparelho.
 - Feito sem mexer nas telas: cada campo de data é preparado sozinho quando aparece (MutationObserver), respeitando min/max.
+
+## v66 — Negativa + Follow-up
+- A negativa guarda o destino no próprio registro (`detalhes`: `follow_semestral` ou `sem_interesse`) e aparece como **Negativa + Follow-up** ou **Negativa + Sem interesse** (antes aparecia sempre "Sem interesse").
+- Negativa com follow-up vai para a coluna **Follow-up semestral** do quadro (antes caía em Sem interesse). Gatilho de correção também roda quando o destino muda.
+- As 4 negativas já registradas (todas com follow-up marcado na ficha) foram ajustadas.

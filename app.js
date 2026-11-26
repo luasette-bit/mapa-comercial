@@ -1366,7 +1366,7 @@
     ["material_enviado", "Só atende por e-mail / WhatsApp", "conversou", "material_enviado"],
     ["pediu_retorno", "Pediu para retornar", "conversou", "pediu_retorno"],
     ["sem_abertura", "Sem abertura", "conversou", "sem_abertura"],
-    ["negativa", "Sem interesse", "negativa", null],
+    ["negativa", "Negativa", "negativa", null],
     ["demo_agendada", "Demo agendada", "demo_agendada", null],
     ["demo_realizada", "Demo realizada", "demo_realizada", null],
     ["contrato", "Contrato fechado", "contrato", null],
@@ -1414,7 +1414,7 @@
   }
   const DETALHE = { nao_atende: "Não atende", caixa_postal: "Caixa postal", numero_invalido: "Número não existe", material_enviado: "Só atende por e-mail / WhatsApp", pediu_retorno: "Pediu para retornar", sem_abertura: "Sem abertura" };
   const CANAL = { ligacao: "Ligação", whatsapp: "WhatsApp", email: "E-mail" };
-  const NOME_BOTAO = Object.fromEntries(BOTOES.map(([k, l]) => [k, l]));
+  const NOME_BOTAO = { ...Object.fromEntries(BOTOES.map(([k, l]) => [k, l])), follow_semestral: "Follow-up", sem_interesse: "Sem interesse" };
   const ENVIO = { whatsapp: "WhatsApp", email: "e-mail" };
   const envioTxt = (r) => (r.envio?.length ? ` · Apresentação enviada por ${r.envio.map((k) => ENVIO[k] || k).join(" e ")}` : "");
   const rotuloReg = (r) => (r.canal && r.canal !== "ligacao" ? CANAL[r.canal] + " · " : "") + rotuloRes(r) + envioTxt(r);
@@ -2238,7 +2238,7 @@
       }
       let novo = null;
       if (res) {
-        const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data: res[2] === "demo_realizada" && demoDia && demoDia <= hojeISO() ? demoDia : data0, tipo: res[2], detalhe: escolhidos.length === 1 ? res[3] : null, detalhes: escolhidos.map((b) => b[0]), envio: envio.length ? envio : null, canal: fd.get("canal") || "ligacao", texto, apresentador: res[2] === "demo_realizada" ? String(fd.get("rg_apresentador") || "Leonardo") : null }).select().single(); if (error) throw error;
+        const { data: r, error } = await sb.from("registros").insert({ ficha_id: id, usuario_id: S.user.id, data: res[2] === "demo_realizada" && demoDia && demoDia <= hojeISO() ? demoDia : data0, tipo: res[2], detalhe: escolhidos.length === 1 ? res[3] : null, detalhes: escolhidos.map((b) => b[0]).concat(negDest === "follow" ? ["follow_semestral"] : negDest === "sem" ? ["sem_interesse"] : []), envio: envio.length ? envio : null, canal: fd.get("canal") || "ligacao", texto, apresentador: res[2] === "demo_realizada" ? String(fd.get("rg_apresentador") || "Leonardo") : null }).select().single(); if (error) throw error;
         L.regs.push(r); novo = r;
       }
       const { data: nf } = await sb.from("fichas").select(COLS_FICHA).eq("id", id).single();
@@ -2994,6 +2994,8 @@
     const mud = {};
     if (texto !== (r.texto || "")) mud.texto = texto || null;
     if (tipo !== r.tipo) { mud.tipo = tipo; mud.detalhe = null; mud.detalhes = [tipo]; }
+    const destEsc = tipo === "negativa" ? String(fd.get("neg_destino") || "") : "";
+    if (destEsc) { const base = (mud.detalhes || r.detalhes || ["negativa"]).filter((k) => k !== "follow_semestral" && k !== "sem_interesse"); mud.detalhes = base.concat(destEsc === "follow" ? "follow_semestral" : "sem_interesse"); mud.detalhe = null; }
     let ficha = null;
     if (tipo === "negativa" && RES_EDITAVEL.some(([k]) => k === r.tipo)) {
       const dest = String(fd.get("neg_destino") || "");
@@ -3289,7 +3291,7 @@
       case "rl-obs-cancelar": R.editObs = false; render(); break;
       case "rl-aj-editar": R.editAj = true; render(); break;
       case "rl-aj-cancelar": R.editAj = false; render(); break;
-      case "rl-reg-editar": Object.assign(R, { editReg: b.dataset.id, editTipo: null, editDest: null }); render(); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); break;
+      case "rl-reg-editar": { const rg = L.regs.find((x) => x.id === b.dataset.id); Object.assign(R, { editReg: b.dataset.id, editTipo: null, editDest: rg?.detalhes?.includes("follow_semestral") ? "follow" : rg?.detalhes?.includes("sem_interesse") ? "sem" : null }); } render(); document.querySelector(".gaveta .painel")?.scrollTo(0, 0); break;
       case "rl-reg-fechar": Object.assign(R, { editReg: null, editTipo: null, editDest: null }); render(); break;
       case "rl-reg-tipo": case "rl-reg-dest": {
         // guarda o que já foi escrito antes de redesenhar a gaveta
