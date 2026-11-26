@@ -1664,13 +1664,14 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .op-n { font-weight: 500; color: var(--fraco); margin-left: 2px; }
 .op-busca { flex: 1 1 260px; height: 40px; max-width: 460px; margin-left: auto; }
 .op-lista { padding: 4px 0; overflow: hidden; }
-.op-linha { display: grid; grid-template-columns: minmax(0, 1.6fr) 120px minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--linha-clara); padding: 13px 18px; min-height: 60px; }
+.op-linha { display: grid; grid-template-columns: minmax(0, 1fr) 150px 190px 210px; gap: 14px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--linha-clara); padding: 13px 18px; min-height: 60px; }
 .op-linha:last-child { border-bottom: 0; }
 .op-linha:hover { background: var(--cinza); }
 .op-nome { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .op-nome b { color: var(--azul-escuro); }
 .op-ult { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.op-extra { justify-self: end; }
+.op-extra { justify-self: end; text-align: right; }
+.op-demo { white-space: nowrap; }
 .op-autor { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: #E3EEFE; color: #0A5BB0; white-space: nowrap; }
 .op-autor.op-f-vendedor { background: #071638; color: #fff; }
 .op-autor.op-f-gestor { background: #5B7FBF; color: #fff; }
