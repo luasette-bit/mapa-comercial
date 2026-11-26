@@ -1799,3 +1799,6 @@ main.main-inicio { max-width: none; padding: 0 0 48px; gap: 0; }
 .agn-pop-lista { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 5px; }
 .agn-pop-lista .agn-ev-l1, .agn-pop-lista .agn-ev-l2 { white-space: normal; }
 @media (prefers-reduced-motion: reduce) { .agn-pop { animation: none; } }
+.agn-grade { overflow: visible; }
+.agn-grade > .agn-sem:first-child { border-top-left-radius: 13px; }
+.agn-grade > .agn-sem:nth-child(7) { border-top-right-radius: 13px; }
