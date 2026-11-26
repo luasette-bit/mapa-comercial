@@ -109,3 +109,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - A negativa guarda o destino no próprio registro (`detalhes`: `follow_semestral` ou `sem_interesse`) e aparece como **Negativa + Follow-up** ou **Negativa + Sem interesse** (antes aparecia sempre "Sem interesse").
 - Negativa com follow-up vai para a coluna **Follow-up semestral** do quadro (antes caía em Sem interesse). Gatilho de correção também roda quando o destino muda.
 - As 4 negativas já registradas (todas com follow-up marcado na ficha) foram ajustadas.
+
+## v67 — Início do gestor (Matheus)
+- Função **Gestor** (perfis.funcao = 'gestor', sem ser admin): menu Início, Indicadores, Oportunidades, Clientes, Relatórios e Agenda do time.
+- Início do gestor: meta de demos do mês com barra, 4 números do mês contra o mês anterior, o time agora (SDR, vendedor, pós-vendas), funil do mês, demos dos próximos 7 dias (com "Matheus cobre"), "Precisa da sua atenção" (demos sem resultado, oportunidades paradas há +15 dias, clientes em risco, meta) e atalhos. Os números vêm do mesmo cálculo dos Indicadores.
+- Banco: as políticas de leitura de fichas, registros, relatórios, negócios, contatos, tarefas e acumulado usam `eh_gestao()` (admin ou gestor). Escrever continua só para o dono.
+- Gestor vê a equipe toda por padrão (Relatórios com seletor de pessoa), não recebe avisos de retorno dos outros.

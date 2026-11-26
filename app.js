@@ -430,7 +430,7 @@
   let contaRedesenho = 0, contaPedaco = 0;
   function renderDados() {
     if (S.user && !S.perfil) return; // o perfil ainda não chegou: a primeira tela sai junto com ele
-    if (S.view === "inicio" && S.user && S.perfil?.aprovado && app.querySelector("main") && !ehVendedor() && !ehPos()) { if (!S.inicio.desenhado) tentarInicio(); return; }
+    if (S.view === "inicio" && S.user && S.perfil?.aprovado && app.querySelector("main") && !ehVendedor() && !ehPos() && !ehGestor()) { if (!S.inicio.desenhado) tentarInicio(); return; }
     if (!S.user || S.recuperando || !S.perfil?.aprovado || S.view === "regiao" || !app.dataset.pedacos) return render();
     const t = document.createElement("template"); t.innerHTML = htmlLogado();
     const novos = [...t.content.querySelectorAll("[data-pedaco]")];
@@ -456,6 +456,7 @@
     if (ehVendedor()) for (const k of ["mapeamento", "regiao", "listas"]) { const i = nav.findIndex((x) => x[0] === k); if (i >= 0) nav.splice(i, 1); }
     if (ehPos() || S.perfil?.papel === "admin") nav.splice(nav.findIndex((x) => x[0] === "vendas") + 1, 0, ["clientes", "Clientes"]);
     if (ehPos()) { const fica = ["inicio", "agenda", "clientes", "vendas", "adms"]; for (let i = nav.length - 1; i >= 0; i--) if (!fica.includes(nav[i][0])) nav.splice(i, 1); }
+    if (ehGestor()) { nav.length = 0; nav.push(["inicio", "Início"], ["indicadores", "Indicadores"], ["oportunidades", "Oportunidades"], ["clientes", "Clientes"], ["relatorios", "Relatórios"], ["agenda", nAg ? `Agenda do time <span class="contador">${nAg}</span>` : "Agenda do time"]); }
     if (S.perfil?.papel === "admin") nav.push(["equipe", S.pendentes ? `Equipe <span class="contador">${S.pendentes}</span>` : "Equipe"]);
     return `<header class="topo">
       <button type="button" class="marca marca-topo" data-acao="ir" data-view="inicio" aria-label="Mapa Comercial, voltar ao início"><img src="marca/prg-software.png?v=1" alt="" width="151" height="73" class="marca-prg"><span class="marca-sep" aria-hidden="true"></span><span class="pilha" style="gap:0"><span class="marca-nome">Mapa Comercial</span><span class="marca-sub">Grupo WorkOffice</span></span></button>
@@ -1256,7 +1257,7 @@
   S.lg = { dono: null, carregado: false, carregando: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, busca: "", etapa: "todas", sel: null, novo: false, apagar: null, mostrar: 100, dadosAberto: true, idx: new Map(), modo: (() => { try { return localStorage.getItem("mapa-adm-modo") || "quadro"; } catch { return "quadro"; } })(), porColuna: {}, arrastando: null, arrastou: false };
   S.rl = { periodo: "dia", ref: hojeISO(), editObs: false, editAj: false, editReg: null };
 
-  const donoAtual = () => S.lg.dono || S.user.id;
+  const donoAtual = () => S.lg.dono || (S.perfil?.funcao === "gestor" && S.perfil?.papel !== "admin" ? "todos" : S.user.id);
   const souDono = () => donoAtual() === S.user.id;
 
   // busca tudo em páginas de 1000, várias ao mesmo tempo: quantas páginas pedir de uma vez vem do tamanho da última busca (guardado por chave)
@@ -1433,9 +1434,10 @@
   function diasUteis(n) { let d = hojeISO(); for (let i = 0; i < n; i++) { d = somaDias(d, 1); while ([0, 6].includes(isoData(d).getUTCDay())) d = somaDias(d, 1); } return d; }
 
   function seletorPessoa(id) {
-    if (S.perfil?.papel !== "admin" || !S.lg.pessoas) return "";
+    const gs = S.perfil?.funcao === "gestor" && S.perfil?.papel !== "admin";
+    if ((S.perfil?.papel !== "admin" && !gs) || !S.lg.pessoas) return "";
     const d = donoAtual();
-    return `<div class="campo" style="min-width:200px"><label for="${id}">De quem</label><select id="${id}" class="input sel-dono"><option value="${S.user.id}">Eu (${esc(S.perfil.nome)})</option>${S.lg.pessoas.filter((p) => p.id !== S.user.id).map((p) => `<option value="${p.id}" ${d === p.id ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}<option value="todos" ${d === "todos" ? "selected" : ""}>Equipe toda</option></select></div>`;
+    return `<div class="campo" style="min-width:200px"><label for="${id}">De quem</label><select id="${id}" class="input sel-dono">${gs ? "" : `<option value="${S.user.id}">Eu (${esc(S.perfil.nome)})</option>`}${S.lg.pessoas.filter((p) => p.id !== S.user.id).map((p) => `<option value="${p.id}" ${d === p.id ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}<option value="todos" ${d === "todos" ? "selected" : ""}>Equipe toda</option></select></div>`;
   }
   function ultimaDe(f) { const l = S.lg.porFicha.get(f.id); return l && l.length ? l[l.length - 1] : null; }
   // quem fechou contrato também fez demonstração: entra nas duas contagens
@@ -1821,6 +1823,7 @@
   function telaInicio() {
     if (ehVendedor()) return telaInicioVendedor();
     if (ehPos()) return telaInicioPos();
+    if (ehGestor()) return telaInicioGestor();
     if (!S.inicio.desenhado && !inicioPronto()) {
       if (!S.lg.carregado && !S.lg.carregando) carregarLig();
       if (!S.vd.carregado && !S.vd.carregando) carregarVendas();
@@ -2646,12 +2649,12 @@
   let buscandoAgenda = null;
   async function carregarAgenda(doBanco) {
     if (!S.user || (S.perfil && !S.perfil.aprovado)) return;
-    const L = S.lg, minhas = L.carregado && !L.dono;
-    if (minhas && !doBanco) S.ag.fichas = L.fichas.filter((f) => f.usuario_id === S.user.id);
+    const L = S.lg, minhas = L.carregado && !L.dono, gs = ehGestor();
+    if (minhas && !doBanco) S.ag.fichas = gs ? L.fichas.slice() : L.fichas.filter((f) => f.usuario_id === S.user.id);
     else if (!doBanco && L.carregando && !L.dono) return; // as fichas já estão vindo; carregarLig chama a agenda no fim
     else {
       if (buscandoAgenda) return buscandoAgenda;
-      buscandoAgenda = sb.from("fichas").select("id,usuario_id,nome,cidade,uf,cnpj,telefones,responsavel,etapa,retorno_em,retorno_nota,demo_em,demo_formato").eq("usuario_id", S.user.id).limit(20000);
+      { let q = sb.from("fichas").select("id,usuario_id,nome,cidade,uf,cnpj,telefones,responsavel,etapa,retorno_em,retorno_nota,demo_em,demo_formato"); if (!gs) q = q.eq("usuario_id", S.user.id); buscandoAgenda = q.limit(20000); }
       const { data, error } = await buscandoAgenda.finally(() => { buscandoAgenda = null; });
       if (error) { console.error(error); return; }
       S.ag.fichas = data || [];
@@ -2707,7 +2710,7 @@
     const demosHoje = deHoje.filter((i) => i.tipo === "demo").length, retHoje = deHoje.filter((i) => i.tipo === "retorno").length;
     const pl = (n, um, varios) => `${fmtN(n)} ${n === 1 ? um : varios}`;
     const partesHoje = [retHoje ? pl(retHoje, "retorno", "retornos") : "", demosHoje ? pl(demosHoje, "demonstração", "demonstrações") : ""].filter(Boolean);
-    const frase = partesHoje.length ? `Hoje você tem <span class="agn-azul">${partesHoje.join(" e ")}</span>.` : "Hoje você não tem retornos marcados.";
+    const frase = partesHoje.length ? `Hoje ${ehGestor() ? "o time tem" : "você tem"} <span class="agn-azul">${partesHoje.join(" e ")}</span>.` : "Hoje você não tem retornos marcados.";
     const extra = [atrasados.length ? `${pl(atrasados.length, "retorno atrasado", "retornos atrasados")} para colocar em dia` : "", feitas.size ? `${pl(feitas.size, "contato registrado", "contatos registrados")} hoje` : ""].filter(Boolean);
     const primeiro = deHoje.find((i) => i.tipo === "retorno") || atrasados[0];
     const hero = `<section class="agn-hero"><div class="agn-hero-txt"><span class="agn-oi">${ICONE_SOL} ${saud}, ${esc(nome)}!</span><p class="agn-foco">${frase}</p>${extra.length ? `<span class="agn-sub">${extra.join(" · ")}</span>` : ""}</div>
@@ -2846,7 +2849,7 @@
     } catch (e) { console.warn(e); }
   }
   function verificarAvisos() {
-    if (!S.user || !S.ag.carregado) return;
+    if (!S.user || !S.ag.carregado || ehGestor()) return;
     let ja; try { ja = JSON.parse(localStorage.getItem("mapa-avisos") || "{}") || {}; } catch { ja = {}; }
     const agora = Date.now(); let mudou = false;
     for (const f of S.ag.fichas) for (const [ts, tipo] of [[f.retorno_em, "retorno"], [f.etapa === "demo_agendada" ? f.demo_em : null, "demo"]]) {
@@ -3695,6 +3698,7 @@
   // Quem é Vendedor abre o sistema nas demonstrações: as que a SDR agendou (via agenda_vendedor, só o necessário
   // para apresentar), a semana, a concorrência e as oportunidades para retomar.
   const ehVendedor = () => S.perfil?.funcao === "vendedor";
+  const ehGestor = () => S.perfil?.funcao === "gestor" && S.perfil?.papel !== "admin";
   S.vend = { demos: null, carregando: false, erro: false, em: 0, res: null, salvando: false };
   async function carregarVendedor(silencioso) {
     const V = S.vend; if (V.carregando) return; V.carregando = true; V.erro = false;
@@ -4007,7 +4011,7 @@
       for (const r of [lista, contatos, pessoas]) if (r.error) throw r.error;
       O.lista = lista.data || []; O.contatos = contatos.data || []; O.pessoas = pessoas.data || []; O.em = Date.now();
     } catch (e) { console.error(e); O.erro = true; if (!silencioso) toast("Não deu para carregar as oportunidades. Tente de novo."); }
-    finally { O.carregando = false; if (S.view === "oportunidades") renderDados(); else if (S.user) atualizarContadorOp(); }
+    finally { O.carregando = false; if (S.view === "oportunidades" || (S.view === "inicio" && ehGestor())) renderDados(); else if (S.user) atualizarContadorOp(); }
   }
   function atualizarContadorOp() { const b = app.querySelector('[data-view="oportunidades"]'); if (b) b.innerHTML = rotuloNavOp(); }
   function opItens() {
@@ -4160,7 +4164,7 @@
       const [regs, demos, fichas, negocios, hist, etapas, funis, metas, pessoas] = await Promise.all([
         tudo(() => sb.from("registros").select("id,ficha_id,usuario_id,data,tipo,detalhe,canal,criado_em").neq("tipo", "anotacao").order("id"), "ind-regs"),
         tudo(() => sb.from("demos").select("id,ficha_id,usuario_id,agendada_por,agendada_em,demo_em,status,realizada_em,apresentador,reagendada_de,origem").order("id"), "ind-demos"),
-        tudo(() => sb.from("fichas").select("id,usuario_id,nome,cidade,uf,sistema,qtd_condominios,responsavel,criado_em").order("id"), "ind-fichas"),
+        tudo(() => sb.from("fichas").select("id,usuario_id,nome,cidade,uf,sistema,qtd_condominios,responsavel,criado_em,demo_formato").order("id"), "ind-fichas"),
         tudo(() => sb.from("negocios").select("id,ficha_id,funil_id,etapa_id,status").order("id"), "ind-neg"),
         tudo(() => sb.from("negocio_etapas").select("negocio_id,etapa_id,em").order("id"), "ind-hist"),
         sb.from("etapas").select("id,funil_id,ordem,nome"), sb.from("funis").select("id,sigla,nome"),
@@ -4170,7 +4174,7 @@
       I.d = montarBase({ regs, demos, fichas, negocios, hist, etapas: etapas.data || [], funis: funis.data || [], metas: metas.data || [], pessoas: pessoas.data || [] });
       I.em = Date.now();
     } catch (e) { console.error(e); I.erro = true; if (!silencioso) toast("Não deu para carregar os indicadores. Tente de novo."); }
-    finally { I.carregando = false; if (S.view === "indicadores") renderDados(); }
+    finally { I.carregando = false; if (S.view === "indicadores" || (S.view === "inicio" && ehGestor())) renderDados(); }
   }
 
   // organiza o que veio do banco uma vez por carga
@@ -4841,6 +4845,120 @@
     if (evento === "SIGNED_OUT") { S.user = null; S.perfil = null; S.pendentes = 0; S.equipe = null; S.lg = { ...S.lg, dono: null, carregado: false, fichas: [], regs: [], base: [], rels: [], pessoas: null, sel: null, novo: false }; S.ag = { ...S.ag, fichas: [], carregado: false, cnpjs: new Set() }; S.rows = []; S.sel = null; S.selRow = null; S.menu = false; render(); }
   });
 
+
+  /* ---- Início do gestor (Matheus): o comercial inteiro numa tela, só para acompanhar */
+  S.gs = { adic: null, carregando: false, em: 0 };
+  async function carregarGestor() {
+    const G = S.gs;
+    if (!S.ind.d && !S.ind.carregando) carregarIndicadores(true);
+    if (!S.op.lista && !S.op.carregando) carregarOportunidades(true);
+    if (!S.pv.clientes && !S.pv.carregando) carregarPos(true);
+    if (G.adic || G.carregando) return; G.carregando = true;
+    try {
+      const { data: fs } = await sb.from("funis").select("id,nome");
+      const ad = (fs || []).find((f) => /adicionais/i.test(f.nome))?.id;
+      const desde = somaMeses(hojeISO().slice(0, 8) + "01", -1);
+      const { data, error } = ad ? await sb.from("negocios").select("id,status,conclusao_em").eq("funil_id", ad).eq("status", "ganho").gte("conclusao_em", desde).limit(5000) : { data: [] };
+      if (error) throw error;
+      G.adic = data || []; G.em = Date.now();
+    } catch (e) { console.error(e); G.adic = []; }
+    finally { G.carregando = false; if (S.view === "inicio") renderDados(); }
+  }
+  function telaInicioGestor() {
+    const I = S.ind, D = I.d;
+    if (!D || !S.op.lista || !S.pv.clientes || !S.gs.adic) carregarGestor();
+    if (!D) return `<div class="gs pedaco" data-pedaco="gestor"><div class="cartao vazio">${I.erro ? "Não deu para carregar os números. Use Atualizar dados no menu." : "Carregando o resumo do comercial…"}</div></div>`;
+    const hj = hojeISO(), iniM = hj.slice(0, 8) + "01", fimM = somaDias(somaMeses(iniM, 1), -1), iniA = somaMeses(iniM, -1), fimA = somaDias(iniM, -1);
+    const respAntes = I.resp; I.resp = "todos";
+    const M = indCalcular(iniM, fimM, hj), A = indCalcular(iniA, fimA);
+    I.resp = respAntes;
+    const mes = MESES[+iniM.slice(5, 7) - 1], mesA = MESES[+iniA.slice(5, 7) - 1], Mes = mes[0].toUpperCase() + mes.slice(1);
+    const pl = (n, um, varios) => `${fmtN(n)} ${n === 1 ? um : varios}`;
+    // meta e ritmo
+    const meta = D.metas.demos_agendadas_mes || 6, ag = M.agendadas.length, falta = Math.max(0, meta - ag);
+    const uteisRest = uteisEntre(somaDias(hj, 1), fimM), semanas = Math.max(1, Math.ceil(uteisRest / 5));
+    const pct = Math.min(100, Math.round((ag / meta) * 100));
+    const h = +localSP(new Date().toISOString()).slice(11, 13), saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+    const nome = primeiroNome(S.perfil?.nome) || "Matheus";
+    const hero = `<section class="gs-hero"><div><span class="gs-oi">${saud}, ${esc(nome)}!</span><p>${Mes} está com <span class="gs-roxo">${pl(ag, "demo agendada", "demos agendadas")}</span> e <span class="gs-verde">${pl(M.contratos.length, "contrato fechado", "contratos fechados")}</span>.</p>
+      <small>${falta ? `Faltam ${pl(falta, "demo", "demos")} para a meta e ${uteisRest === 1 ? "resta 1 dia útil" : `restam ${uteisRest} dias úteis`} no mês.` : "A meta de demos do mês já foi batida."}</small></div>
+      <div class="gs-meta"><div class="gs-meta-l"><span>Meta do mês · demos agendadas</span><b class="num">${fmtN(ag)} <small>de ${fmtN(meta)}</small></b></div><div class="gs-barra"><i style="width:${pct}%"></i></div>
+      <em>${pct}% da meta${falta ? ` · precisa de ${Math.ceil(falta / semanas)} por semana até o fim do mês` : " · meta batida"}</em></div></section>`;
+    // os 4 números do mês contra o mês passado
+    const comp = (a, b, pctMode) => { if (a === b) return `<em class="gs-eq">= ${mesA}</em>`; const up = a > b, d = pctMode && b ? `${Math.round(Math.abs(a - b) / b * 100)}%` : fmtN(Math.abs(a - b)); return `<em class="${up ? "gs-up" : "gs-dn"}">${up ? "↑" : "↓"} ${d} vs ${mesA}</em>`; };
+    const adicM = S.gs.adic ? S.gs.adic.filter((n) => n.conclusao_em >= iniM && n.conclusao_em <= fimM).length : null;
+    const adicA = S.gs.adic ? S.gs.adic.filter((n) => n.conclusao_em >= iniA && n.conclusao_em <= fimA).length : null;
+    const kpi = (l, a, b, pm) => `<div class="gs-kpi"><span>${l}</span><b class="num">${a == null ? "…" : fmtN(a)}</b>${a == null ? "" : comp(a, b, pm)}</div>`;
+    const kpis = `<section class="gs-kpis">${kpi("Contatos no mês", M.cont.length, A.cont.length, true)}${kpi("Demos realizadas", M.realizadas.length, A.realizadas.length)}${kpi("Contratos fechados", M.contratos.length, A.contratos.length)}${kpi("Adicionais vendidos (pós-vendas)", adicM, adicA)}</section>`;
+    // o time agora
+    const seg = segundaDe(hj), sex = somaDias(seg, 4), dom = somaDias(seg, 6), naSemana = (d) => d && d >= seg && d <= dom;
+    const linha = (l, v) => `<li>${l} <b class="num">${v}</b></li>`;
+    const tag = (ok, txt) => `<span class="gs-tag ${ok ? "gs-ok" : "gs-at"}">${txt}</span>`;
+    const ini2 = (n) => String(n || "").split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join("").toUpperCase();
+    const cards = [];
+    for (const p of D.pessoas.filter((x) => x.id && (x.funcao || "sdr") === "sdr")) {
+      const rs = D.regs.filter((r) => r.usuario_id === p.id && contaComoContato(r));
+      const hojeN = rs.filter((r) => r.data === hj).length, semN = rs.filter((r) => naSemana(r.data)).length;
+      const agS = D.demos.filter((d) => !d.reagendada_de && naSemana(d.agDia) && d.agendada_por === p.id).length;
+      const negS = D.regs.filter((r) => r.usuario_id === p.id && r.tipo === "negativa" && naSemana(r.data)).length;
+      cards.push(`<div class="gs-pes"><header><span class="gs-av gs-av-lu">${ini2(p.nome)}</span><div><b>${esc(p.curto)}</b><span>SDR · prospecção</span></div></header><ul>${linha("Contatos hoje", fmtN(hojeN))}${linha("Contatos na semana", fmtN(semN))}${linha("Demos agendadas", fmtN(agS))}${linha("Negativas", fmtN(negS))}</ul>${diaUtil(hj) && !hojeN ? tag(false, "Nenhum contato hoje") : tag(true, "Em atividade")}</div>`);
+    }
+    const semRes = D.demos.filter((d) => d.status === "agendada" && d.dia && d.dia < hj);
+    for (const p of D.pessoas.filter((x) => x.funcao === "vendedor")) {
+      const Q = { todos: false, curto: p.curto }, ap = (d) => apresentou(Q, d.apresentador || "Leonardo");
+      const demS = D.demos.filter((d) => d.status !== "reagendada" && naSemana(d.status === "realizada" ? d.realizada_em : d.dia) && ap(d)).length;
+      const prox = D.demos.filter((d) => d.status === "agendada" && d.dia >= hj && ap(d)).sort((a, b) => (a.demo_em < b.demo_em ? -1 : 1))[0];
+      const proxTxt = prox ? `${prox.dia === hj ? "hoje" : DIAS[isoData(prox.dia).getUTCDay()].slice(0, 3)} ${localSP(prox.demo_em).slice(11, 16)}` : "—";
+      const propS = D.propostas.filter((x) => naSemana(x.enviada) && apresentou(Q, apresDaFicha(D, x.ficha_id))).length;
+      const sr = semRes.filter(ap).length;
+      cards.push(`<div class="gs-pes"><header><span class="gs-av gs-av-le">${ini2(p.nome)}</span><div><b>${esc(p.curto)}</b><span>Vendedor · demos</span></div></header><ul>${linha("Demos na semana", fmtN(demS))}${linha("Próxima demo", proxTxt)}${linha("Propostas enviadas", fmtN(propS))}${linha("Sem resultado", fmtN(sr))}</ul>${sr ? tag(false, sr === 1 ? "1 demo sem resultado" : `${sr} demos sem resultado`) : tag(true, "Em dia")}</div>`);
+    }
+    const P = S.pv, posP = D.pessoas.filter((x) => x.funcao === "pos_vendas" && x.id);
+    if (P.clientes) {
+      const vis = P.visitas || [], feitasS = vis.filter((v) => v.status === "feita" && naSemana(localSP(v.feita_em || v.quando).slice(0, 10))).length;
+      const atras = vis.filter((v) => v.status === "agendada" && v.dia < hj).length, risco = pvAtencao().length;
+      const adS = (S.gs.adic || []).filter((n) => naSemana(n.conclusao_em)).length;
+      const nomes = posP.length ? posP.map((x) => x.curto).join(" e ") : "Pós-vendas";
+      cards.push(`<div class="gs-pes"><header><span class="gs-av gs-av-pv">PV</span><div><b>${esc(nomes)}</b><span>Pós-vendas · carteira</span></div></header><ul>${linha("Visitas na semana", fmtN(feitasS))}${linha("Adicionais vendidos", fmtN(adS))}${linha("Clientes em risco", fmtN(risco))}${linha("Visitas atrasadas", fmtN(atras))}</ul>${risco ? tag(false, risco === 1 ? "1 cliente em risco" : `${risco} clientes em risco`) : atras ? tag(false, `${atras} visitas atrasadas`) : tag(true, "Carteira em dia")}</div>`);
+    }
+    const time = `<section class="cartao gs-sec"><h2>O time agora <small>semana de ${ddmm(seg)} a ${ddmm(sex)}</small></h2><div class="gs-time">${cards.join("")}</div></section>`;
+    // funil do mês
+    const et = [["Contatos", M.cont.length, "#2563EB"], ["Demos agendadas", M.agendadas.length, "#4B6FE0"], ["Demos realizadas", M.realizadas.length, "#6B3FB8"], ["Propostas", M.propostas.length, "#8A5BC9"], ["Contratos", M.contratos.length, "#1E7A46"]];
+    const mx = Math.max(1, ...et.map((e) => e[1]));
+    const funil = `<section class="cartao gs-sec"><h2>Funil do mês <small>${mes} · % de passagem entre etapas</small></h2><div class="gs-funil">${et.map(([l, n, c], i) => {
+      const prev = i ? et[i - 1][1] : 0, taxa = i ? (prev ? `${(n / prev * 100).toLocaleString("pt-BR", { maximumFractionDigits: n / prev < 0.1 ? 1 : 0 })}%` : "—") : "";
+      return `<div class="gs-et"${i ? ` data-c="${taxa}"` : ""}><b class="num">${fmtN(n)}</b><span>${l}</span><div class="gs-et-bar" style="width:${Math.max(12, Math.round(92 * Math.sqrt(n / mx)))}%;background:${c}"></div></div>`; }).join("")}</div></section>`;
+    // demos dos próximos 7 dias
+    const ate = somaDias(hj, 6), prox = D.demos.filter((d) => d.status === "agendada" && d.dia >= hj && d.dia <= ate).sort((a, b) => (a.demo_em < b.demo_em ? -1 : 1));
+    const proxHtml = `<section class="cartao gs-sec gs-prox"><h2>Demos dos próximos 7 dias <small>${prox.length ? pl(prox.length, "marcada", "marcadas") : ""}</small></h2>${prox.length ? `<ul>${prox.map((d) => {
+      const f = D.fichaPorId.get(d.ficha_id) || {}, quem = primeiroNome(d.apresentador) || "Leonardo", mt = quem.toLowerCase() === "matheus";
+      const info = [f.demo_formato === "presencial" ? "Presencial" : "Virtual", localSP(d.demo_em).slice(11, 16), [f.cidade, f.uf].filter(Boolean).join(" - "), f.sistema ? `usa ${f.sistema}` : ""].filter(Boolean).map(esc).join(" · ");
+      return `<li><span class="gs-dia">${DIAS[isoData(d.dia).getUTCDay()].slice(0, 3).toUpperCase()}<b>${d.dia.slice(8, 10)}</b></span><div><b>${esc(f.nome || "")}</b><span>${info}</span></div><span class="gs-quem${mt ? " gs-quem-mt" : ""}">${mt ? "Matheus cobre" : esc(quem)}</span></li>`; }).join("")}</ul>` : `<p class="fraco" style="margin:0">Nenhuma demonstração marcada para os próximos 7 dias.</p>`}</section>`;
+    // precisa da sua atenção
+    const at = [];
+    if (semRes.length) {
+      const d0 = semRes[0], f0 = D.fichaPorId.get(d0.ficha_id) || {};
+      at.push(["r", "!", semRes.length === 1 ? `Demo da ${f0.nome || "administradora"} sem resultado` : `${semRes.length} demos sem resultado`,
+        semRes.length === 1 ? `Aconteceu em ${ddmm(d0.dia)} · ${esc(primeiroNome(d0.apresentador) || "Leonardo")} ainda não registrou como foi` : semRes.slice(0, 3).map((d) => esc(D.fichaPorId.get(d.ficha_id)?.nome || "")).join(", ") + (semRes.length > 3 ? "…" : "")]);
+    }
+    if (S.op.lista) {
+      const paradas = opItens().filter((o) => o.aba === "negociando" && opDias(o.ultimo?.data || o.demo) > 15).sort((a, b) => ((a.ultimo?.data || a.demo) < (b.ultimo?.data || b.demo) ? -1 : 1));
+      if (paradas.length) at.push(["o", "⏱", `${pl(paradas.length, "oportunidade parada", "oportunidades paradas")} há mais de 15 dias`, esc(paradas.slice(0, 3).map((o) => o.nome).join(", ")) + (paradas.length > 3 ? "…" : "") + ` · ${paradas.length === 1 ? "última conversa" : "a mais antiga"} em ${ddmmaaaa(paradas[0].ultimo?.data || paradas[0].demo)}`]);
+    }
+    if (P.clientes) { const r = pvAtencao().length; if (r) at.push(["v", "↓", `${pl(r, "cliente da carteira em risco", "clientes da carteira em risco")}`, "Insatisfeitos ou sem contato há mais de 90 dias, sem visita marcada"]); }
+    if (falta) at.push(["o", "◎", `Faltam ${pl(falta, "demo", "demos")} para a meta`, `${uteisRest === 1 ? "Resta 1 dia útil" : `Restam ${uteisRest} dias úteis`} em ${mes}`]);
+    const aten = `<section class="cartao gs-sec gs-aten"><h2>Precisa da sua atenção</h2>${at.length ? `<ul>${at.map(([c, i, t, sub]) => `<li><span class="gs-ic gs-ic-${c}">${i}</span><div><b>${esc(t)}</b><span>${sub}</span></div></li>`).join("")}</ul>` : `<p class="fraco" style="margin:0">Tudo em dia por aqui.</p>`}</section>`;
+    const atalho = (acao, v, ic, t, sub) => `<button type="button" data-acao="${acao}" data-view="${v}"><i>${ic}</i><div>${t}<span>${sub}</span></div></button>`;
+    const atalhos = `<section class="cartao gs-sec"><h2>Atalhos</h2><div class="gs-atalhos">${atalho("ir", "indicadores", "▤", "Indicadores", "BI completo do comercial")}${atalho("gs-rel", "relatorios", "⤓", "Relatório da semana", "Baixar o PDF da semana")}${atalho("ir", "oportunidades", "◷", "Oportunidades", "Pós-demo em aberto")}${atalho("ir", "clientes", "⌂", "Clientes", "Carteira do pós-vendas")}</div></section>`;
+    return `<div class="gs pedaco" data-pedaco="gestor">${hero}${kpis}<div class="gs-duas"><div class="gs-col">${time}${funil}${proxHtml}</div><div class="gs-col">${aten}${atalhos}</div></div></div>`;
+  }
+  app.addEventListener("click", (ev) => {
+    const b = ev.target.closest('[data-acao="gs-rel"]'); if (!b) return;
+    Object.assign(S.rl, { periodo: "semana", ref: hojeISO(), editObs: false, editAj: false });
+    S.view = "relatorios"; render();
+    // com os dados já carregados, abre direto o PDF da semana
+    if (S.lg.carregado) setTimeout(() => baixarPdf(), 250);
+  });
   /* ---- Calendário de escolher data, no visual da Agenda (troca o calendário do navegador nos campos de data).
      No celular continua o calendário do próprio aparelho, que é melhor para o dedo. */
   const DP = { el: null, input: null, mes: null, sel: null };
