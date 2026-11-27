@@ -136,7 +136,7 @@
     const avisos = [];
 
     // capa: o nome da administradora é a última linha com texto da caixa "PRG Software: SCC Online"
-    { const c = slides[0]; const f = acha(c.doc, (t) => t.includes("scc online")); if (f) { const ps = els(f, NS_A, "p").filter((p) => texto(p).trim()); const ult = ps[ps.length - 1]; if (ult && ps.length > 1) { const rs = els(ult, NS_A, "r"); rs.slice(1).forEach(tirar); els(rs[0], NS_A, "t")[0].textContent = dados.administradora; } } }
+    { const c = slides[0]; const f = acha(c.doc, (t) => t.includes("scc online") || t.includes("prg software:")) || formas(c.doc).find((x) => els(x, NS_A, "p").filter((p) => texto(p).trim()).length > 1); if (f) { const ps = els(f, NS_A, "p").filter((p) => texto(p).trim()); const ult = ps[ps.length - 1]; if (ult && ps.length > 1) { const rs = els(ult, NS_A, "r"); rs.slice(1).forEach(tirar); els(rs[0], NS_A, "t")[0].textContent = dados.administradora; } } }
 
     // implementação (passo 2, conversão dos dados):
     //  - Superlógica: "Conversão de dados do sistema Superlógica;" + "(migração faseada; prédio a prédio);" (é o único que convertemos)
@@ -268,7 +268,7 @@
     }
     gravar("ppt/presentation.xml", pres); gravar("ppt/_rels/presentation.xml.rels", presRels);
     const arquivo = await zip.generateAsync({ type: libs.tipo || "uint8array", compression: "DEFLATE" });
-    return { arquivo, avisos, slides: slides.filter((x) => !x.remover).length, nome: `Proposta Comercial _ SCC Online - ${dados.administradora}` };
+    return { arquivo, avisos, slides: slides.filter((x) => !x.remover).length, nome: `Proposta Comercial _ ${dados.produto || "SCC Online"} - ${dados.administradora}` };
   }
 
   const API = { lerMensagem, gerarProposta };

@@ -2263,3 +2263,10 @@ body.menu-mini .lateral .lat-recolher svg { transform: rotate(180deg); }
 .pr-excluir:hover:not(:disabled) { background: var(--vermelho-fundo); }
 .pr-excluir-conf { background: var(--vermelho); color: #fff; border-color: var(--vermelho); }
 .pr-excluir-conf:hover:not(:disabled) { background: #8A2116; }
+.pr-tipos { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.pr-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pr-chip { height: 40px; border: 1px solid var(--borda); background: var(--branco); border-radius: 99px; padding: 0 16px; font-weight: 600; font-size: 13px; color: #33405A; display: inline-flex; align-items: center; gap: 8px; }
+.pr-chip:hover { border-color: var(--link); }
+.pr-chip[aria-checked="true"] { background: var(--azul-escuro); border-color: var(--azul-escuro); color: #fff; }
+.pr-chip-sem { font-size: 10.5px; font-weight: 600; border-radius: 99px; padding: 1px 7px; background: #EEF1F6; color: var(--fraco); }
+.pr-chip[aria-checked="true"] .pr-chip-sem { background: rgba(255,255,255,.18); color: #DCE6FA; }

@@ -157,3 +157,10 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - **Sem sistema:** o passo 2 sai do slide; os outros três se espalham pela largura, renumerados 1, 2, 3, com as cores alternadas e as setas no lugar.
 - A página mostra qual desses casos vai sair e avisa quando não sabe o sistema da administradora (preencher em "Corrigir"; escrever "Sem sistema" tira o passo).
 - O campo "Observação da migração" só troca o texto padrão quando preenchido.
+
+## v75 — Propostas por produto
+- Escolha do produto no topo da página: **SCC Online, SCL Online, Aplicativo Personalizado, Omeupredio, WO (WorkOffice), SFP e eSocial**. O sistema já marca o produto pela mensagem (ex.: "SCL Online:" na mensagem marca SCL); dá para trocar com um clique. Produto sem modelo aparece com "sem modelo".
+- **Um modelo por produto** no Storage (`modelo-<tipo>.pptx`: scc, scl, app, omp, wo, sfp, esocial). O primeiro modelo do SCC, salvo antes como `modelo.pptx`, continua valendo.
+- Para os outros produtos, o sistema coloca o nome da administradora na capa e os valores nos slides que tiver (Investimento, Mensalidade, Tarifas); avisa se sobrar "xxx". As regras do SCC (passo de conversão, slides do CheckPay) continuam.
+- Nome do arquivo com o produto: "Proposta Comercial _ SCL Online - Administradora.pptx". Histórico e Oportunidades mostram o produto.
+- Banco: coluna `propostas.tipo` (scc, scl, app, omp, wo, sfp, esocial).
