@@ -417,7 +417,7 @@
   function htmlLogado() {
     if (S.view !== "concorrencia") S.cc.abertura = false; // ao voltar para a Concorrência, a abertura toca de novo
     if (S.view === "clientes" && !ehPos()) S.view = "inicio";
-    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "oportunidades" ? telaOportunidades() : S.view === "clientes" ? telaClientes() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "indicadores" ? telaIndicadores() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
+    const tela = S.view === "inicio" ? telaInicio() : S.view === "mapeamento" ? telaMapeamento() : S.view === "regiao" ? telaRegiao() : S.view === "listas" ? telaListas() : S.view === "adms" ? telaAdms() : S.view === "vendas" ? telaVendas() : S.view === "oportunidades" ? telaOportunidades() : S.view === "propostas" ? telaPropostas() : S.view === "clientes" ? telaClientes() : S.view === "agenda" ? telaAgenda() : S.view === "relatorios" ? telaRelatorios() : S.view === "indicadores" ? telaIndicadores() : S.view === "concorrencia" ? telaConcorrencia() : telaEquipe();
     return `<div data-pedaco="topo" class="pedaco">${topo()}</div><main class="${S.view === "inicio" ? "main-inicio" : ""}">${S.view === "inicio" ? tela : `<div data-pedaco="faixa" class="pedaco">${faixaAgenda()}</div><div data-pedaco="tela" class="pedaco">${S.voltarAtivo && !(S.view === "adms" && S.lg.sel) ? '<div class="voltar-barra"><button type="button" class="fc-voltar" data-acao="voltar">← Voltar</button></div>' : ""}${tela}</div>`}</main>`;
   }
   const PEDACOS = new Map();
@@ -463,21 +463,22 @@
     clientes: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     vendas: '<path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/>',
     oportunidades: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+    propostas: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4M12 9.5v-1"/>',
     relatorios: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
     indicadores: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     equipe: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/>',
   };
-  const NAV_GRUPOS = [["Geral", ["inicio", "agenda"]], ["Prospecção", ["mapeamento", "regiao", "listas", "concorrencia"]], ["Carteira", ["adms", "clientes"]], ["Comercial", ["vendas", "oportunidades"]], ["Análises", ["relatorios", "indicadores"]]];
+  const NAV_GRUPOS = [["Geral", ["inicio", "agenda"]], ["Prospecção", ["mapeamento", "regiao", "listas", "concorrencia"]], ["Carteira", ["adms", "clientes"]], ["Comercial", ["vendas", "oportunidades", "propostas"]], ["Análises", ["relatorios", "indicadores"]]];
   const navIco = (k) => `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAV_ICONE[k] || NAV_ICONE.inicio}</svg>`;
   function topo() {
     const nAg = S.ag?.carregado ? pendentesAgenda() : 0;
     if (!S.op.lista && !S.op.carregando && !S.op.erro && S.perfil?.aprovado) setTimeout(() => carregarOportunidades(true), 0);
     const nCc = S.cc.carregado ? S.cc.eventos.filter(brechaAtiva).length : 0;
     // [chave, nome, contador]
-    let nav = [["inicio", "Início"], ["agenda", "Agenda", nAg], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["listas", "Listas"], ["concorrencia", "Concorrência", nCc], ["adms", "Administradoras"], ["vendas", "Vendas"], ["oportunidades", rotuloNavOp()], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"]];
+    let nav = [["inicio", "Início"], ["agenda", "Agenda", nAg], ["mapeamento", "Mapeamento"], ["regiao", "Região"], ["listas", "Listas"], ["concorrencia", "Concorrência", nCc], ["adms", "Administradoras"], ["vendas", "Vendas"], ["oportunidades", rotuloNavOp()], ["propostas", "Propostas"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"]];
     if (ehVendedor()) nav = nav.filter(([k]) => !["mapeamento", "regiao", "listas"].includes(k));
     if (ehPos()) { nav.push(["clientes", "Clientes"]); nav = nav.filter(([k]) => ["inicio", "agenda", "clientes", "vendas", "adms"].includes(k)); }
-    if (ehGestor()) nav = [["inicio", "Início"], ["agenda", "Agenda do time", nAg], ["oportunidades", "Oportunidades"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"]];
+    if (ehGestor()) nav = [["inicio", "Início"], ["agenda", "Agenda do time", nAg], ["oportunidades", "Oportunidades"], ["propostas", "Propostas"], ["relatorios", "Relatórios"], ["indicadores", "Indicadores"]];
     const item = ([k, l, n]) => `<button type="button" class="nav-item" data-acao="ir" data-view="${k}" data-nome="${esc(l)}" ${k === "agenda" ? 'id="nav-agenda"' : ""} ${S.view === k ? 'aria-current="page"' : ""}>${navIco(k)}<span class="nav-rot">${l}</span>${n ? `<span class="contador">${fmtN(n)}</span>` : ""}</button>`;
     const grupos = NAV_GRUPOS.map(([g, ks]) => { const its = ks.map((k) => nav.find((x) => x[0] === k)).filter(Boolean); return its.length ? `<div class="nav-grupo"><span class="nav-gtit">${g}</span>${its.map(item).join("")}</div>` : ""; }).join("");
     const equipe = S.perfil?.papel === "admin" ? item(["equipe", "Equipe", S.pendentes]) : "";
@@ -4064,7 +4065,7 @@
       for (const r of [lista, contatos, pessoas]) if (r.error) throw r.error;
       O.lista = lista.data || []; O.contatos = contatos.data || []; O.pessoas = pessoas.data || []; O.demos = dms && !dms.error ? dms.data || [] : []; O.em = Date.now();
     } catch (e) { console.error(e); O.erro = true; if (!silencioso) toast("Não deu para carregar as oportunidades. Tente de novo."); }
-    finally { O.carregando = false; if (S.view === "oportunidades" || (S.view === "inicio" && ehGestor())) renderDados(); else if (S.user) atualizarContadorOp(); }
+    finally { O.carregando = false; if (S.view === "propostas") { prDetectar(); renderDados(); } else if (S.view === "oportunidades" || (S.view === "inicio" && ehGestor())) renderDados(); else if (S.user) atualizarContadorOp(); }
   }
   function atualizarContadorOp() { const b = app.querySelector('.topo .nav-item[data-view="oportunidades"] .nav-rot'); if (b) b.innerHTML = rotuloNavOp(); }
   function opItens() {
@@ -4086,6 +4087,7 @@
     const O = S.op;
     if (!O.lista && !O.carregando && !O.erro) carregarOportunidades(true);
     else if (O.lista && !O.carregando && Date.now() - O.em > 60000) carregarOportunidades(true);
+    if (!S.pr.lista && !S.pr.carregando) carregarPropostas();
     const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Oportunidades</h1><p class="fraco" style="margin:0">Todas as administradoras que já viram a demonstração do SCC Online. Escolha a situação, veja de onde veio e clique numa administradora para registrar o contato.</p></div></div>`;
     if (!O.lista) return cab + `<div class="cartao vazio">${O.erro ? 'Não deu para carregar. <button type="button" class="mini" data-acao="op-recarregar">Tentar de novo</button>' : "Carregando…"}</div>`;
     const todos = opItens(), q = O.busca.trim().toLowerCase();
@@ -4162,6 +4164,8 @@
         <div><span>${o.origem === "direta" ? "Trouxe a oportunidade" : "Agendou a demo"}</span><b>${esc(o.agendou || (o.origem === "direta" ? "—" : "SDR"))}</b></div>
         <div><span>Apresentou a demo</span><b>${esc(primeiroNome(o.apresentador) || "Leonardo")}</b></div></div>
         <span class="t12 fraco">Demo em ${o.demo ? ddmmaaaa(o.demo) : "—"}</span></div>
+      ${(() => { const ps = prDaFicha(o.ficha_id), u = ps[0];
+        return `<div class="pilha" style="gap:6px"><span class="op-mini-tit">Proposta</span>${u ? `<div class="op-prop"><span class="t13"><b>${esc(u.mensal || "Gerada")}${u.mensal ? "/mês" : ""}</b> · gerada em ${ddmmaaaa(String(u.criado_em).slice(0, 10))} por ${esc(opPessoa(u.usuario_id).nome)}${ps.length > 1 ? ` · ${ps.length} versões` : ""}</span><span class="linha-flex" style="gap:6px"><button type="button" class="mini" data-acao="pr-baixar" data-id="${u.id}">Baixar</button><button type="button" class="mini" data-acao="pr-nova" data-id="${o.ficha_id}">Nova versão</button></span></div>` : `<div class="op-prop"><span class="t13 fraco">Nenhuma proposta gerada no sistema.</span><button type="button" class="mini" data-acao="pr-nova" data-id="${o.ficha_id}">Criar proposta</button></div>`}</div>`; })()}
       <div class="pilha" style="gap:6px"><span class="op-mini-tit">Situação agora</span><span class="t13"><b>${o.aba === "fechou" ? "Fechou contrato" : OP_SIT[o.situacao]}</b></span><span class="op-prox ${prox.cls}">${prox.t}</span></div>
       ${contato}${form}<div class="pilha" style="gap:8px"><span class="op-mini-tit">Histórico de contatos</span>${hist}</div></aside>`;
   }
@@ -4203,6 +4207,159 @@
   app.addEventListener("change", (ev) => { const t = ev.target; if (t.name === "como" && t.closest(".op-form")) { S.op.como = t.value; const f = t.closest("form"), txt = f.elements.texto?.value || "", dia = f.elements.data?.value, canal = f.querySelector('[name="canal"]:checked')?.value; render(); const n = app.querySelector(".op-form"); if (n) { if (n.elements.texto) n.elements.texto.value = txt; if (dia && n.elements.data) n.elements.data.value = dia; const r = canal && n.querySelector(`[name="canal"][value="${canal}"]`); if (r) r.checked = true; } } });
   app.addEventListener("input", (ev) => { if (ev.target.id !== "op-busca") return; clearTimeout(S.op.espera); S.op.espera = setTimeout(() => { const el = $("#op-busca"); if (!el) return; S.op.busca = el.value; const pos = el.selectionStart; renderDados(); const n = $("#op-busca"); if (n && document.activeElement !== n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } } }, 200); });
   app.addEventListener("submit", (ev) => { const f = ev.target; if (f.dataset.acao !== "op-salvar") return; ev.preventDefault(); salvarContatoOp(f); });
+
+  /* ------------------------------------------------- Propostas */
+  // Cola a mensagem do Matheus (valores da proposta) e o sistema monta o PowerPoint no modelo da PRG.
+  // Quem lê a mensagem e mexe no PowerPoint é propostas.js (window.Propostas). Só entra o que veio na mensagem:
+  // sem tarifa, sai o slide de tarifas; sem CheckPay, saem os slides do CheckPay; sem app, sai a customização.
+  // O modelo (.pptx) fica no Storage (espaço "propostas", arquivo modelo.pptx); cada proposta gerada fica na tabela propostas.
+  S.pr = { msg: "", adm: "", sis: "", obs: "", ficha: null, editado: false, modelo: null, modeloInfo: undefined, gerando: false, lista: null, carregando: false, enviando: false };
+  const PR_MODELO = "modelo.pptx";
+  const prSa = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const PR_COMUM = new Set(["administradora", "administracao", "administradoras", "condominios", "condominio", "gestao", "imobiliaria", "contabilidade", "condominial", "servicos", "ltda", "eireli"]);
+  const prChaves = (n) => prSa(n).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !PR_COMUM.has(w));
+  function prAdms() { // administradoras que viram demo (de Oportunidades), com o sistema que usam
+    return (S.op.lista || []).map((o) => ({ id: o.ficha_id, nome: o.nome, sis: o.sistema || "" }));
+  }
+  function prAcharAdm(texto) {
+    const t = " " + prSa(texto).replace(/[^a-z0-9 ]/g, " ") + " "; let melhor = null;
+    for (const a of prAdms()) { const ks = prChaves(a.nome); if (!ks.length) continue; const n = ks.filter((k) => t.includes(" " + k + " ")).length, nota = n / ks.length;
+      if (n && (!melhor || nota > melhor.nota || (nota === melhor.nota && ks.length > melhor.ks))) melhor = { ...a, nota, ks: ks.length }; }
+    return melhor && melhor.nota >= 0.5 ? melhor : null;
+  }
+  async function carregarPropostas() {
+    const P = S.pr; if (P.carregando) return; P.carregando = true;
+    try {
+      const [l, m] = await Promise.all([
+        sb.from("propostas").select("id,ficha_id,administradora,mensagem,dados,mensal,adesao,slides,usuario_id,criado_em").order("criado_em", { ascending: false }).limit(300),
+        sb.storage.from("propostas").list("", { search: "modelo" }),
+      ]);
+      if (l.error) throw l.error;
+      P.lista = l.data || [];
+      const arq = (m.data || []).find((x) => x.name === PR_MODELO); P.modeloInfo = arq ? { em: arq.updated_at || arq.created_at || "" } : null;
+    } catch (e) { console.error(e); P.lista = P.lista || []; toast("Não deu para carregar as propostas."); }
+    finally { P.carregando = false; if (S.view === "propostas" || S.view === "oportunidades") renderDados(); }
+  }
+  const prDaFicha = (id) => (S.pr.lista || []).filter((p) => p.ficha_id === id);
+
+  function telaPropostas() {
+    const P = S.pr;
+    if (!P.lista && !P.carregando) carregarPropostas();
+    if (!S.op.lista && !S.op.carregando && !S.op.erro) carregarOportunidades(true);
+    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Propostas</h1><p class="fraco" style="margin:0">Cole a mensagem do Matheus. O sistema descobre para quem é, quais produtos entram e monta a proposta no modelo da PRG.</p></div></div>`;
+    const admin = S.perfil?.papel === "admin";
+    const semModelo = P.modeloInfo === null;
+    const modelo = admin ? `<section class="cartao pr-modelo"><div class="pilha" style="gap:2px"><b class="t13">Modelo da proposta</b><span class="t12 fraco">${P.modeloInfo ? `Em uso desde ${ddmmaaaa(String(P.modeloInfo.em).slice(0, 10))}. Para trocar, envie outra proposta pronta no formato da PRG.` : P.modeloInfo === undefined ? "Conferindo…" : "Ainda não tem modelo. Envie uma proposta pronta no formato da PRG (por exemplo, a da Lares): ela vira o modelo de todas."}</span></div>
+      <label class="btn ${semModelo ? "btn-primario" : "btn-sec"} pr-enviar">${P.enviando ? "Enviando…" : semModelo ? "Enviar o modelo (.pptx)" : "Trocar o modelo"}<input type="file" id="pr-modelo" accept=".pptx" hidden ${P.enviando ? "disabled" : ""}></label></section>`
+      : semModelo ? `<section class="cartao pr-modelo"><span class="t13">O modelo da proposta ainda não foi enviado. Peça para a administradora do sistema enviar.</span></section>` : "";
+    const cola = `<section class="cartao pr-cola"><div class="pr-caixa"><textarea id="pr-msg" class="pr-texto" aria-label="Mensagem do Matheus" spellcheck="false">${esc(P.msg)}</textarea>
+      <div class="pr-dica" ${P.msg.trim() ? "hidden" : ""}><b>Cole aqui a mensagem do Matheus</b><span>do jeito que veio no grupo, sem arrumar nada</span></div></div>
+      <details class="pr-corrigir" ${P.editado || (P.msg.trim() && !P.adm) ? "open" : ""}><summary>Algo errado? Corrigir antes de baixar</summary>
+      <div class="pr-grade"><div class="campo"><label for="pr-adm">Administradora</label><input id="pr-adm" class="input" list="pr-lista-adm" value="${esc(P.adm)}" autocomplete="off"><datalist id="pr-lista-adm">${prAdms().map((a) => `<option value="${esc(a.nome)}">`).join("")}</datalist></div>
+      <div class="campo"><label for="pr-sis">Sistema que usa hoje</label><input id="pr-sis" class="input" value="${esc(P.sis)}"></div>
+      <div class="campo"><label for="pr-obs">Observação da migração</label><input id="pr-obs" class="input" value="${esc(P.obs)}" placeholder="Ex.: migração faseada; prédio a prédio"></div></div></details></section>`;
+    const hist = (P.lista || []).length ? `<section class="cartao pr-hist"><div class="lista-cab"><h2 class="t15" style="margin:0">Propostas geradas</h2><span class="t12 fraco">Baixe de novo quando precisar: o sistema remonta com os mesmos valores</span></div>
+      <div class="rolagem"><table class="tab-simples"><thead><tr><th>Dia</th><th>Administradora</th><th>Mensalidade</th><th>Adesão</th><th>Slides</th><th>Quem gerou</th><th></th></tr></thead><tbody>
+      ${P.lista.slice(0, 60).map((p) => `<tr><td class="num">${ddmmaaaa(String(p.criado_em).slice(0, 10))}</td><td><b>${esc(p.administradora)}</b></td><td class="num">${esc(p.mensal || "—")}</td><td>${esc(p.adesao || "—")}</td><td class="num">${p.slides || ""}</td><td>${esc(opPessoa(p.usuario_id).nome)}</td>
+        <td><button type="button" class="mini" data-acao="pr-baixar" data-id="${p.id}">Baixar de novo</button></td></tr>`).join("")}</tbody></table></div></section>` : "";
+    return cab + modelo + cola + `<section class="cartao pr-res" id="pr-res" ${P.msg.trim() ? "" : "hidden"}>${prResultado()}</section>` + hist;
+  }
+  function prDados() { const P = S.pr, d = Propostas.lerMensagem(P.msg); return { d, dados: { ...d, administradora: P.adm.trim(), sistema: /^sem sistema$/i.test(P.sis.trim()) ? "" : P.sis.trim(), obsMigracao: P.obs.trim() } }; }
+  function prResultado() {
+    const P = S.pr; if (!P.msg.trim()) return "";
+    const { d } = prDados();
+    const ok = '<span class="pr-ic pr-ic-ok"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-5"/></svg></span>', no = '<span class="pr-ic"></span>';
+    const tem = (re) => d.itens.find((i) => re.test(i.rotulo));
+    const check = tem(/check ?pay/i), wpp = tem(/whats/i), nfs = tem(/nfs/i), appM = tem(/aplicativo/i), novos = d.itens.filter((i) => i.novo);
+    const tar = [d.condoconta && "CondoConta " + d.condoconta.tarifa, d.directbank && "DirectBank " + d.directbank.tarifa].filter(Boolean).join(" · ");
+    const prods = [["SCC Online", !!d.mensal, d.mensal ? `${d.mensal}/mês · adesão ${d.adesao || "—"}` : "Sem mensalidade na mensagem"],
+      ["App personalizado", !!(d.appCustomizacao || appM), d.appCustomizacao || appM ? [d.appCustomizacao && "Customização " + d.appCustomizacao, appM && "manutenção " + appM.valor].filter(Boolean).join(" · ") : "Não entra"],
+      ["CheckPay" + (check && /comprov/i.test(check.rotulo) ? " + comprovantes" : ""), !!check, check ? check.valor : "Não entra"],
+      ["Boletos por WhatsApp", !!wpp, wpp ? wpp.valor : "Não entra"], ["NFS moradores", !!nfs, nfs ? nfs.valor : "Não entra"], ["Tarifas CondoConta / DirectBank", !!tar, tar || "Não entra"],
+      ...novos.map((o) => [o.rotulo.replace(/:$/, ""), true, o.valor + " · item novo, confira"])];
+    const n = 19 - (check ? 0 : 2) - (tar ? 0 : 1);
+    const sl = [["Capa", 1], ["Apresentação do SCC Online", 0], ["CheckPay (2 slides)", check ? 0 : -1], ["Implementação", 1], ["Investimento", 1], ["Mensalidade", 1], ["Tarifas", tar ? 1 : -1], ["Obrigado", 0]];
+    const selo = P.editado ? '<span class="selo s-nao">Corrigido por você</span>' : P.ficha ? '<span class="selo s-conf">Reconhecida pela mensagem</span>' : P.adm ? '<span class="selo s-nao">Não achei a ficha: confira o nome</span>' : '<span class="selo s-errado">Não reconheci a administradora</span>';
+    const anteriores = P.ficha ? prDaFicha(P.ficha) : [];
+    return `<div class="pr-para"><div class="pilha" style="gap:0"><span class="t13 fraco">Proposta para</span><h2>${esc(P.adm || "Administradora não identificada")}</h2>${P.sis ? `<span class="t13 fraco">Usa hoje: ${esc(P.sis)}</span>` : ""}</div>${selo}</div>
+      ${!P.adm ? `<p class="pr-aviso">Diga para qual administradora é a proposta em <b>Corrigir antes de baixar</b>, logo acima.</p>` : ""}
+      ${anteriores.length ? `<p class="t13 fraco" style="margin:0">Essa administradora já tem ${anteriores.length === 1 ? "1 proposta" : anteriores.length + " propostas"} no sistema (a última em ${ddmmaaaa(String(anteriores[0].criado_em).slice(0, 10))}). Esta vira uma versão nova.</p>` : ""}
+      <b class="t13">Produtos que o sistema encontrou na mensagem</b>
+      <div class="pr-prods">${prods.map(([t, s, v]) => `<div class="pr-prod ${s ? "pr-sim" : "pr-nao"}"><span class="pr-pnome">${s ? ok : no}${esc(t)}</span><span class="pr-pval">${esc(v)}</span></div>`).join("")}</div>
+      ${d.naoEntendi.length ? `<p class="pr-aviso"><b>Não entendi estas linhas, elas não entram:</b> ${d.naoEntendi.map(esc).join(" · ")}</p>` : ""}
+      <b class="t13">A proposta vai sair com ${n} slides. Em azul, os que o sistema preenche com a mensagem:</b>
+      <div class="pr-slides">${sl.map(([t, k]) => `<span class="pr-sl ${k === 1 ? "pr-muda" : k === -1 ? "pr-sai" : ""}">${esc(t)}${k === -1 ? " (sai)" : ""}</span>`).join("")}</div>
+      <div class="pr-acoes"><button type="button" class="btn btn-primario pr-gerar" data-acao="pr-gerar" ${P.gerando || !P.adm || S.pr.modeloInfo === null ? "disabled" : ""}>${P.gerando ? "Montando…" : "Baixar PowerPoint"}</button>
+        <span class="t12 fraco">${S.pr.modeloInfo === null ? "Falta enviar o modelo da proposta (lá em cima)." : "Para o PDF: abra o PowerPoint e use Arquivo › Salvar como PDF. A proposta fica salva aqui e na oportunidade."}</span></div>`;
+  }
+  function prAtualizar() { const r = $("#pr-res"); if (!r) return; r.hidden = !S.pr.msg.trim(); r.innerHTML = prResultado(); const d = $(".pr-dica"); if (d) d.hidden = !!S.pr.msg.trim(); }
+  function prDetectar() {
+    const P = S.pr; if (P.editado) return;
+    const a = prAcharAdm(P.msg), t = P.msg.trim() ? Propostas.lerMensagem(P.msg).titulo : "";
+    P.ficha = a ? a.id : null; P.adm = a ? a.nome : t || ""; P.sis = a ? a.sis : "";
+    for (const [id, v] of [["#pr-adm", P.adm], ["#pr-sis", P.sis]]) { const el = $(id); if (el && document.activeElement !== el) el.value = v; }
+    const det = $(".pr-corrigir"); if (det && P.msg.trim() && !P.adm) det.open = true;
+  }
+  async function prModelo() {
+    if (S.pr.modelo) return S.pr.modelo;
+    const { data, error } = await sb.storage.from("propostas").download(PR_MODELO); if (error) throw error;
+    S.pr.modelo = await data.arrayBuffer(); return S.pr.modelo;
+  }
+  function prBaixar(blob, nome) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nome + ".pptx"; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000); }
+  async function prMontar(dados) {
+    const r = await Propostas.gerarProposta(await prModelo(), dados, { JSZip: window.JSZip, tipo: "blob" });
+    prBaixar(new Blob([r.arquivo], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }), r.nome);
+    return r;
+  }
+  async function prGerar() {
+    const P = S.pr; if (P.gerando) return;
+    const { d, dados } = prDados(); if (!dados.administradora) { toast("Diga para qual administradora é a proposta."); return; }
+    if (!d.mensal && !d.adesao && !d.itens.length) { toast("Não achei valores na mensagem. Confira se colou a mensagem do Matheus."); return; }
+    P.gerando = true; prAtualizar();
+    try {
+      const r = await prMontar(dados);
+      const { error } = await sb.from("propostas").insert({ ficha_id: P.ficha, administradora: dados.administradora, mensagem: P.msg, dados, mensal: d.mensal || null, adesao: d.adesao || null, slides: r.slides, usuario_id: S.user.id });
+      if (error) { console.error(error); toast("O PowerPoint baixou, mas não deu para salvar no histórico."); }
+      else toast(r.avisos.length ? "Proposta pronta. " + r.avisos.join(" ") : "Proposta pronta e salva.");
+      await carregarPropostas();
+    } catch (e) { console.error(e); toast(/not.?found|404|Object/i.test(String(e?.message || e)) ? "O modelo da proposta ainda não foi enviado." : "Não deu para montar a proposta. Tente de novo."); }
+    finally { P.gerando = false; if (S.view === "propostas") prAtualizar(); }
+  }
+  async function prEnviarModelo(arq) {
+    const P = S.pr; if (!arq) return;
+    if (!/\.pptx$/i.test(arq.name)) { toast("Envie um arquivo do PowerPoint (.pptx)."); return; }
+    P.enviando = true; render();
+    try {
+      const buf = await arq.arrayBuffer();
+      await Propostas.gerarProposta(buf, { ...Propostas.lerMensagem("SCC Online:\nAdesão: R$ 1,00\nMensalidade: R$ 1,00"), administradora: "Teste" }, { JSZip: window.JSZip, tipo: "uint8array" }); // confere se o modelo funciona antes de trocar
+      const { error } = await sb.storage.from("propostas").upload(PR_MODELO, arq, { upsert: true, contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
+      if (error) throw error;
+      P.modelo = buf; toast("Modelo da proposta salvo."); await carregarPropostas();
+    } catch (e) { console.error(e); toast("Não deu para usar esse arquivo como modelo. Envie uma proposta pronta no formato da PRG."); }
+    finally { P.enviando = false; render(); }
+  }
+  app.addEventListener("input", (ev) => {
+    const t = ev.target, P = S.pr;
+    if (t.id === "pr-msg") { P.msg = t.value; P.editado = false; prDetectar(); prAtualizar(); return; }
+    if (t.id === "pr-adm" || t.id === "pr-sis" || t.id === "pr-obs") {
+      P.editado = true; P[t.id.slice(3)] = t.value;
+      if (t.id === "pr-adm") { const a = prAdms().find((x) => prSa(x.nome) === prSa(t.value)); P.ficha = a ? a.id : null; if (a && !$("#pr-sis").value) { P.sis = a.sis; $("#pr-sis").value = a.sis; } }
+      prAtualizar();
+    }
+  });
+  app.addEventListener("change", (ev) => { if (ev.target.id === "pr-modelo") prEnviarModelo(ev.target.files[0]); });
+  app.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-acao]"); if (!b || !b.dataset.acao.startsWith("pr-")) return;
+    if (b.dataset.acao === "pr-gerar") prGerar();
+    else if (b.dataset.acao === "pr-baixar") {
+      const p = (S.pr.lista || []).find((x) => String(x.id) === b.dataset.id); if (!p) return;
+      b.disabled = true; try { await prMontar({ ...p.dados, administradora: p.administradora }); } catch (e) { console.error(e); toast("Não deu para montar de novo."); } finally { b.disabled = false; }
+    } else if (b.dataset.acao === "pr-nova") { // vindo de Oportunidades: já com a administradora
+      const o = (S.op.lista || []).find((x) => x.ficha_id === b.dataset.id);
+      Object.assign(S.pr, { msg: "", adm: o?.nome || "", sis: o?.sistema || "", obs: "", ficha: b.dataset.id, editado: true });
+      S.voltarAtivo = true; S.view = "propostas"; render(); setTimeout(() => $("#pr-msg")?.focus(), 50);
+    }
+  });
 
   /* ------------------------------------------------- Indicadores Comerciais */
   // Central de indicadores para a gestão. Nada é digitado aqui além das metas: tudo sai dos registros de contato,
@@ -4802,7 +4959,7 @@
 
   /* ------------------------------------------------------------- início */
   /* ---- rota: a tela atual fica no endereço (#/vendas?funil=SCC). F5 volta para o mesmo lugar e o Voltar do navegador funciona */
-  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "oportunidades", "clientes", "agenda", "relatorios", "indicadores", "concorrencia", "listas", "equipe"];
+  const VIEWS = ["inicio", "mapeamento", "regiao", "adms", "vendas", "oportunidades", "propostas", "clientes", "agenda", "relatorios", "indicadores", "concorrencia", "listas", "equipe"];
   const ROTA = {
     mapeamento: { emp: [() => S.sel, (v) => { S.rotaEmp = v; }] },
     adms: {

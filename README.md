@@ -132,3 +132,12 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Lista em colunas fixas: Administradora, Origem, Andamento (Demo › Contato › Resposta, verde quando a etapa já aconteceu) e Próximo passo (vermelho quando está atrasado: sem contato depois da demo, mais de 15 dias sem contato, ou hora de retomar).
 - Ao clicar numa linha, os detalhes abrem **ao lado** (no celular, em tela cheia): origem, quem agendou e quem apresentou a demo, situação agora, contatos da administradora, o formulário de registrar contato e o histórico, como antes.
 - **Origem automática pela função de quem agendou a primeira demo**, não pelo nome: SDR agendou = Prospecção; vendedor ou gestor = Captação direta. Se outra pessoa assumir como SDR, continua igual. Sem mudança no banco: lê `demos.agendada_por` e `perfis.funcao`. Hoje as 38 demos foram agendadas pela SDR, então tudo aparece como Prospecção.
+
+## v71 — Propostas
+- Página nova **Propostas** (menu Comercial): cola a mensagem do Matheus e o sistema descobre para qual administradora é (pelas fichas de Oportunidades), quais produtos entram e monta o PowerPoint no modelo da PRG. Só entra o que veio na mensagem: sem tarifa, sai o slide de tarifas (com uma só, ela vai para o meio); sem CheckPay, saem os 2 slides do CheckPay; sem app personalizado, sai a customização do Investimento. Item que o sistema não conhece entra marcado "item novo, confira"; linha que não entendeu aparece em amarelo.
+- "Algo errado? Corrigir antes de baixar": administradora, sistema que usa hoje e observação da migração.
+- O leitor da mensagem e a montagem do PowerPoint ficam em `propostas.js` (usa JSZip, carregado do jsDelivr).
+- **Modelo:** fica no Storage do Supabase (espaço privado `propostas`, arquivo `modelo.pptx`). Só admin envia ou troca, pela própria página; antes de salvar, o sistema testa se o arquivo funciona como modelo.
+- **Histórico:** cada proposta gerada fica na tabela `propostas` (mensagem, valores lidos, mensalidade, adesão, slides, quem gerou). "Baixar de novo" remonta com os mesmos valores.
+- **Oportunidades:** o painel ao lado mostra a última proposta da administradora (Baixar, Nova versão) ou o botão "Criar proposta", que abre a página já com a administradora escolhida.
+- PDF: por enquanto, abrir o PowerPoint e Salvar como PDF.
