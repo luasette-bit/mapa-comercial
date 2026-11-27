@@ -150,3 +150,10 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Em "Propostas geradas", botão **Excluir** (quem gerou a proposta ou a admin). Pede confirmação no próprio botão: o primeiro clique vira "Confirmar exclusão" por 4 segundos.
 - Banco: a política de apagar da tabela `propostas` passou a ser "quem gerou ou admin".
 - Reconhece administradoras com siglas com ponto (ex.: "C.A.C" na mensagem acha a ficha "C.A.C Administradora").
+
+## v74 — Propostas: passo 2 da implementação conforme o sistema
+- **Superlógica** (o único que convertemos): "Conversão de dados do sistema Superlógica;" + "(migração faseada; prédio a prédio);".
+- **Outro sistema:** "Estudo de conversão de dados do sistema X;", sem a observação.
+- **Sem sistema:** o passo 2 sai do slide; os outros três se espalham pela largura, renumerados 1, 2, 3, com as cores alternadas e as setas no lugar.
+- A página mostra qual desses casos vai sair e avisa quando não sabe o sistema da administradora (preencher em "Corrigir"; escrever "Sem sistema" tira o passo).
+- O campo "Observação da migração" só troca o texto padrão quando preenchido.

@@ -138,12 +138,53 @@
     // capa: o nome da administradora é a última linha com texto da caixa "PRG Software: SCC Online"
     { const c = slides[0]; const f = acha(c.doc, (t) => t.includes("scc online")); if (f) { const ps = els(f, NS_A, "p").filter((p) => texto(p).trim()); const ult = ps[ps.length - 1]; if (ult && ps.length > 1) { const rs = els(ult, NS_A, "r"); rs.slice(1).forEach(tirar); els(rs[0], NS_A, "t")[0].textContent = dados.administradora; } } }
 
-    // implementação: sistema de onde vêm os dados e observação da migração
+    // implementação (passo 2, conversão dos dados):
+    //  - Superlógica: "Conversão de dados do sistema Superlógica;" + "(migração faseada; prédio a prédio);" (é o único que convertemos)
+    //  - outro sistema: "Estudo de conversão de dados do sistema X;" sem observação
+    //  - sem sistema: o passo 2 sai e os outros três se espalham pela largura (1, 2, 3)
     { const c = slideCom((t) => t.includes("procedimento de implementa")); if (c) {
+      const sis = String(dados.sistema || "").trim(), ssa = semAcento(sis);
+      const semSistema = /^(sem sistema|nenhum|nao tem|nao usa|planilha)/.test(ssa) || dados.semSistema;
+      const ehSuper = /superl[oó]?gica/.test(ssa);
       const f = acha(c.doc, (t) => t.includes("conversao de dados"));
-      if (f) trocaTexto(f, dados.sistema ? `Estudo de conversão de dados do sistema ${dados.sistema};` : "Estudo de conversão dos dados do sistema atual;");
       const obs = acha(c.doc, (t) => /^\(.*\);?$/.test(t.trim()));
-      if (obs) { if (dados.obsMigracao) trocaTexto(obs, `(${dados.obsMigracao.replace(/^\(|\)?;?$/g, "")});`); else tirar(obs); }
+      if (semSistema) {
+        const W = 12700, extX = (x) => els(x, NS_A, "ext").find((q) => q.parentNode.localName === "xfrm"), fundos = formas(c.doc).filter((x) => x.localName === "sp" && !texto(x).trim() && extX(x) && +extX(x).getAttribute("cy") / W > 200).sort((a, b) => pos(a).x - pos(b).x);
+        if (fundos.length === 4 && f) {
+          const larg = (x) => +els(x, NS_A, "ext").find((e) => e.parentNode.localName === "xfrm").getAttribute("cx") / W;
+          const col = fundos.map((x) => ({ fundo: x, x0: pos(x).x, x1: pos(x).x + larg(x) }));
+          const resto = formas(c.doc).filter((x) => !fundos.includes(x) && pos(x).y >= pos(fundos[0]).y - 5);
+          const donoDe = new Map(resto.map((x) => [x, col.findIndex((k) => pos(x).x >= k.x0 - 1 && pos(x).x < k.x1 - 1)])); // antes de mexer em nada
+          const dono = (x) => donoDe.get(x);
+          const setas = resto.filter((x) => { const e = els(x, NS_A, "ext").find((q) => q.parentNode.localName === "xfrm"); return e && +e.getAttribute("cx") / W < 45 && +e.getAttribute("cy") / W > 60 && !texto(x).trim(); });
+          const fill = (x) => { const sp = els(x, NS_P, "spPr")[0]; return Array.from(sp.childNodes).find((n) => n.nodeType === 1 && /Fill$/.test(n.localName)); };
+          const trocaFill = (x, molde) => { const sp = els(x, NS_P, "spPr")[0], velho = fill(x), novo = molde && molde.cloneNode(true); if (!novo) return; if (velho) sp.replaceChild(novo, velho); else sp.appendChild(novo); };
+          const f1 = fill(col[1].fundo), f2 = fill(col[2].fundo);
+          // sai a coluna 2 inteira e a seta que fica entre a 3 e a 4
+          resto.filter((x) => dono(x) === 1 && !setas.includes(x)).forEach(tirar); tirar(col[1].fundo);
+          const setaSai = setas.find((x) => dono(x) === 2); if (setaSai) tirar(setaSai);
+          const ini = col[0].x0, fim = col[3].x1, L = (fim - ini) / 3, fator = L / (col[0].x1 - col[0].x0);
+          [[0, 0], [2, 1], [3, 2]].forEach(([de, para]) => {
+            const k = col[de], nx = ini + para * L;
+            for (const x of resto.filter((y) => y.parentNode && dono(y) === de)) {
+              const e = els(x, NS_A, "ext").find((q) => q.parentNode.localName === "xfrm");
+              if (setas.includes(x)) { mover(x, nx + L - (k.x1 - pos(x).x) - pos(x).x, 0); continue; }
+              const rel = pos(x).x - k.x0; mover(x, nx + rel * fator - pos(x).x, 0);
+              if (e && texto(x).trim().length > 2) e.setAttribute("cx", Math.round(Math.min(+e.getAttribute("cx") / W * fator, L - rel * fator - 34) * W)); // não encosta na seta
+              if (/^\d$/.test(texto(x).trim())) trocaTexto(x, String(para + 1));
+            }
+            mover(k.fundo, nx - k.x0, 0); const e = els(k.fundo, NS_A, "ext").find((q) => q.parentNode.localName === "xfrm"); e.setAttribute("cx", Math.round(L * W));
+          });
+          // a seta que estava depois da coluna 2 (clara) passa a ficar depois da nova coluna 2
+          const setaMeio = setas.find((x) => x.parentNode && dono(x) === 1);
+          if (setaMeio) mover(setaMeio, ini + 2 * L - (col[1].x1 - pos(setaMeio).x) - pos(setaMeio).x, 0);
+          trocaFill(col[2].fundo, f1); trocaFill(col[3].fundo, f2); // mantém as cores alternadas
+        } else if (f) { trocaTexto(f, "Estudo de conversão dos dados;"); if (obs) tirar(obs); avisos.push("Não consegui tirar o passo 2 da implementação: confira o slide."); }
+      } else {
+        if (f) trocaTexto(f, ehSuper ? "Conversão de dados do sistema Superlógica;" : sis ? `Estudo de conversão de dados do sistema ${sis};` : "Estudo de conversão de dados do sistema atual;");
+        const nota = dados.obsMigracao ? dados.obsMigracao : ehSuper ? "migração faseada; prédio a prédio" : "";
+        if (obs) { if (nota) trocaTexto(obs, `(${nota.replace(/^\(|\)?;?$/g, "")});`); else tirar(obs); }
+      }
     } }
 
     // investimento: adesão e, se tiver, a customização do app

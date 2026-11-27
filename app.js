@@ -4257,7 +4257,7 @@
       <details class="pr-corrigir" ${P.editado || (P.msg.trim() && !P.adm) ? "open" : ""}><summary>Algo errado? Corrigir antes de baixar</summary>
       <div class="pr-grade"><div class="campo"><label for="pr-adm">Administradora</label><input id="pr-adm" class="input" list="pr-lista-adm" value="${esc(P.adm)}" autocomplete="off"><datalist id="pr-lista-adm">${prAdms().map((a) => `<option value="${esc(a.nome)}">`).join("")}</datalist></div>
       <div class="campo"><label for="pr-sis">Sistema que usa hoje</label><input id="pr-sis" class="input" value="${esc(P.sis)}"></div>
-      <div class="campo"><label for="pr-obs">Observação da migração</label><input id="pr-obs" class="input" value="${esc(P.obs)}" placeholder="Ex.: migração faseada; prédio a prédio"></div></div></details></section>`;
+      <div class="campo"><label for="pr-obs">Observação da migração</label><input id="pr-obs" class="input" value="${esc(P.obs)}" placeholder="Só se precisar mudar o padrão"></div></div></details></section>`;
     const hist = (P.lista || []).length ? `<section class="cartao pr-hist"><div class="lista-cab"><h2 class="t15" style="margin:0">Propostas geradas</h2><span class="t12 fraco">Baixe de novo quando precisar: o sistema remonta com os mesmos valores</span></div>
       <div class="rolagem"><table class="tab-simples"><thead><tr><th>Dia</th><th>Administradora</th><th>Mensalidade</th><th>Adesão</th><th>Slides</th><th>Quem gerou</th><th></th></tr></thead><tbody>
       ${P.lista.slice(0, 60).map((p) => `<tr><td class="num">${ddmmaaaa(String(p.criado_em).slice(0, 10))}</td><td><b>${esc(p.administradora)}</b></td><td class="num">${esc(p.mensal || "—")}</td><td>${esc(p.adesao || "—")}</td><td class="num">${p.slides || ""}</td><td>${esc(opPessoa(p.usuario_id).nome)}</td>
@@ -4278,7 +4278,9 @@
       ["Boletos por WhatsApp", !!wpp, wpp ? wpp.valor : "Não entra"], ["NFS moradores", !!nfs, nfs ? nfs.valor : "Não entra"], ["Tarifas CondoConta / DirectBank", !!tar, tar || "Não entra"],
       ...novos.map((o) => [o.rotulo.replace(/:$/, ""), true, o.valor + " · item novo, confira"])];
     const n = 19 - (check ? 0 : 2) - (tar ? 0 : 1);
-    const sl = [["Capa", 1], ["Apresentação do SCC Online", 0], ["CheckPay (2 slides)", check ? 0 : -1], ["Implementação", 1], ["Investimento", 1], ["Mensalidade", 1], ["Tarifas", tar ? 1 : -1], ["Obrigado", 0]];
+    const sisA = prSa(P.sis.trim()), semSis = /^(sem sistema|nenhum|nao tem|nao usa|planilha)/.test(sisA), ehSuper = /superl[oó]?gica/.test(sisA);
+    const imp = semSis ? "Implementação sem o passo de conversão (3 passos)" : ehSuper ? "Implementação: conversão da Superlógica" : P.sis.trim() ? `Implementação: estudo de conversão do ${P.sis.trim()}` : "Implementação";
+    const sl = [["Capa", 1], ["Apresentação do SCC Online", 0], ["CheckPay (2 slides)", check ? 0 : -1], [imp, 1], ["Investimento", 1], ["Mensalidade", 1], ["Tarifas", tar ? 1 : -1], ["Obrigado", 0]];
     const selo = P.editado ? '<span class="selo s-nao">Corrigido por você</span>' : P.ficha ? '<span class="selo s-conf">Reconhecida pela mensagem</span>' : P.adm ? '<span class="selo s-nao">Não achei a ficha: confira o nome</span>' : '<span class="selo s-errado">Não reconheci a administradora</span>';
     const anteriores = P.ficha ? prDaFicha(P.ficha) : [];
     return `<div class="pr-para"><div class="pilha" style="gap:0"><span class="t13 fraco">Proposta para</span><h2>${esc(P.adm || "Administradora não identificada")}</h2>${P.sis ? `<span class="t13 fraco">Usa hoje: ${esc(P.sis)}</span>` : ""}</div>${selo}</div>
@@ -4286,6 +4288,7 @@
       ${anteriores.length ? `<p class="t13 fraco" style="margin:0">Essa administradora já tem ${anteriores.length === 1 ? "1 proposta" : anteriores.length + " propostas"} no sistema (a última em ${ddmmaaaa(String(anteriores[0].criado_em).slice(0, 10))}). Esta vira uma versão nova.</p>` : ""}
       <b class="t13">Produtos que o sistema encontrou na mensagem</b>
       <div class="pr-prods">${prods.map(([t, s, v]) => `<div class="pr-prod ${s ? "pr-sim" : "pr-nao"}"><span class="pr-pnome">${s ? ok : no}${esc(t)}</span><span class="pr-pval">${esc(v)}</span></div>`).join("")}</div>
+      ${P.adm && !P.sis.trim() ? `<p class="pr-aviso">Não sei qual sistema essa administradora usa hoje. Preencha em <b>Corrigir antes de baixar</b>: se for Superlógica, a proposta diz que fazemos a conversão; se for outro, que faremos o estudo; se escrever <b>Sem sistema</b>, o passo da conversão sai.</p>` : ""}
       ${d.naoEntendi.length ? `<p class="pr-aviso"><b>Não entendi estas linhas, elas não entram:</b> ${d.naoEntendi.map(esc).join(" · ")}</p>` : ""}
       <b class="t13">A proposta vai sair com ${n} slides. Em azul, os que o sistema preenche com a mensagem:</b>
       <div class="pr-slides">${sl.map(([t, k]) => `<span class="pr-sl ${k === 1 ? "pr-muda" : k === -1 ? "pr-sai" : ""}">${esc(t)}${k === -1 ? " (sai)" : ""}</span>`).join("")}</div>
