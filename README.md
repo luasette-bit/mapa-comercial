@@ -145,3 +145,8 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 ## v72 — Propostas: app personalizado some quando não vem
 - No slide Investimento, a parte do app personalizado é achada pelo texto (Customização, Desenvolvimento, Aplicativo, App personalizado), não só por "Customização". Sem app na mensagem, o rótulo e o valor saem.
 - Se sobrar algum "xxx" de exemplo do modelo na proposta, o sistema avisa em qual slide conferir.
+
+## v73 — Propostas: excluir
+- Em "Propostas geradas", botão **Excluir** (quem gerou a proposta ou a admin). Pede confirmação no próprio botão: o primeiro clique vira "Confirmar exclusão" por 4 segundos.
+- Banco: a política de apagar da tabela `propostas` passou a ser "quem gerou ou admin".
+- Reconhece administradoras com siglas com ponto (ex.: "C.A.C" na mensagem acha a ficha "C.A.C Administradora").

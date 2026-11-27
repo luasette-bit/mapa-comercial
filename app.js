@@ -4217,12 +4217,12 @@
   const PR_MODELO = "modelo.pptx";
   const prSa = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const PR_COMUM = new Set(["administradora", "administracao", "administradoras", "condominios", "condominio", "gestao", "imobiliaria", "contabilidade", "condominial", "servicos", "ltda", "eireli"]);
-  const prChaves = (n) => prSa(n).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !PR_COMUM.has(w));
+  const prChaves = (n) => prSa(n).replace(/[.\-&]/g, "").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !PR_COMUM.has(w)); // "C.A.C" vira "cac"
   function prAdms() { // administradoras que viram demo (de Oportunidades), com o sistema que usam
     return (S.op.lista || []).map((o) => ({ id: o.ficha_id, nome: o.nome, sis: o.sistema || "" }));
   }
   function prAcharAdm(texto) {
-    const t = " " + prSa(texto).replace(/[^a-z0-9 ]/g, " ") + " "; let melhor = null;
+    const t = " " + prSa(texto).replace(/[.\-&]/g, "").replace(/[^a-z0-9 ]/g, " ") + " "; let melhor = null;
     for (const a of prAdms()) { const ks = prChaves(a.nome); if (!ks.length) continue; const n = ks.filter((k) => t.includes(" " + k + " ")).length, nota = n / ks.length;
       if (n && (!melhor || nota > melhor.nota || (nota === melhor.nota && ks.length > melhor.ks))) melhor = { ...a, nota, ks: ks.length }; }
     return melhor && melhor.nota >= 0.5 ? melhor : null;
@@ -4261,7 +4261,7 @@
     const hist = (P.lista || []).length ? `<section class="cartao pr-hist"><div class="lista-cab"><h2 class="t15" style="margin:0">Propostas geradas</h2><span class="t12 fraco">Baixe de novo quando precisar: o sistema remonta com os mesmos valores</span></div>
       <div class="rolagem"><table class="tab-simples"><thead><tr><th>Dia</th><th>Administradora</th><th>Mensalidade</th><th>Adesão</th><th>Slides</th><th>Quem gerou</th><th></th></tr></thead><tbody>
       ${P.lista.slice(0, 60).map((p) => `<tr><td class="num">${ddmmaaaa(String(p.criado_em).slice(0, 10))}</td><td><b>${esc(p.administradora)}</b></td><td class="num">${esc(p.mensal || "—")}</td><td>${esc(p.adesao || "—")}</td><td class="num">${p.slides || ""}</td><td>${esc(opPessoa(p.usuario_id).nome)}</td>
-        <td><button type="button" class="mini" data-acao="pr-baixar" data-id="${p.id}">Baixar de novo</button></td></tr>`).join("")}</tbody></table></div></section>` : "";
+        <td><span class="linha-flex" style="gap:6px;flex-wrap:nowrap"><button type="button" class="mini" data-acao="pr-baixar" data-id="${p.id}">Baixar de novo</button>${p.usuario_id === S.user.id || S.perfil?.papel === "admin" ? `<button type="button" class="mini pr-excluir" data-acao="pr-excluir" data-id="${p.id}" aria-label="Excluir a proposta de ${esc(p.administradora)}">Excluir</button>` : ""}</span></td></tr>`).join("")}</tbody></table></div></section>` : "";
     return cab + modelo + cola + `<section class="cartao pr-res" id="pr-res" ${P.msg.trim() ? "" : "hidden"}>${prResultado()}</section>` + hist;
   }
   function prDados() { const P = S.pr, d = Propostas.lerMensagem(P.msg); return { d, dados: { ...d, administradora: P.adm.trim(), sistema: /^sem sistema$/i.test(P.sis.trim()) ? "" : P.sis.trim(), obsMigracao: P.obs.trim() } }; }
@@ -4354,6 +4354,12 @@
     else if (b.dataset.acao === "pr-baixar") {
       const p = (S.pr.lista || []).find((x) => String(x.id) === b.dataset.id); if (!p) return;
       b.disabled = true; try { await prMontar({ ...p.dados, administradora: p.administradora }); } catch (e) { console.error(e); toast("Não deu para montar de novo."); } finally { b.disabled = false; }
+    } else if (b.dataset.acao === "pr-excluir") { // dois cliques: o primeiro pede confirmação no próprio botão
+      if (!b.dataset.conf) { b.dataset.conf = "1"; b.textContent = "Confirmar exclusão"; b.classList.add("pr-excluir-conf"); setTimeout(() => { if (b.isConnected) { delete b.dataset.conf; b.textContent = "Excluir"; b.classList.remove("pr-excluir-conf"); } }, 4000); return; }
+      b.disabled = true;
+      const { error } = await sb.from("propostas").delete().eq("id", +b.dataset.id);
+      if (error) { console.error(error); toast("Não deu para excluir."); b.disabled = false; return; }
+      S.pr.lista = (S.pr.lista || []).filter((x) => String(x.id) !== b.dataset.id); toast("Proposta excluída."); renderDados();
     } else if (b.dataset.acao === "pr-nova") { // vindo de Oportunidades: já com a administradora
       const o = (S.op.lista || []).find((x) => x.ficha_id === b.dataset.id);
       Object.assign(S.pr, { msg: "", adm: o?.nome || "", sis: o?.sistema || "", obs: "", ficha: b.dataset.id, editado: true });

@@ -2259,3 +2259,7 @@ body.menu-mini .lateral .lat-recolher svg { transform: rotate(180deg); }
 .op-prop { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; background: var(--cinza); border-radius: 10px; padding: 9px 12px; }
 @media (max-width: 760px) { .pr-grade { grid-template-columns: minmax(0, 1fr); } .pr-gerar { width: 100%; } }
 .pr-hist { padding: 0; overflow: hidden; }
+.pr-excluir { color: var(--vermelho); border-color: var(--vermelho-borda); }
+.pr-excluir:hover:not(:disabled) { background: var(--vermelho-fundo); }
+.pr-excluir-conf { background: var(--vermelho); color: #fff; border-color: var(--vermelho); }
+.pr-excluir-conf:hover:not(:disabled) { background: #8A2116; }
