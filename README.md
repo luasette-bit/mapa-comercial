@@ -192,3 +192,8 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Em Propostas feitas, o filtro "Minhas / Do time" virou **Todas · Prospecção · Captação direta**. Os números do topo seguem o filtro; cada card mostra a origem.
 - Origem automática pela ficha, igual a Oportunidades: primeira demo agendada por vendedor ou gestor = Captação direta; por outra função (SDR) = Prospecção; sem ficha ou sem demo = Captação direta. Em Fazer proposta aparece "De onde veio o cliente" com a origem achada e o botão para trocar antes de baixar.
 - Banco: coluna `propostas.origem` (prospeccao, direta). As propostas já feitas receberam a origem pela ficha.
+
+## v82 — Indicadores: propostas pela página Propostas
+- "Propostas enviadas" (cartão, rosca, eficiência e funil) deixou de vir do funil importado do Agendor. Agora conta as propostas feitas na página Propostas, **uma por administradora** (versões novas não contam de novo; a data é a da primeira).
+- Situação de cada uma: contrato registrado ou "Fecharam" em Oportunidades = **Virou contrato**; "Negaram" = **Recusada**; o resto = **Em aberto**.
+- Proposta de administradora sem ficha conta no total e aparece na lista ao clicar, com "sem ficha no sistema"; fica fora do funil (que só considera quem teve demo).

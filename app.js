@@ -4514,7 +4514,7 @@
     const I = S.ind; if (I.carregando) return; I.carregando = true; I.erro = false;
     if (!silencioso) renderDados();
     try {
-      const [regs, demos, fichas, negocios, hist, etapas, funis, metas, pessoas] = await Promise.all([
+      const [regs, demos, fichas, negocios, hist, etapas, funis, metas, pessoas, props, ops] = await Promise.all([
         tudo(() => sb.from("registros").select("id,ficha_id,usuario_id,data,tipo,detalhe,canal,criado_em").neq("tipo", "anotacao").order("id"), "ind-regs"),
         tudo(() => sb.from("demos").select("id,ficha_id,usuario_id,agendada_por,agendada_em,demo_em,status,realizada_em,apresentador,reagendada_de,origem").order("id"), "ind-demos"),
         tudo(() => sb.from("fichas").select("id,usuario_id,nome,cidade,uf,sistema,qtd_condominios,responsavel,criado_em,demo_formato").order("id"), "ind-fichas"),
@@ -4522,9 +4522,11 @@
         tudo(() => sb.from("negocio_etapas").select("negocio_id,etapa_id,em").order("id"), "ind-hist"),
         sb.from("etapas").select("id,funil_id,ordem,nome"), sb.from("funis").select("id,sigla,nome"),
         sb.from("metas_comerciais").select("chave,valor"), sb.from("perfis").select("id,nome,funcao,papel").eq("aprovado", true).order("nome"),
+        sb.from("propostas").select("id,ficha_id,administradora,tipo,origem,mensal,criado_em").order("criado_em").limit(5000),
+        sb.from("oportunidades").select("ficha_id,situacao"),
       ]);
       for (const r of [etapas, funis, metas, pessoas]) if (r.error) throw r.error;
-      I.d = montarBase({ regs, demos, fichas, negocios, hist, etapas: etapas.data || [], funis: funis.data || [], metas: metas.data || [], pessoas: pessoas.data || [] });
+      I.d = montarBase({ regs, demos, fichas, negocios, hist, etapas: etapas.data || [], funis: funis.data || [], metas: metas.data || [], pessoas: pessoas.data || [], props: props.error ? [] : props.data || [], ops: ops.error ? [] : ops.data || [] });
       I.em = Date.now();
     } catch (e) { console.error(e); I.erro = true; if (!silencioso) toast("Não deu para carregar os indicadores. Tente de novo."); }
     finally { I.carregando = false; if (S.view === "indicadores" || (S.view === "inicio" && ehGestor())) renderDados(); }
@@ -4536,15 +4538,17 @@
     const scc = b.funis.find((f) => f.sigla === "SCC")?.id;
     const ordemEtapa = new Map(b.etapas.filter((e) => e.funil_id === scc).map((e) => [e.id, e.ordem]));
     const negPorId = new Map(b.negocios.filter((n) => n.funil_id === scc).map((n) => [n.id, n]));
-    // proposta enviada: a primeira vez que o negócio entrou numa etapa de proposta (8 a 11) ou fechou (12)
+    // propostas enviadas: as feitas na página Propostas, uma por administradora (a primeira manda a data; versões novas não contam de novo).
+    // A situação vem de Oportunidades e dos contratos: fechou/contrato = virou contrato; negou = recusada; o resto = em aberto.
+    const sitOp = new Map(b.ops.map((o) => [o.ficha_id, o.situacao]));
+    const temContrato = new Set(b.regs.filter((r) => r.tipo === "contrato").map((r) => r.ficha_id));
     const propostas = new Map();
-    for (const h of b.hist) {
-      const n = negPorId.get(h.negocio_id), o = ordemEtapa.get(h.etapa_id); if (!n || !o || o < 8) continue;
-      const dia = diaSP(h.em), p = propostas.get(n.id);
-      if (!p) propostas.set(n.id, { negocio: n, ficha_id: n.ficha_id, enviada: dia, recusada: o === 10 ? dia : null });
-      else { if (dia < p.enviada) p.enviada = dia; if (o === 10 && (!p.recusada || dia < p.recusada)) p.recusada = dia; }
+    for (const p of b.props) {
+      const k = p.ficha_id || "nome:" + String(p.administradora || "").trim().toLowerCase(), dia = diaSP(p.criado_em), at = propostas.get(k);
+      if (!at) propostas.set(k, { ficha_id: p.ficha_id, administradora: p.administradora, enviada: dia, versoes: 1, tipo: p.tipo, origem: p.origem });
+      else { at.versoes++; if (dia < at.enviada) at.enviada = dia; }
     }
-    for (const p of propostas.values()) { const o = ordemEtapa.get(p.negocio.etapa_id) || 0; p.situacao = o === 12 || p.negocio.status === "ganho" ? "contrato" : o === 10 || p.negocio.status === "perdido" ? "recusada" : "aberta"; }
+    for (const p of propostas.values()) { const sit = p.ficha_id ? sitOp.get(p.ficha_id) : null; p.situacao = (p.ficha_id && temContrato.has(p.ficha_id)) || sit === "fechou" ? "contrato" : sit === "negou" ? "recusada" : "aberta"; }
     // demos: cada agendamento original e a cadeia de reagendamentos até a situação final
     const demoPorId = new Map(b.demos.map((d) => [d.id, d]));
     const raiz = (d) => { let x = d, i = 0; while (x.reagendada_de && demoPorId.has(x.reagendada_de) && i++ < 20) x = demoPorId.get(x.reagendada_de); return x; };
@@ -4589,7 +4593,7 @@
       && (Q.todos || (Q.papel === "sdr" ? d.raiz.agendada_por === Q.id : apresentou(Q, d.apresentador))));
     const naoFeitas = previstas.filter((d) => d.status === "nao_realizada"), semResultado = previstas.filter((d) => d.status === "agendada" && d.dia < hj);
     const contratos = D.regs.filter((r) => r.tipo === "contrato" && noP(r.data) && (Q.todos || (Q.papel !== "sdr" && apresentou(Q, apresDaFicha(D, r.ficha_id)))));
-    const propostas = D.propostas.filter((p) => noP(p.enviada) && (Q.todos || (Q.papel !== "sdr" && apresentou(Q, apresDaFicha(D, p.ficha_id)))));
+    const propostas = D.propostas.filter((p) => noP(p.enviada) && (Q.todos || (Q.papel !== "sdr" && p.ficha_id && apresentou(Q, apresDaFicha(D, p.ficha_id)))));
     const vale = Q.todos || Q.papel === "sdr";
     return {
       tent: vale ? tent : [], lig: vale ? tent.filter((r) => r.canal === "ligacao") : [], cont: vale ? cont : [], semContato: vale ? tent.filter((r) => r.tipo === "sem_contato") : [],
@@ -4620,7 +4624,7 @@
     const E = { abord: 0, contato: 0, interesse: 0, agend: 0, realiz: 0, prop: 0, ctr: 0 }, ids = { abord: [], contato: [], interesse: [], agend: [], realiz: [], prop: [], ctr: [] };
     for (const id of set) {
       const rs = regsAte.get(id) || [], ds = demosAte.get(id) || [];
-      // proposta e contrato só entram no funil de quem teve demo realizada (as propostas do Agendor sem demo ficam fora)
+      // proposta e contrato só entram no funil de quem teve demo realizada (propostas sem demo ficam fora do funil)
       const realiz = ds.some((d) => d.status === "realizada" && d.realizada_em <= fim);
       const ctrReg = rs.some((r) => r.tipo === "contrato");
       const prop = realiz && (ctrReg || propAte.has(id)), ctr = realiz && ctrReg;
@@ -4941,7 +4945,7 @@
     else if (tipo === "real") { titulo = "Demos realizadas"; itens = demosLista(M.realizadas); }
     else if (tipo === "ctr" || tipo === "conv" && (M.Q.papel === "vendedor" || M.Q.papel === "gestor")) { titulo = "Contratos fechados"; itens = M.contratos.map((r) => fichaLinha(r.ficha_id, `contrato ${ddmm(r.data)}`)); }
     else if (tipo === "conv") { titulo = "Demos agendadas no período"; itens = demosLista(M.agendadas); }
-    else if (tipo === "prop") { const m = { "Em aberto": "aberta", "Virou contrato": "contrato", "Recusada": "recusada" }[cat]; titulo = cat ? `Propostas: ${cat.toLowerCase()}` : "Propostas enviadas"; itens = M.propostas.filter((p) => !m || p.situacao === m).map((p) => fichaLinha(p.ficha_id, `enviada ${ddmm(p.enviada)}`)); }
+    else if (tipo === "prop") { const m = { "Em aberto": "aberta", "Virou contrato": "contrato", "Recusada": "recusada" }[cat]; titulo = cat ? `Propostas: ${cat.toLowerCase()}` : "Propostas enviadas"; itens = M.propostas.filter((p) => !m || p.situacao === m).map((p) => p.ficha_id ? fichaLinha(p.ficha_id, `enviada ${ddmm(p.enviada)}${p.versoes > 1 ? ` · ${p.versoes} versões` : ""}`) : `<div class="in-reg"><span><b>${esc(p.administradora)}</b><span class="t12 fraco">enviada ${ddmm(p.enviada)} · sem ficha no sistema</span></span></div>`); }
     else if (tipo === "sit") { titulo = `Demos agendadas: ${String(cat).toLowerCase()}`; itens = demosLista(M.agendadas.filter((d) => situacaoDemo(D, d) === cat)); }
     else if (tipo === "res") { titulo = `Contatos: ${String(cat).toLowerCase()}`; const k = (r) => r.tipo === "sem_contato" ? "Sem contato" : r.tipo === "negativa" ? "Negativa" : r.tipo === "demo_agendada" ? "Demo agendada" : r.detalhe === "pediu_retorno" ? "Pediu retorno" : r.detalhe === "material_enviado" ? "Só por e-mail/WhatsApp" : "Conversou"; itens = regsLista(M.tent.filter((r) => k(r) === cat)); }
     else if (tipo === "sis") { titulo = `Empresas abordadas que usam ${cat}`; const ids = [...new Set(M.tent.map((r) => r.ficha_id))].filter((id) => { const s = D.fichaPorId.get(id)?.sistema || "Não informado"; return cat === "Outros" ? true : s === cat; }); itens = ids.map((id) => fichaLinha(id, "")); }
