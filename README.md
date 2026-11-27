@@ -181,3 +181,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Na proposta: a caixa da adesão mostra "3x de R$ 696,67" e, embaixo, "Ou R$ 1.900,00 à vista." Vale para todos os produtos. Se o modelo do SCC não tiver a linha do à vista, o sistema cria embaixo do valor e desce a customização do app.
 - Se o Matheus já mandar parcelado, vale o à vista da mensagem e o parcelado é recalculado pela regra. Isento (ex.: Black Friday) sai como veio, sem parcelado.
 - A página mostra o cálculo antes de baixar.
+
+## v80 — Propostas em duas páginas
+- Abas logo abaixo do título: **Fazer proposta** (a página de antes) e **Propostas feitas** (com o número das suas).
+- **Propostas feitas:** quatro números no topo (propostas no mês, nos últimos 7 dias, administradoras, total de mensalidades propostas no mês); filtros Minhas / Do time, por produto (só os que têm proposta) e busca pelo nome; cards separados por mês.
+- **Card:** faixa na cor do produto com o produto, a administradora, a data e a cidade; mensalidade em destaque; adesão à vista e parcelado; adicionais em etiquetas; quem gerou; "versão X de Y" (mesma administradora e mesmo produto). Botões **Baixar**, **Nova versão** (volta para Fazer proposta com a mensagem e a administradora daquela proposta, para mudar os valores) e lixeira (quem gerou ou admin; pede confirmação).
+- Depois de baixar em Fazer proposta aparece "Proposta pronta" com o atalho **Ver nas propostas feitas**. A tabela "Propostas geradas" do fim da página saiu (virou a página de cards).

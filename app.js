@@ -4248,7 +4248,7 @@
       const [l, m, fs] = await Promise.all([
         sb.from("propostas").select("id,tipo,ficha_id,administradora,mensagem,dados,mensal,adesao,slides,usuario_id,criado_em").order("criado_em", { ascending: false }).limit(300),
         sb.storage.from("propostas").list("", { search: "modelo", limit: 100 }),
-        sb.from("fichas").select("id,nome,sistema").limit(10000),
+        sb.from("fichas").select("id,nome,sistema,cidade,uf").limit(10000),
       ]);
       if (!fs.error) P.fichas = fs.data || [];
       if (l.error) throw l.error;
@@ -4264,7 +4264,12 @@
     const P = S.pr;
     if (!P.lista && !P.carregando) carregarPropostas();
     if (!S.op.lista && !S.op.carregando && !S.op.erro) carregarOportunidades(true);
-    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Propostas</h1><p class="fraco" style="margin:0">Cole a mensagem do Matheus. O sistema descobre para quem é, quais produtos entram e monta a proposta no modelo da PRG.</p></div></div>`;
+    const minhasN = (P.lista || []).filter((p) => p.usuario_id === S.user.id).length, feitas = P.aba === "feitas";
+    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Propostas</h1><p class="fraco" style="margin:0">${feitas ? "Todas as propostas que você já fez, em cards. Baixe de novo, faça uma nova versão ou exclua." : "Cole a mensagem do Matheus. O sistema descobre para quem é, quais produtos entram e monta a proposta no modelo da PRG."}</p></div></div>
+      <div class="pr-abas" role="tablist" aria-label="Páginas de Propostas">
+        <button type="button" role="tab" data-acao="pr-aba" data-v="fazer" aria-selected="${!feitas}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Fazer proposta</button>
+        <button type="button" role="tab" data-acao="pr-aba" data-v="feitas" aria-selected="${feitas}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>Propostas feitas${P.lista ? ` <span class="pr-abas-n">${minhasN}</span>` : ""}</button></div>`;
+    if (feitas) return cab + telaPropostasFeitas();
     const admin = S.perfil?.papel === "admin";
     const info = P.modelosInfo ? P.modelosInfo[P.tipo] : undefined, semModelo = info === null, nomeT = PR_NOME[P.tipo];
     const modelo = admin ? `<section class="cartao pr-modelo"><div class="pilha" style="gap:2px"><b class="t13">Modelo da proposta de ${esc(nomeT)}</b><span class="t12 fraco">${info ? `Em uso desde ${ddmmaaaa(String(info.em).slice(0, 10))}. Para trocar, envie outra proposta pronta de ${esc(nomeT)}.` : info === undefined ? "Conferindo…" : `Ainda não tem modelo de ${esc(nomeT)}. Envie uma proposta pronta desse produto: ela vira o modelo de todas.`}</span></div>
@@ -4278,11 +4283,49 @@
       <div class="pr-grade"><div class="campo"><label for="pr-adm">Administradora</label><input id="pr-adm" class="input" list="pr-lista-adm" value="${esc(P.adm)}" autocomplete="off"><datalist id="pr-lista-adm">${prAdms().map((a) => `<option value="${esc(a.nome)}">`).join("")}</datalist></div>
       <div class="campo"><label for="pr-sis">Sistema que usa hoje</label><input id="pr-sis" class="input" value="${esc(P.sis)}"></div>
       <div class="campo"><label for="pr-obs">Observação da migração</label><input id="pr-obs" class="input" value="${esc(P.obs)}" placeholder="Só se precisar mudar o padrão"></div></div></details></section>`;
-    const hist = (P.lista || []).length ? `<section class="cartao pr-hist"><div class="lista-cab"><h2 class="t15" style="margin:0">Propostas geradas</h2><span class="t12 fraco">Baixe de novo quando precisar: o sistema remonta com os mesmos valores</span></div>
-      <div class="rolagem"><table class="tab-simples"><thead><tr><th>Dia</th><th>Administradora</th><th>Produto</th><th>Mensalidade</th><th>Adesão</th><th>Slides</th><th>Quem gerou</th><th></th></tr></thead><tbody>
-      ${P.lista.slice(0, 60).map((p) => `<tr><td class="num">${ddmmaaaa(String(p.criado_em).slice(0, 10))}</td><td><b>${esc(p.administradora)}</b></td><td>${esc(PR_NOME[p.tipo] || "SCC Online")}</td><td class="num">${esc(p.mensal || "—")}</td><td>${esc(p.adesao || "—")}</td><td class="num">${p.slides || ""}</td><td>${esc(opPessoa(p.usuario_id).nome)}</td>
-        <td><span class="linha-flex" style="gap:6px;flex-wrap:nowrap"><button type="button" class="mini" data-acao="pr-baixar" data-id="${p.id}">Baixar de novo</button>${p.usuario_id === S.user.id || S.perfil?.papel === "admin" ? `<button type="button" class="mini pr-excluir" data-acao="pr-excluir" data-id="${p.id}" aria-label="Excluir a proposta de ${esc(p.administradora)}">Excluir</button>` : ""}</span></td></tr>`).join("")}</tbody></table></div></section>` : "";
-    return cab + tipos + modelo + cola + `<section class="cartao pr-res" id="pr-res" ${P.msg.trim() ? "" : "hidden"}>${prResultado()}</section>` + hist;
+    return cab + tipos + modelo + cola + `<section class="cartao pr-res" id="pr-res" ${P.msg.trim() ? "" : "hidden"}>${prResultado()}</section>`;
+  }
+  /* ---- página 2: propostas feitas, em cards ---- */
+  const fmtMoeda = (n) => "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const PR_COR = { scc: "#2C63DB", scl: "#1F3FD8", app: "#6D3FCF", omp: "#0A8793", wo: "#B4400E", sfp: "#1E7A46" };
+  const prValor = (s) => { const m = String(s || "").match(/R\$ ?([\d.]+,\d{2})/); return m ? +m[1].replace(/\./g, "").replace(",", ".") : 0; };
+  function prBaseFeitas() { const P = S.pr; return (P.lista || []).filter((p) => (P.ver || "minhas") === "time" || p.usuario_id === S.user.id); }
+  function telaPropostasFeitas() {
+    const P = S.pr; if (!P.lista) return `<div class="cartao vazio">Carregando…</div>`;
+    const b = prBaseFeitas(), hj = hojeISO(), mes = hj.slice(0, 7), semana = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+    const doMes = b.filter((p) => String(p.criado_em).slice(0, 7) === mes);
+    const ic = { doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>', cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>', pr: '<path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-6h6v6"/>', din: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/>' };
+    const nomeMes = (k) => new Date(k + "-15T12:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const resumo = [[ic.doc, "#2C63DB", doMes.length, `propostas em ${new Date(hj + "T12:00").toLocaleDateString("pt-BR", { month: "long" })}`], [ic.cal, "#0A8793", b.filter((p) => String(p.criado_em).slice(0, 10) >= semana).length, "nos últimos 7 dias"],
+      [ic.pr, "#6D3FCF", new Set(b.map((p) => p.ficha_id || p.administradora)).size, "administradoras"], [ic.din, "#1E7A46", fmtMoeda(doMes.reduce((s, p) => s + prValor(p.mensal), 0)), "em mensalidades propostas no mês"]]
+      .map(([i, c, n, l]) => `<div class="pr-res-n"><i style="background:${c}"><svg viewBox="0 0 24 24" aria-hidden="true">${i}</svg></i><div><b>${n}</b><span>${l}</span></div></div>`).join("");
+    const usados = [...new Set(b.map((p) => p.tipo || "scc"))], prodSel = usados.includes(P.prod) ? P.prod : "todos";
+    const barra = `<div class="pr-barra"><div class="op-seg" role="group" aria-label="De quem">${[["minhas", "Minhas"], ["time", "Do time"]].map(([k, l]) => `<button type="button" data-acao="pr-ver" data-v="${k}" aria-pressed="${(P.ver || "minhas") === k}">${l}</button>`).join("")}</div>
+      <div class="pr-filtros" role="group" aria-label="Produto">${[["todos", "Todos"], ...usados.map((t) => [t, PR_NOME[t] || "SCC Online"])].map(([k, l]) => `<button type="button" data-acao="pr-prod" data-v="${k}" aria-pressed="${prodSel === k}">${k !== "todos" ? `<i style="background:${PR_COR[k]}"></i>` : ""}${esc(l)}</button>`).join("")}</div>
+      <input type="search" id="pr-busca" class="input pr-busca" placeholder="Procurar administradora" value="${esc(P.busca || "")}" aria-label="Procurar administradora"></div>`;
+    return `<div class="pr-feitas"><div class="pr-resumo">${resumo}</div>${barra}<div id="pr-cards" class="pr-cards">${prCards()}</div></div>`;
+  }
+  function prCards() {
+    const P = S.pr, b = prBaseFeitas(), q = prSa(P.busca || "").trim(), usados = new Set(b.map((p) => p.tipo || "scc")), prod = usados.has(P.prod) ? P.prod : "todos";
+    const l = b.filter((p) => (prod === "todos" || (p.tipo || "scc") === prod) && (!q || prSa(p.administradora).includes(q)));
+    if (!l.length) return `<div class="pr-vazio"><b>${q ? "Nada encontrado" : (P.ver || "minhas") === "minhas" ? "Você ainda não fez nenhuma proposta" : "O time ainda não fez nenhuma proposta"}</b><span>${q ? "Tente outro nome." : "As propostas que você baixar em Fazer proposta aparecem aqui."}</span></div>`;
+    const grupos = new Map(); for (const p of l) { const k = String(p.criado_em).slice(0, 7); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(p); }
+    const versao = (p) => { const irmas = (P.lista || []).filter((x) => (x.tipo || "scc") === (p.tipo || "scc") && (p.ficha_id ? x.ficha_id === p.ficha_id : x.administradora === p.administradora)).sort((a, c) => (a.criado_em < c.criado_em ? -1 : 1)); return [irmas.indexOf(p) + 1, irmas.length]; };
+    const ficha = (id) => (S.pr.fichas || []).find((f) => f.id === id) || (S.op.lista || []).find((o) => o.ficha_id === id);
+    const card = (p) => {
+      const t = p.tipo || "scc", d = p.dados || {}, ca = Propostas.calcAdesao(d.adesao || p.adesao), f = p.ficha_id ? ficha(p.ficha_id) : null, [v, nv] = versao(p);
+      const tags = [...(d.itens || []).map((i) => i.rotulo.replace(/:$/, "")), d.appCustomizacao && "Customização do app", d.condoconta && "Tarifa CondoConta", d.directbank && "Tarifa DirectBank"].filter(Boolean);
+      const dt = String(p.criado_em).slice(0, 10), pes = opPessoa(p.usuario_id), meu = p.usuario_id === S.user.id || S.perfil?.papel === "admin";
+      return `<article class="pr-card"><div class="pr-faixa" style="--c:${PR_COR[t]}"><span class="pr-faixa-prod">${esc(PR_NOME[t] || "SCC Online")}</span><h3>${esc(p.administradora)}</h3><span class="pr-faixa-data">${ddmmaaaa(dt)}${f && f.cidade ? ` · ${esc(f.cidade)}${f.uf ? " - " + esc(f.uf) : ""}` : ""}</span></div>
+        <div class="pr-corpo"><div class="pr-mensal"><b>${esc(p.mensal || "—")}</b>${p.mensal ? "<span>por mês</span>" : ""}</div>
+          <div class="pr-adesao"><span>Adesão</span><b>${ca ? `${esc(ca.vista)} à vista ou ${esc(ca.parcelado)}` : esc(d.adesao || p.adesao || "Não informada")}</b></div>
+          <div class="pr-tags">${tags.length ? tags.map((x) => `<span class="pr-tag2">${esc(x)}</span>`).join("") : '<span class="pr-tag2 pr-tag-sem">Sem adicionais</span>'}</div>
+          <div class="pr-rodape"><span class="pr-quem"><span class="pr-av">${esc((pes.nome || "?")[0])}</span>${esc(pes.nome)}</span>${nv > 1 ? `<span class="pr-versoes">versão ${v} de ${nv}</span>` : "<span>versão 1</span>"}</div></div>
+        <div class="pr-acoes2"><button type="button" class="mini pr-b-baixar" data-acao="pr-baixar" data-id="${p.id}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Baixar</button>
+          <button type="button" class="mini" data-acao="pr-versao" data-id="${p.id}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Nova versão</button>
+          ${meu ? `<button type="button" class="mini pr-excluir pr-b-lixo" data-acao="pr-excluir" data-id="${p.id}" aria-label="Excluir a proposta de ${esc(p.administradora)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M7 7l1 13h8l1-13M9 7V4h6v3"/></svg></button>` : ""}</div></article>`;
+    };
+    return [...grupos].map(([k, ps]) => `<div class="pr-mes">${esc(new Date(k + "-15T12:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }))} · ${ps.length}</div><div class="pr-grade">${ps.map(card).join("")}</div>`).join("");
   }
   function prDados() { const P = S.pr, d = Propostas.lerMensagem(P.msg); return { d, dados: { ...d, produto: PR_NOME[P.tipo], administradora: P.adm.trim(), sistema: /^sem sistema$/i.test(P.sis.trim()) ? "" : P.sis.trim(), obsMigracao: P.obs.trim() } }; }
   function prResultado() {
@@ -4317,6 +4360,7 @@
       ${d.naoEntendi.length ? `<p class="pr-aviso"><b>Não entendi estas linhas, elas não entram:</b> ${d.naoEntendi.map(esc).join(" · ")}</p>` : ""}
       ${scc ? `<b class="t13">A proposta vai sair com ${n} slides. Em azul, os que o sistema preenche com a mensagem:</b>
       <div class="pr-slides">${sl.map(([t, k]) => `<span class="pr-sl ${k === 1 ? "pr-muda" : k === -1 ? "pr-sai" : ""}">${esc(t)}${k === -1 ? " (sai)" : ""}</span>`).join("")}</div>` : `<p class="t13 fraco" style="margin:0">Os slides vêm do modelo de ${esc(PR_NOME[P.tipo])}: o sistema coloca o nome da administradora e os valores da mensagem. Se sobrar algum "xxx" do modelo, ele avisa.</p>`}
+      ${P.feita ? `<div class="pr-pronta"><span><b>Proposta pronta.</b> O PowerPoint baixou e ela já está nas propostas feitas.</span><button type="button" class="mini" data-acao="pr-aba" data-v="feitas">Ver nas propostas feitas</button></div>` : ""}
       <div class="pr-acoes"><button type="button" class="btn btn-primario pr-gerar" data-acao="pr-gerar" ${P.gerando || !P.adm || P.modelosInfo?.[P.tipo] === null ? "disabled" : ""}>${P.gerando ? "Montando…" : "Baixar PowerPoint"}</button>
         <span class="t12 fraco">${P.modelosInfo?.[P.tipo] === null ? `Falta enviar o modelo de ${esc(PR_NOME[P.tipo])} (lá em cima).` : "Para o PDF: abra o PowerPoint e use Arquivo › Salvar como PDF. A proposta fica salva aqui e na oportunidade."}</span></div>`;
   }
@@ -4349,7 +4393,7 @@
       const r = await prMontar(dados, P.tipo);
       const { error } = await sb.from("propostas").insert({ tipo: P.tipo, ficha_id: P.ficha, administradora: dados.administradora, mensagem: P.msg, dados, mensal: d.mensal || null, adesao: d.adesao || null, slides: r.slides, usuario_id: S.user.id });
       if (error) { console.error(error); toast("O PowerPoint baixou, mas não deu para salvar no histórico."); }
-      else toast(r.avisos.length ? "Proposta pronta. " + r.avisos.join(" ") : "Proposta pronta e salva.");
+      else { P.feita = true; toast(r.avisos.length ? "Proposta pronta. " + r.avisos.join(" ") : "Proposta pronta e salva."); }
       await carregarPropostas();
     } catch (e) { console.error(e); toast(/not.?found|404|Object/i.test(String(e?.message || e)) ? "O modelo da proposta ainda não foi enviado." : "Não deu para montar a proposta. Tente de novo."); }
     finally { P.gerando = false; if (S.view === "propostas") prAtualizar(); }
@@ -4369,8 +4413,9 @@
   }
   app.addEventListener("input", (ev) => {
     const t = ev.target, P = S.pr;
+    if (t.id === "pr-busca") { P.busca = t.value; const c = $("#pr-cards"); if (c) c.innerHTML = prCards(); return; }
     if (t.id === "pr-msg") {
-      P.msg = t.value; P.editado = false; prDetectar();
+      P.msg = t.value; P.editado = false; P.feita = false; prDetectar();
       const tipo = P.tipoManual ? P.tipo : prTipoDaMensagem(P.msg);
       if (tipo !== P.tipo || (!P.msg.trim()) !== (!$("#pr-res")?.innerHTML.trim())) { // trocou o produto: redesenha e volta o cursor para o texto
         P.tipo = tipo; const pos = t.selectionStart; render(); const n = $("#pr-msg"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } } return;
@@ -4387,19 +4432,27 @@
   app.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-acao]"); if (!b || !b.dataset.acao.startsWith("pr-")) return;
     if (b.dataset.acao === "pr-gerar") prGerar();
+    else if (b.dataset.acao === "pr-aba") { S.pr.aba = b.dataset.v; render(); window.scrollTo(0, 0); }
+    else if (b.dataset.acao === "pr-ver") { S.pr.ver = b.dataset.v; S.pr.prod = "todos"; render(); }
+    else if (b.dataset.acao === "pr-prod") { S.pr.prod = b.dataset.v; render(); }
+    else if (b.dataset.acao === "pr-versao") { // nova versão: volta para Fazer proposta com a mensagem e a administradora dessa proposta
+      const p = (S.pr.lista || []).find((x) => String(x.id) === b.dataset.id); if (!p) return;
+      Object.assign(S.pr, { aba: "fazer", msg: p.mensagem || "", adm: p.administradora, sis: p.dados?.sistema || "", obs: p.dados?.obsMigracao || "", ficha: p.ficha_id, editado: true, tipo: p.tipo || "scc", tipoManual: true, feita: false });
+      render(); window.scrollTo(0, 0); setTimeout(() => $("#pr-msg")?.focus(), 50); toast("Mude os valores na mensagem e baixe: vira uma versão nova.");
+    }
     else if (b.dataset.acao === "pr-tipo") { S.pr.tipo = b.dataset.v; S.pr.tipoManual = true; render(); }
     else if (b.dataset.acao === "pr-baixar") {
       const p = (S.pr.lista || []).find((x) => String(x.id) === b.dataset.id); if (!p) return;
       b.disabled = true; try { await prMontar({ ...p.dados, produto: PR_NOME[p.tipo] || "SCC Online", administradora: p.administradora }, p.tipo || "scc"); } catch (e) { console.error(e); toast("Não deu para montar de novo."); } finally { b.disabled = false; }
     } else if (b.dataset.acao === "pr-excluir") { // dois cliques: o primeiro pede confirmação no próprio botão
-      if (!b.dataset.conf) { b.dataset.conf = "1"; b.textContent = "Confirmar exclusão"; b.classList.add("pr-excluir-conf"); setTimeout(() => { if (b.isConnected) { delete b.dataset.conf; b.textContent = "Excluir"; b.classList.remove("pr-excluir-conf"); } }, 4000); return; }
+      if (!b.dataset.conf) { const antes = b.innerHTML; b.dataset.conf = "1"; b.textContent = "Confirmar exclusão"; b.classList.add("pr-excluir-conf"); setTimeout(() => { if (b.isConnected) { delete b.dataset.conf; b.innerHTML = antes; b.classList.remove("pr-excluir-conf"); } }, 4000); return; }
       b.disabled = true;
       const { error } = await sb.from("propostas").delete().eq("id", +b.dataset.id);
       if (error) { console.error(error); toast("Não deu para excluir."); b.disabled = false; return; }
       S.pr.lista = (S.pr.lista || []).filter((x) => String(x.id) !== b.dataset.id); toast("Proposta excluída."); renderDados();
     } else if (b.dataset.acao === "pr-nova") { // vindo de Oportunidades: já com a administradora
       const o = (S.op.lista || []).find((x) => x.ficha_id === b.dataset.id);
-      Object.assign(S.pr, { msg: "", adm: o?.nome || "", sis: o?.sistema || "", obs: "", ficha: b.dataset.id, editado: true, tipo: "scc", tipoManual: false });
+      Object.assign(S.pr, { aba: "fazer", feita: false, msg: "", adm: o?.nome || "", sis: o?.sistema || "", obs: "", ficha: b.dataset.id, editado: true, tipo: "scc", tipoManual: false });
       S.voltarAtivo = true; S.view = "propostas"; render(); setTimeout(() => $("#pr-msg")?.focus(), 50);
     }
   });
