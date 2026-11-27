@@ -4209,7 +4209,7 @@
   app.addEventListener("submit", (ev) => { const f = ev.target; if (f.dataset.acao !== "op-salvar") return; ev.preventDefault(); salvarContatoOp(f); });
 
   /* ------------------------------------------------- Propostas */
-  // Cola a mensagem do Matheus (valores da proposta) e o sistema monta o PowerPoint no modelo da PRG.
+  // Cola as informações da proposta (administradora, produtos e valores) e o sistema monta o PowerPoint no modelo da PRG.
   // Quem lê a mensagem e mexe no PowerPoint é propostas.js (window.Propostas). Só entra o que veio na mensagem:
   // sem tarifa, sai o slide de tarifas; sem CheckPay, saem os slides do CheckPay; sem app, sai a customização.
   // O modelo (.pptx) fica no Storage (espaço "propostas", arquivo modelo.pptx); cada proposta gerada fica na tabela propostas.
@@ -4265,25 +4265,30 @@
     if (!P.lista && !P.carregando) carregarPropostas();
     if (!S.op.lista && !S.op.carregando && !S.op.erro) carregarOportunidades(true);
     const minhasN = (P.lista || []).length, feitas = P.aba === "feitas";
-    const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Propostas</h1><p class="fraco" style="margin:0">${feitas ? "Todas as propostas que você já fez, em cards. Baixe de novo, faça uma nova versão ou exclua." : "Cole a mensagem do Matheus. O sistema descobre para quem é, quais produtos entram e monta a proposta no modelo da PRG."}</p></div></div>
+    const cab = `<div class="pr-topo"><div class="pilha" style="gap:4px"><h1 style="margin:0">Propostas</h1><p class="fraco" style="margin:0">${feitas ? "Todas as propostas que você já fez, em cards. Baixe de novo, faça uma nova versão ou exclua." : "Escolha o produto e cole as informações da proposta. O sistema monta tudo no modelo da PRG."}</p></div>
       <div class="pr-abas" role="tablist" aria-label="Páginas de Propostas">
         <button type="button" role="tab" data-acao="pr-aba" data-v="fazer" aria-selected="${!feitas}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Fazer proposta</button>
-        <button type="button" role="tab" data-acao="pr-aba" data-v="feitas" aria-selected="${feitas}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>Propostas feitas${P.lista ? ` <span class="pr-abas-n">${minhasN}</span>` : ""}</button></div>`;
+        <button type="button" role="tab" data-acao="pr-aba" data-v="feitas" aria-selected="${feitas}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>Propostas feitas${P.lista ? ` <span class="pr-abas-n">${minhasN}</span>` : ""}</button></div></div>`;
     if (feitas) return cab + telaPropostasFeitas();
-    const admin = S.perfil?.papel === "admin";
+    const admin = S.perfil?.papel === "admin", tem = !!P.msg.trim();
     const info = P.modelosInfo ? P.modelosInfo[P.tipo] : undefined, semModelo = info === null, nomeT = PR_NOME[P.tipo];
-    const modelo = admin ? `<section class="cartao pr-modelo"><div class="pilha" style="gap:2px"><b class="t13">Modelo da proposta de ${esc(nomeT)}</b><span class="t12 fraco">${info ? `Em uso desde ${ddmmaaaa(String(info.em).slice(0, 10))}. Para trocar, envie outra proposta pronta de ${esc(nomeT)}.` : info === undefined ? "Conferindo…" : `Ainda não tem modelo de ${esc(nomeT)}. Envie uma proposta pronta desse produto: ela vira o modelo de todas.`}</span></div>
-      <label class="btn ${semModelo ? "btn-primario" : "btn-sec"} pr-enviar">${P.enviando ? "Enviando…" : semModelo ? `Enviar o modelo de ${esc(nomeT)}` : "Trocar o modelo"}<input type="file" id="pr-modelo" accept=".pptx" hidden ${P.enviando ? "disabled" : ""}></label></section>`
-      : semModelo ? `<section class="cartao pr-modelo"><span class="t13">O modelo da proposta de ${esc(nomeT)} ainda não foi enviado. Peça para a administradora do sistema enviar.</span></section>` : "";
-    const tipos = `<section class="cartao pr-tipos"><span class="t13"><b>Proposta de</b>${P.msg.trim() && !P.tipoManual ? ' <span class="fraco">(reconhecido pela mensagem, troque se precisar)</span>' : ""}</span>
-      <div class="pr-chips" role="radiogroup" aria-label="Produto da proposta">${PR_TIPOS.map(([k, l]) => `<button type="button" role="radio" class="pr-chip" data-acao="pr-tipo" data-v="${k}" aria-checked="${P.tipo === k}">${esc(l)}${P.modelosInfo && !P.modelosInfo[k] ? '<span class="pr-chip-sem">sem modelo</span>' : ""}</button>`).join("")}</div></section>`;
-    const cola = `<section class="cartao pr-cola"><div class="pr-caixa"><textarea id="pr-msg" class="pr-texto" aria-label="Mensagem do Matheus" spellcheck="false">${esc(P.msg)}</textarea>
-      <div class="pr-dica" ${P.msg.trim() ? "hidden" : ""}><b>Cole aqui a mensagem do Matheus</b><span>do jeito que veio no grupo, sem arrumar nada</span></div></div>
-      <details class="pr-corrigir" ${P.editado || (P.msg.trim() && !P.adm) ? "open" : ""}><summary>Algo errado? Corrigir antes de baixar</summary>
-      <div class="pr-grade"><div class="campo"><label for="pr-adm">Administradora</label><input id="pr-adm" class="input" list="pr-lista-adm" value="${esc(P.adm)}" autocomplete="off"><datalist id="pr-lista-adm">${prAdms().map((a) => `<option value="${esc(a.nome)}">`).join("")}</datalist></div>
+    const modelo = admin ? `<div class="pr-modelo2"><span class="t12">${info ? `<b>Modelo de ${esc(nomeT)}</b> em uso desde ${ddmmaaaa(String(info.em).slice(0, 10))}.` : info === undefined ? "Conferindo o modelo…" : `<b>${esc(nomeT)} ainda não tem modelo.</b> Envie uma proposta pronta desse produto: ela vira o modelo de todas.`}</span>
+        <label class="mini pr-enviar ${semModelo ? "pr-enviar-1" : ""}">${P.enviando ? "Enviando…" : semModelo ? `Enviar o modelo` : "Trocar o modelo"}<input type="file" id="pr-modelo" accept=".pptx" hidden ${P.enviando ? "disabled" : ""}></label></div>`
+      : semModelo ? `<div class="pr-modelo2"><span class="t12"><b>${esc(nomeT)} ainda não tem modelo.</b> Peça para a administradora do sistema enviar.</span></div>` : "";
+    const qtd = (k) => (P.lista || []).filter((x) => (x.tipo || "scc") === k).length;
+    const passo1 = `<section class="pr-passo"><div class="pr-passo-cab"><span class="pr-num">1</span><div><h2>Qual produto?</h2><p>O sistema já marca pelas informações, mas você pode trocar.</p></div>${tem && !P.tipoManual ? '<span class="pr-auto">reconhecido</span>' : ""}</div>
+      <div class="pr-prodcards" role="radiogroup" aria-label="Produto da proposta">${PR_TIPOS.map(([k, l]) => { const m = P.modelosInfo ? !!P.modelosInfo[k] : null, q = qtd(k);
+        return `<button type="button" role="radio" class="pr-pc" data-acao="pr-tipo" data-v="${k}" aria-checked="${P.tipo === k}" style="--c:${PR_COR[k]}"><span class="pr-pc-ic">${PR_SIGLA[k]}</span><span class="pr-pc-tx"><b>${esc(l)}</b><span class="pr-pc-st">${m === null ? "" : `<i class="${m ? "ok" : ""}">${m ? "Modelo pronto" : "Sem modelo"}</i>`}${q ? `<span>· ${q} ${q === 1 ? "proposta" : "propostas"}</span>` : ""}</span></span><span class="pr-pc-ck"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2l2.3 2.3 4.7-5"/></svg></span></button>`; }).join("")}</div>${modelo}</section>`;
+    const passo2 = `<section class="pr-passo"><div class="pr-passo-cab"><span class="pr-num ${tem ? "pr-num-ok" : ""}" id="pr-num2">2</span><div><h2>Informações da proposta</h2><p>Administradora, produtos e valores, do jeito que vieram.</p></div></div>
+      <div class="pr-caixa"><textarea id="pr-msg" class="pr-texto" aria-label="Informações da proposta" spellcheck="false">${esc(P.msg)}</textarea>
+      <div class="pr-dica" ${tem ? "hidden" : ""}><span class="pr-dica-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9 4h6v3H9zM9 11h6M9 15h4"/></svg></span><b>Cole aqui as informações da proposta</b><span>Não precisa arrumar nada.</span><span class="pr-ex"><span>Lares:</span><span>SCC Online:</span><span>Adesão: R$ 1.900,00</span><span>Mensalidade: R$ 1.100,00</span></span></div></div>
+      <div id="pr-avisos">${prAvisos()}</div>
+      <details class="pr-corrigir" ${P.editado || (tem && !P.adm) ? "open" : ""}><summary>Algo errado? Corrigir antes de baixar</summary>
+      <div class="pr-grade"><div class="campo"><label for="pr-adm">Administradora</label><input id="pr-adm" class="input" list="pr-lista-adm" value="${esc(P.adm)}" autocomplete="off"><datalist id="pr-lista-adm">${prAdms().map((x) => `<option value="${esc(x.nome)}">`).join("")}</datalist></div>
       <div class="campo"><label for="pr-sis">Sistema que usa hoje</label><input id="pr-sis" class="input" value="${esc(P.sis)}"></div>
       <div class="campo"><label for="pr-obs">Observação da migração</label><input id="pr-obs" class="input" value="${esc(P.obs)}" placeholder="Só se precisar mudar o padrão"></div></div></details></section>`;
-    return cab + tipos + modelo + cola + `<section class="cartao pr-res" id="pr-res" ${P.msg.trim() ? "" : "hidden"}>${prResultado()}</section>`;
+    const dicas = `<div class="pr-dicas"><b>Como fica a proposta</b><span>Só entra o que veio nas informações. No SCC Online: sem tarifa, sai o slide de tarifas; sem CheckPay, saem os slides do CheckPay; sem app, sai a customização.</span><span>A adesão sai à vista e em 3x com 10%. Para o PDF, abra o PowerPoint e use Arquivo › Salvar como PDF.</span></div>`;
+    return cab + `<div class="pr-layout2"><div class="pr-esq">${passo1}${passo2}</div><aside class="pr-dir"><div class="pr-card" id="pr-res">${prResultado()}</div>${dicas}</aside></div>`;
   }
   // De onde veio o cliente: pela primeira demo da ficha e a FUNÇÃO de quem agendou (igual a Oportunidades).
   // Vendedor/gestor agendou = captação direta; outra função (SDR) = prospecção; sem ficha ou sem demo = captação direta.
@@ -4339,45 +4344,43 @@
     return [...grupos].map(([k, ps]) => `<div class="pr-mes">${esc(new Date(k + "-15T12:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }))} · ${ps.length}</div><div class="pr-grade">${ps.map(card).join("")}</div>`).join("");
   }
   function prDados() { const P = S.pr, d = Propostas.lerMensagem(P.msg); return { d, dados: { ...d, produto: PR_NOME[P.tipo], administradora: P.adm.trim(), sistema: /^sem sistema$/i.test(P.sis.trim()) ? "" : P.sis.trim(), obsMigracao: P.obs.trim() } }; }
-  function prResultado() {
+  const PR_SIGLA = { scc: "SCC", scl: "SCL", app: "APP", omp: "OMP", wo: "WO", sfp: "SFP" };
+  function prAvisos() { // embaixo da caixa: o que não deu para ler e o que falta saber
     const P = S.pr; if (!P.msg.trim()) return "";
-    const { d } = prDados();
-    const ca = Propostas.calcAdesao(d.adesao), adTxt = ca ? `${ca.vista} à vista ou 3x de ${ca.parcela} (com 10%)` : d.adesao;
-    const ok = '<span class="pr-ic pr-ic-ok"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-5"/></svg></span>', no = '<span class="pr-ic"></span>';
-    const tem = (re) => d.itens.find((i) => re.test(i.rotulo));
-    const check = tem(/check ?pay/i), wpp = tem(/whats/i), nfs = tem(/nfs/i), appM = tem(/aplicativo/i), novos = d.itens.filter((i) => i.novo);
-    const tar = [d.condoconta && "CondoConta " + d.condoconta.tarifa, d.directbank && "DirectBank " + d.directbank.tarifa].filter(Boolean).join(" · ");
-    const prods = [["SCC Online", !!d.mensal, d.mensal ? `${d.mensal}/mês · adesão ${adTxt || "—"}` : "Sem mensalidade na mensagem"],
-      ["App personalizado", !!(d.appCustomizacao || appM), d.appCustomizacao || appM ? [d.appCustomizacao && "Customização " + d.appCustomizacao, appM && "manutenção " + appM.valor].filter(Boolean).join(" · ") : "Não entra"],
-      ["CheckPay" + (check && /comprov/i.test(check.rotulo) ? " + comprovantes" : ""), !!check, check ? check.valor : "Não entra"],
-      ["Boletos por WhatsApp", !!wpp, wpp ? wpp.valor : "Não entra"], ["NFS moradores", !!nfs, nfs ? nfs.valor : "Não entra"], ["Tarifas CondoConta / DirectBank", !!tar, tar || "Não entra"],
-      ...novos.map((o) => [o.rotulo.replace(/:$/, ""), true, o.valor + " · item novo, confira"])];
-    const scc = P.tipo === "scc";
-    const geral = [["Adesão / implantação", !!d.adesao, adTxt || "Não veio na mensagem"], ["Mensalidade", !!d.mensal, d.mensal ? d.mensal + (d.notaMensal ? " · " + d.notaMensal : "") : "Não veio na mensagem"],
-      ...(d.appCustomizacao ? [["Customização / desenvolvimento", true, d.appCustomizacao]] : []), ...d.itens.map((i) => [i.rotulo.replace(/:$/, ""), true, i.valor]),
-      ...(tar ? [["Tarifas", true, tar]] : [])];
+    const { d } = prDados(), out = [];
+    if (!P.adm) out.push("Diga para qual administradora é a proposta em <b>Corrigir antes de baixar</b>.");
+    if (P.tipo === "scc" && P.adm && !P.sis.trim()) out.push("Não sei qual sistema essa administradora usa hoje. Preencha em <b>Corrigir antes de baixar</b>: Superlógica = fazemos a conversão; outro = faremos o estudo; <b>Sem sistema</b> = o passo da conversão sai.");
+    if (d.naoEntendi.length) out.push(`<b>Não entendi estas linhas, elas não entram:</b> ${d.naoEntendi.map(esc).join(" · ")}`);
+    const novos = d.itens.filter((i) => i.novo); if (novos.length) out.push(`Item novo, confira: ${novos.map((i) => esc(i.rotulo.replace(/:$/, ""))).join(", ")}.`);
+    return out.map((t) => `<p class="pr-aviso">${t}</p>`).join("");
+  }
+  function prResultado() {
+    const P = S.pr, cor = PR_COR[P.tipo], nomeT = PR_NOME[P.tipo];
+    const capa = (h, sub, selo) => `<div class="pr-capa" style="--c:${cor}"><span class="pr-etq"><i></i>${esc(nomeT)}</span><h3>${h}</h3><p>${sub}</p>${selo || ""}</div>`;
+    if (!P.msg.trim()) return capa("Sua proposta", "Aparece aqui enquanto você cola as informações.") + `<div class="pr-vazio2"><div class="pr-pap" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><b>Esperando as informações</b><span>Cole na caixa ao lado e a proposta se monta sozinha.</span></div><button type="button" class="pr-baixar" disabled>Baixar PowerPoint</button>`;
+    const { d } = prDados(), ca = Propostas.calcAdesao(d.adesao), scc = P.tipo === "scc";
+    const f = P.ficha ? (P.fichas || []).find((x) => x.id === P.ficha) || (S.op.lista || []).find((x) => x.ficha_id === P.ficha) : null;
+    const sub = [f && f.cidade ? esc(f.cidade) + (f.uf ? " - " + esc(f.uf) : "") : "", P.sis ? "usa " + esc(P.sis) : ""].filter(Boolean).join(" · ") || "Confira o nome antes de baixar";
+    const selo = P.editado ? '<span class="pr-selo pr-selo-at">Corrigido por você</span>' : P.ficha ? '<span class="pr-selo">Reconhecida pelas informações</span>' : `<span class="pr-selo pr-selo-at">${P.adm ? "Não achei a ficha" : "Administradora não reconhecida"}</span>`;
+    const check = d.itens.some((i) => /check ?pay/i.test(i.rotulo)), tar = d.condoconta || d.directbank;
+    const tags = [...d.itens.map((i) => [i.rotulo.replace(/:$/, ""), i.valor]), d.appCustomizacao && ["Customização", d.appCustomizacao], d.condoconta && ["CondoConta", d.condoconta.tarifa], d.directbank && ["DirectBank", d.directbank.tarifa]].filter(Boolean);
+    const sai = scc ? [!check && "slides do CheckPay", !tar && "slide de tarifas", !d.appCustomizacao && "customização do app"].filter(Boolean) : [];
     const n = 19 - (check ? 0 : 2) - (tar ? 0 : 1);
     const sisA = prSa(P.sis.trim()), semSis = /^(sem sistema|nenhum|nao tem|nao usa|planilha)/.test(sisA), ehSuper = /superl[oó]?gica/.test(sisA);
-    const imp = semSis ? "Implementação sem o passo de conversão (3 passos)" : ehSuper ? "Implementação: conversão da Superlógica" : P.sis.trim() ? `Implementação: estudo de conversão do ${P.sis.trim()}` : "Implementação";
-    const sl = [["Capa", 1], ["Apresentação do SCC Online", 0], ["CheckPay (2 slides)", check ? 0 : -1], [imp, 1], ["Investimento", 1], ["Mensalidade", 1], ["Tarifas", tar ? 1 : -1], ["Obrigado", 0]];
-    const selo = P.editado ? '<span class="selo s-nao">Corrigido por você</span>' : P.ficha ? '<span class="selo s-conf">Reconhecida pela mensagem</span>' : P.adm ? '<span class="selo s-nao">Não achei a ficha: confira o nome</span>' : '<span class="selo s-errado">Não reconheci a administradora</span>';
-    const anteriores = P.ficha ? prDaFicha(P.ficha) : [];
-    return `<div class="pr-para"><div class="pilha" style="gap:0"><span class="t13 fraco">Proposta para</span><h2>${esc(P.adm || "Administradora não identificada")}</h2>${P.sis ? `<span class="t13 fraco">Usa hoje: ${esc(P.sis)}</span>` : ""}</div>${selo}</div>
-      ${!P.adm ? `<p class="pr-aviso">Diga para qual administradora é a proposta em <b>Corrigir antes de baixar</b>, logo acima.</p>` : ""}
-      ${anteriores.length ? `<p class="t13 fraco" style="margin:0">Essa administradora já tem ${anteriores.length === 1 ? "1 proposta" : anteriores.length + " propostas"} no sistema (a última em ${ddmmaaaa(String(anteriores[0].criado_em).slice(0, 10))}). Esta vira uma versão nova.</p>` : ""}
-      <b class="t13">${scc ? "Produtos que o sistema encontrou na mensagem" : "Valores que o sistema encontrou na mensagem"}</b>
-      <div class="pr-prods">${(scc ? prods : geral).map(([t, s, v]) => `<div class="pr-prod ${s ? "pr-sim" : "pr-nao"}"><span class="pr-pnome">${s ? ok : no}${esc(t)}</span><span class="pr-pval">${esc(v)}</span></div>`).join("")}</div>
-      ${scc && P.adm && !P.sis.trim() ? `<p class="pr-aviso">Não sei qual sistema essa administradora usa hoje. Preencha em <b>Corrigir antes de baixar</b>: se for Superlógica, a proposta diz que fazemos a conversão; se for outro, que faremos o estudo; se escrever <b>Sem sistema</b>, o passo da conversão sai.</p>` : ""}
-      ${d.naoEntendi.length ? `<p class="pr-aviso"><b>Não entendi estas linhas, elas não entram:</b> ${d.naoEntendi.map(esc).join(" · ")}</p>` : ""}
-      ${scc ? `<b class="t13">A proposta vai sair com ${n} slides. Em azul, os que o sistema preenche com a mensagem:</b>
-      <div class="pr-slides">${sl.map(([t, k]) => `<span class="pr-sl ${k === 1 ? "pr-muda" : k === -1 ? "pr-sai" : ""}">${esc(t)}${k === -1 ? " (sai)" : ""}</span>`).join("")}</div>` : `<p class="t13 fraco" style="margin:0">Os slides vêm do modelo de ${esc(PR_NOME[P.tipo])}: o sistema coloca o nome da administradora e os valores da mensagem. Se sobrar algum "xxx" do modelo, ele avisa.</p>`}
-      ${(() => { const o = prOrigem(); return `<div class="pr-origem"><span class="t13"><b>De onde veio o cliente</b> <span class="fraco">${P.origemManual ? "(escolhido por você)" : P.ficha ? "(pela demo da ficha)" : "(sem ficha: confira)"}</span></span>
-        <div class="op-seg" role="radiogroup" aria-label="De onde veio o cliente">${Object.entries(PR_ORIG).map(([k, l]) => `<button type="button" role="radio" data-acao="pr-origem" data-v="${k}" aria-checked="${o === k}" aria-pressed="${o === k}">${l}</button>`).join("")}</div></div>`; })()}
-      ${P.feita ? `<div class="pr-pronta"><span><b>Proposta pronta.</b> O PowerPoint baixou e ela já está nas propostas feitas.</span><button type="button" class="mini" data-acao="pr-aba" data-v="feitas">Ver nas propostas feitas</button></div>` : ""}
-      <div class="pr-acoes"><button type="button" class="btn btn-primario pr-gerar" data-acao="pr-gerar" ${P.gerando || !P.adm || P.modelosInfo?.[P.tipo] === null ? "disabled" : ""}>${P.gerando ? "Montando…" : "Baixar PowerPoint"}</button>
-        <span class="t12 fraco">${P.modelosInfo?.[P.tipo] === null ? `Falta enviar o modelo de ${esc(PR_NOME[P.tipo])} (lá em cima).` : "Para o PDF: abra o PowerPoint e use Arquivo › Salvar como PDF. A proposta fica salva aqui e na oportunidade."}</span></div>`;
+    const imp = semSis ? "sem o passo de conversão" : ehSuper ? "conversão da Superlógica" : P.sis.trim() ? `estudo de conversão do ${esc(P.sis.trim())}` : "";
+    const anteriores = P.ficha ? prDaFicha(P.ficha).filter((x) => (x.tipo || "scc") === P.tipo) : [];
+    const o = prOrigem(), semMod = P.modelosInfo?.[P.tipo] === null;
+    return capa(esc(P.adm || "Administradora não identificada"), sub, selo) + `<div class="pr-corpo2">
+      <div class="pr-mens"><small>Mensalidade</small><b>${esc(d.mensal || "—")}</b>${d.mensal ? "<span> por mês</span>" : ""}${d.notaMensal ? `<em>${esc(d.notaMensal)}</em>` : ""}</div>
+      <div class="pr-ades">${ca ? `<div><span>Adesão à vista</span><b>${esc(ca.vista)}</b></div><div><span>Ou em 3x (com 10%)</span><b>${esc(ca.parcelado)}</b></div>` : `<div class="pr-ades-1"><span>Adesão</span><b>${esc(d.adesao || "Não veio nas informações")}</b></div>`}</div>
+      ${tags.length ? `<div><div class="pr-sec">Adicionais</div><div class="pr-tags">${tags.map(([r, v]) => `<span class="pr-tag2">${esc(r)} · ${esc(v)}</span>`).join("")}</div></div>` : ""}
+      ${scc ? `<div class="pr-nsl"><b>${n}</b><span>slides${sai.length ? ` · saem: ${esc(sai.join(", "))}` : " · com tudo"}${imp ? `<br>Implementação: ${imp}` : ""}</span></div>` : `<div class="pr-nsl"><span>Os slides vêm do modelo de ${esc(nomeT)}. O sistema coloca o nome e os valores; se sobrar algum "xxx", ele avisa.</span></div>`}
+      ${anteriores.length ? `<p class="t12 fraco" style="margin:0">Já tem ${anteriores.length === 1 ? "1 proposta" : anteriores.length + " propostas"} de ${esc(nomeT)} para ela (a última em ${ddmmaaaa(String(anteriores[0].criado_em).slice(0, 10))}). Esta vira a versão ${anteriores.length + 1}.</p>` : ""}
+      <div><div class="pr-sec">De onde veio o cliente <span class="pr-sec-obs">${P.origemManual ? "escolhido por você" : P.ficha ? "pela demo da ficha" : "sem ficha: confira"}</span></div><div class="op-seg pr-orig" role="radiogroup" aria-label="De onde veio o cliente">${Object.entries(PR_ORIG).map(([k, l]) => `<button type="button" role="radio" data-acao="pr-origem" data-v="${k}" aria-checked="${o === k}" aria-pressed="${o === k}">${l}</button>`).join("")}</div></div>
+      ${P.feita ? `<div class="pr-pronta"><span><b>Proposta pronta.</b> Já está nas propostas feitas.</span><button type="button" class="mini" data-acao="pr-aba" data-v="feitas">Ver</button></div>` : ""}
+      </div><button type="button" class="pr-baixar" data-acao="pr-gerar" ${P.gerando || !P.adm || semMod ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>${P.gerando ? "Montando…" : semMod ? `Falta o modelo de ${esc(nomeT)}` : "Baixar PowerPoint"}</button>`;
   }
-  function prAtualizar() { const r = $("#pr-res"); if (!r) return; r.hidden = !S.pr.msg.trim(); r.innerHTML = prResultado(); const d = $(".pr-dica"); if (d) d.hidden = !!S.pr.msg.trim(); }
+  function prAtualizar() { const r = $("#pr-res"); if (!r) return; r.innerHTML = prResultado(); const tem = !!S.pr.msg.trim(); const d = $(".pr-dica"); if (d) d.hidden = tem; const n = $("#pr-num2"); if (n) n.classList.toggle("pr-num-ok", tem); const av = $("#pr-avisos"); if (av) av.innerHTML = prAvisos(); }
   function prDetectar() {
     const P = S.pr; if (P.editado) return;
     const a = prAcharAdm(P.msg), t = P.msg.trim() ? Propostas.lerMensagem(P.msg).titulo : "";
@@ -4400,7 +4403,7 @@
   async function prGerar() {
     const P = S.pr; if (P.gerando) return;
     const { d, dados } = prDados(); if (!dados.administradora) { toast("Diga para qual administradora é a proposta."); return; }
-    if (!d.mensal && !d.adesao && !d.itens.length) { toast("Não achei valores na mensagem. Confira se colou a mensagem do Matheus."); return; }
+    if (!d.mensal && !d.adesao && !d.itens.length) { toast("Não achei valores. Confira se colou as informações da proposta, com adesão e mensalidade."); return; }
     P.gerando = true; prAtualizar();
     try {
       const r = await prMontar(dados, P.tipo);

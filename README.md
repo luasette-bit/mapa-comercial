@@ -197,3 +197,10 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - "Propostas enviadas" (cartão, rosca, eficiência e funil) deixou de vir do funil importado do Agendor. Agora conta as propostas feitas na página Propostas, **uma por administradora** (versões novas não contam de novo; a data é a da primeira).
 - Situação de cada uma: contrato registrado ou "Fecharam" em Oportunidades = **Virou contrato**; "Negaram" = **Recusada**; o resto = **Em aberto**.
 - Proposta de administradora sem ficha conta no total e aparece na lista ao clicar, com "sem ficha no sistema"; fica fora do funil (que só considera quem teve demo).
+
+## v83 — Fazer proposta com layout novo
+- Abas no canto direito do título. Página em duas colunas: à esquerda os passos **1. Qual produto?** e **2. Informações da proposta**; à direita o cartão **Sua proposta**, que se monta enquanto você cola (fica parado na tela ao rolar).
+- **Produtos em cards:** ícone com a sigla na cor do produto, nome, "Modelo pronto" ou "Sem modelo" e quantas propostas já foram feitas; o escolhido fica todo na cor do produto, com visto. O modelo (enviar ou trocar) fica embaixo dos cards.
+- **Cartão Sua proposta:** produto, administradora, cidade e sistema, selo de reconhecida; mensalidade em destaque com a regra de unidades; adesão à vista e em 3x com 10%; adicionais com valores; slides que saem e como fica a implementação (SCC); versão; origem; botão Baixar PowerPoint. Antes de colar, mostra "Esperando as informações".
+- Avisos (administradora não reconhecida, sistema desconhecido, linhas não entendidas, item novo) ficam embaixo da caixa.
+- Textos sem nome de pessoa: "Cole aqui as informações da proposta", com um exemplo do formato.
