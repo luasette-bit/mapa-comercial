@@ -126,3 +126,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Recolhido fica só com ícones (76px), com os contadores sobre os ícones e o nome ao passar o mouse; a escolha fica guardada (localStorage `mapa-menu-mini`).
 - Em telas até 900px: barra fina em cima com ☰ e o menu abre como gaveta pela esquerda.
 - Cada função vê só as próprias páginas (vendedor, gestor, pós-vendas), agrupadas do mesmo jeito.
+
+## v70 — Oportunidades mais organizada, com a origem
+- A página segue uma ordem: **1. Escolha a situação** (quatro quadros grandes com o número e o que cada situação quer dizer), **2. De onde veio** (Todas, Prospecção, Captação direta, com a busca ao lado) e **3. a lista**.
+- Lista em colunas fixas: Administradora, Origem, Andamento (Demo › Contato › Resposta, verde quando a etapa já aconteceu) e Próximo passo (vermelho quando está atrasado: sem contato depois da demo, mais de 15 dias sem contato, ou hora de retomar).
+- Ao clicar numa linha, os detalhes abrem **ao lado** (no celular, em tela cheia): origem, quem agendou e quem apresentou a demo, situação agora, contatos da administradora, o formulário de registrar contato e o histórico, como antes.
+- **Origem automática pela função de quem agendou a primeira demo**, não pelo nome: SDR agendou = Prospecção; vendedor ou gestor = Captação direta. Se outra pessoa assumir como SDR, continua igual. Sem mudança no banco: lê `demos.agendada_por` e `perfis.funcao`. Hoje as 38 demos foram agendadas pela SDR, então tudo aparece como Prospecção.
