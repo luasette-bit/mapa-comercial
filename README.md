@@ -141,3 +141,7 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - **Histórico:** cada proposta gerada fica na tabela `propostas` (mensagem, valores lidos, mensalidade, adesão, slides, quem gerou). "Baixar de novo" remonta com os mesmos valores.
 - **Oportunidades:** o painel ao lado mostra a última proposta da administradora (Baixar, Nova versão) ou o botão "Criar proposta", que abre a página já com a administradora escolhida.
 - PDF: por enquanto, abrir o PowerPoint e Salvar como PDF.
+
+## v72 — Propostas: app personalizado some quando não vem
+- No slide Investimento, a parte do app personalizado é achada pelo texto (Customização, Desenvolvimento, Aplicativo, App personalizado), não só por "Customização". Sem app na mensagem, o rótulo e o valor saem.
+- Se sobrar algum "xxx" de exemplo do modelo na proposta, o sistema avisa em qual slide conferir.

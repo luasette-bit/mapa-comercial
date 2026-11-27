@@ -152,7 +152,7 @@
       const val = rot && formas(c.doc).find((f) => f !== rot && Math.abs(pos(f).x - pos(rot).x) < 20 && pos(f).y > pos(rot).y && pos(f).y - pos(rot).y < 45 && texto(f).trim());
       if (rot) trocaTexto(rot, dados.rotuloAdesao || "Adesão SCC Online:");
       if (val) trocaValor(val, dados.adesao || "A combinar", 300);
-      const rotApp = acha(c.doc, (t) => t.includes("customizacao"));
+      const rotApp = acha(c.doc, (t, f) => f !== rot && /customiza|desenvolvimento|aplicativo|app personalizado/.test(t) && !/adesao|migracao|implantacao|licenca|projeto|validade/.test(t));
       const valApp = rotApp && formas(c.doc).find((f) => f !== rotApp && Math.abs(pos(f).x - pos(rotApp).x) < 20 && pos(f).y > pos(rotApp).y && pos(f).y - pos(rotApp).y < 70 && texto(f).trim());
       if (dados.appCustomizacao) { if (valApp) trocaValor(valApp, dados.appCustomizacao, 300); else avisos.push("O modelo não tem o campo da customização do app."); }
       else { if (rotApp) tirar(rotApp); if (valApp) tirar(valApp); }
@@ -216,6 +216,8 @@
     // slides que explicam produtos: os do CheckPay só entram quando a proposta tem CheckPay
     const temCheck = (dados.itens || []).some((i) => /check ?pay/i.test(i.rotulo));
     if (!temCheck) for (const x of slides) { const t = semAcento(texto(x.doc)); if (/checkpay/.test(t) || /caixa de entrada para recebimento/.test(t)) { if (!/valor mensal|investimento/.test(t)) x.remover = true; } }
+    // sobrou texto de exemplo do modelo ("R$ xxx")? avisa para conferir
+    slides.forEach((x, i) => { if (!x.remover && /\bx{3,}\b/i.test(texto(x.doc))) avisos.push(`Ficou um "xxx" de exemplo no slide ${slides.slice(0, i + 1).filter((y) => !y.remover).length}: confira.`); });
     for (const x of slides) {
       if (x.remover) {
         x.s.parentNode.removeChild(x.s); x.rel.parentNode.removeChild(x.rel);
