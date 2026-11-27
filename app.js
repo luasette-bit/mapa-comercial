@@ -4215,12 +4215,12 @@
   // O modelo (.pptx) fica no Storage (espaço "propostas", arquivo modelo.pptx); cada proposta gerada fica na tabela propostas.
   S.pr = { tipo: "scc", tipoManual: false, modelos: {}, msg: "", adm: "", sis: "", obs: "", ficha: null, editado: false, modelo: null, modeloInfo: undefined, gerando: false, lista: null, carregando: false, enviando: false };
   // cada produto tem o seu modelo no Storage: modelo-<tipo>.pptx (o primeiro modelo do SCC foi salvo como modelo.pptx)
-  const PR_TIPOS = [["scc", "SCC Online"], ["scl", "SCL Online"], ["app", "Aplicativo Personalizado"], ["omp", "Omeupredio"], ["wo", "WO (WorkOffice)"], ["sfp", "SFP"], ["esocial", "eSocial"]];
+  const PR_TIPOS = [["scc", "SCC Online"], ["scl", "SCL Online"], ["app", "Aplicativo Personalizado"], ["omp", "Omeupredio"], ["wo", "WO (WorkOffice)"], ["sfp", "SFP e eSocial"]];
   const PR_NOME = Object.fromEntries(PR_TIPOS);
   const prArquivo = (t) => `modelo-${t}.pptx`;
   function prTipoDaMensagem(txt) { // o produto principal da mensagem; na dúvida, SCC Online
     const t = prSa(txt);
-    if (/\bscl\b/.test(t)) return "scl"; if (/e-?social/.test(t)) return "esocial"; if (/\bsfp\b/.test(t)) return "sfp";
+    if (/\bscl\b/.test(t)) return "scl"; if (/e-?social|\bsfp\b/.test(t)) return "sfp"; // SFP e eSocial são o mesmo produto
     if (/workoffice|work office|\bwo\b/.test(t) && !/\bscc\b/.test(t)) return "wo";
     if (/\bscc\b/.test(t)) return "scc";
     if (/o ?meu ?predio|omeupredio/.test(t)) return "omp";

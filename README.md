@@ -159,7 +159,7 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - O campo "Observação da migração" só troca o texto padrão quando preenchido.
 
 ## v75 — Propostas por produto
-- Escolha do produto no topo da página: **SCC Online, SCL Online, Aplicativo Personalizado, Omeupredio, WO (WorkOffice), SFP e eSocial**. O sistema já marca o produto pela mensagem (ex.: "SCL Online:" na mensagem marca SCL); dá para trocar com um clique. Produto sem modelo aparece com "sem modelo".
+- Escolha do produto no topo da página: **SCC Online, SCL Online, Aplicativo Personalizado, Omeupredio, WO (WorkOffice), SFP e eSocial** (a partir da v77, SFP e eSocial são um produto só). O sistema já marca o produto pela mensagem (ex.: "SCL Online:" na mensagem marca SCL); dá para trocar com um clique. Produto sem modelo aparece com "sem modelo".
 - **Um modelo por produto** no Storage (`modelo-<tipo>.pptx`: scc, scl, app, omp, wo, sfp, esocial). O primeiro modelo do SCC, salvo antes como `modelo.pptx`, continua valendo.
 - Para os outros produtos, o sistema coloca o nome da administradora na capa e os valores nos slides que tiver (Investimento, Mensalidade, Tarifas); avisa se sobrar "xxx". As regras do SCC (passo de conversão, slides do CheckPay) continuam.
 - Nome do arquivo com o produto: "Proposta Comercial _ SCL Online - Administradora.pptx". Histórico e Oportunidades mostram o produto.
@@ -167,3 +167,6 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 
 ## v76 — Regras de montar slides só no SCC Online
 - Conversão da Superlógica (passo 2 da implementação), slides do CheckPay, slide de tarifas e tirar o app personalizado do Investimento valem **só para o modelo do SCC Online**. Nos outros produtos o modelo fica como está: entram o nome da administradora e os valores; nenhum slide sai.
+
+## v77 — SFP e eSocial juntos
+- SFP e eSocial viraram um produto só, "SFP e eSocial" (tipo `sfp`, modelo `modelo-sfp.pptx`). Mensagem que fala em SFP ou em eSocial marca esse produto.
