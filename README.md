@@ -170,3 +170,8 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 
 ## v77 — SFP e eSocial juntos
 - SFP e eSocial viraram um produto só, "SFP e eSocial" (tipo `sfp`, modelo `modelo-sfp.pptx`). Mensagem que fala em SFP ou em eSocial marca esse produto.
+
+## v78 — Propostas: nome certo e valores nos outros produtos
+- O nome do produto ("SCL Online:", "WO", "SFP"...) no começo da mensagem não vira mais o nome da administradora. Uma linha solta só com um nome (ex.: "Auxiliadora") passa a ser a administradora.
+- A administradora é procurada em todas as fichas, não só nas que viram demo.
+- Nos modelos dos outros produtos (SCL etc.), o sistema preenche os "xxx": no Investimento, "3x de R$ xxx" e "Ou R$ … à vista" (se a mensagem trouxer só um valor, sai "R$ … à vista"); na Mensalidade, o primeiro "R$ xxx".

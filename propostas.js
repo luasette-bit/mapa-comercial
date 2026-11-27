@@ -37,9 +37,10 @@
       const m = l.match(/^([^:]{2,70}):\s*(.*)$/);
       if (!m || /^R\$/.test(l)) { // linha só com valor: pertence ao título de cima (ex.: "Tarifa Condoconta:" ↵ "R$ 1,60")
         const v = limpaValor(l);
-        if (i === 0 && !/^R\$/.test(l)) { d.titulo = l.replace(/[:.]$/, "").trim(); return; }
+        if (i === 0 && !/^R\$/.test(l) && !/\b(scc|scl|sfp|wo)\b|omeupredio|e-?social/i.test(l)) { d.titulo = l.replace(/[:.]$/, "").trim(); return; }
         if (secao === "condoconta" && !d.condoconta) d.condoconta = { tarifa: v };
         else if (secao === "directbank" && !d.directbank) d.directbank = { tarifa: v };
+        else if (!d.titulo && !/^R\$/.test(l) && !/\d/.test(l) && l.length < 80) d.titulo = l.replace(/[:.]$/, "").trim(); // linha solta com um nome: é a administradora
         else d.naoEntendi.push(l);
         return;
       }
@@ -48,8 +49,8 @@
         if (/condo ?conta/.test(k)) secao = "condoconta";
         else if (/direct ?bank/.test(k)) secao = "directbank";
         else if (/\bapp|aplicativo/.test(k)) secao = "app";
-        else if (/scc/.test(k)) secao = "scc";
-        else if (i === 0) { d.titulo = m[1].trim(); secao = ""; }
+        else if (/scc|scl|omeupredio|o meu predio|workoffice|\bwo\b|sfp|e-?social|proposta|valores?$/.test(k)) secao = "scc";
+        else if (!d.titulo) { d.titulo = m[1].trim(); secao = ""; }
         else secao = k;
         return;
       }
@@ -235,6 +236,27 @@
         });
       } else if ((dados.itens || []).length) avisos.push("Não achei no modelo onde ficam os adicionais da mensalidade.");
     } }
+
+    // outros produtos: preenche os "xxx" do modelo com os valores da mensagem
+    if (!scc) {
+      const inv = slideCom((t) => t.includes("investimento"));
+      if (inv && dados.adesao) {
+        const parc = acha(inv.doc, (t) => /\d+\s*x\s*de\s*r\$/.test(t)), vista = acha(inv.doc, (t) => /a vista/.test(t));
+        const ad = dados.adesao, mP = ad.match(/(\d+)\s*x\s*de\s*(R\$ ?[\d.]+,\d{2})/i), vals = ad.match(/R\$ ?[\d.]+,\d{2}/g) || [];
+        const aVista = (mP ? vals.find((v) => v !== mP[2]) : vals[0]) || "";
+        const fmt = (v) => v.replace(/R\$ ?/, "R$ ");
+        if (mP && parc) trocaValor(parc, `${mP[1]}x de ${fmt(mP[2])}`, 300);
+        if (mP && vista) { if (aVista) trocaTexto(vista, `Ou ${fmt(aVista)} à vista.`); else tirar(vista); }
+        if (!mP) { const alvo = parc || vista; if (alvo) trocaValor(alvo, aVista ? `${fmt(aVista)} à vista` : ad, 300); if (parc && vista) tirar(vista); }
+        if (!parc && !vista) avisos.push("Não achei onde vai a adesão no modelo.");
+      }
+      const men = slideCom((t) => t.includes("valor mensal") || t.includes("mensalidade"));
+      if (men && dados.mensal) {
+        const vs = formas(men.doc).filter((f) => /^r\$\s*x{2,}/i.test(semAcento(texto(f)).trim()));
+        if (vs[0]) trocaValor(vs[0], dados.mensal); else avisos.push("Não achei onde vai a mensalidade no modelo (um \"R$ xxx\").");
+        if (vs[0] && dados.notaMensal) avisos.push("A regra de unidades da mensalidade não tem lugar nesse modelo: confira.");
+      }
+    }
 
     // tarifas CondoConta / DirectBank: sai o slide inteiro se nenhuma veio; com uma só, ela vai para o meio
     { const c = scc && slideCom((t) => t.includes("condoconta") && t.includes("directbank") && t.includes("tarifa")); if (c) {

@@ -4230,8 +4230,11 @@
   const prSa = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const PR_COMUM = new Set(["administradora", "administracao", "administradoras", "condominios", "condominio", "gestao", "imobiliaria", "contabilidade", "condominial", "servicos", "ltda", "eireli"]);
   const prChaves = (n) => prSa(n).replace(/[.\-&]/g, "").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !PR_COMUM.has(w)); // "C.A.C" vira "cac"
-  function prAdms() { // administradoras que viram demo (de Oportunidades), com o sistema que usam
-    return (S.op.lista || []).map((o) => ({ id: o.ficha_id, nome: o.nome, sis: o.sistema || "" }));
+  function prAdms() { // primeiro as que viram demo (Oportunidades), depois todas as fichas que a pessoa enxerga
+    const vistos = new Set(), r = [];
+    for (const a of [...(S.op.lista || []).map((o) => ({ id: o.ficha_id, nome: o.nome, sis: o.sistema || "" })), ...(S.pr.fichas || []).map((f) => ({ id: f.id, nome: f.nome, sis: f.sistema || "" }))])
+      if (a.nome && !vistos.has(a.id)) { vistos.add(a.id); r.push(a); }
+    return r;
   }
   function prAcharAdm(texto) {
     const t = " " + prSa(texto).replace(/[.\-&]/g, "").replace(/[^a-z0-9 ]/g, " ") + " "; let melhor = null;
@@ -4242,16 +4245,18 @@
   async function carregarPropostas() {
     const P = S.pr; if (P.carregando) return; P.carregando = true;
     try {
-      const [l, m] = await Promise.all([
+      const [l, m, fs] = await Promise.all([
         sb.from("propostas").select("id,tipo,ficha_id,administradora,mensagem,dados,mensal,adesao,slides,usuario_id,criado_em").order("criado_em", { ascending: false }).limit(300),
         sb.storage.from("propostas").list("", { search: "modelo", limit: 100 }),
+        sb.from("fichas").select("id,nome,sistema").limit(10000),
       ]);
+      if (!fs.error) P.fichas = fs.data || [];
       if (l.error) throw l.error;
       P.lista = l.data || [];
       const arqs = m.data || []; P.modelosInfo = {};
       for (const [t] of PR_TIPOS) { const a = arqs.find((x) => x.name === prArquivo(t)) || (t === "scc" ? arqs.find((x) => x.name === "modelo.pptx") : null); P.modelosInfo[t] = a ? { arquivo: a.name, em: a.updated_at || a.created_at || "" } : null; }
     } catch (e) { console.error(e); P.lista = P.lista || []; toast("Não deu para carregar as propostas."); }
-    finally { P.carregando = false; if (S.view === "propostas" || S.view === "oportunidades") renderDados(); }
+    finally { P.carregando = false; if (S.view === "propostas") prDetectar(); if (S.view === "propostas" || S.view === "oportunidades") renderDados(); }
   }
   const prDaFicha = (id) => (S.pr.lista || []).filter((p) => p.ficha_id === id);
 
