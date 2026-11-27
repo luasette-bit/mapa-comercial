@@ -164,3 +164,6 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - Para os outros produtos, o sistema coloca o nome da administradora na capa e os valores nos slides que tiver (Investimento, Mensalidade, Tarifas); avisa se sobrar "xxx". As regras do SCC (passo de conversão, slides do CheckPay) continuam.
 - Nome do arquivo com o produto: "Proposta Comercial _ SCL Online - Administradora.pptx". Histórico e Oportunidades mostram o produto.
 - Banco: coluna `propostas.tipo` (scc, scl, app, omp, wo, sfp, esocial).
+
+## v76 — Regras de montar slides só no SCC Online
+- Conversão da Superlógica (passo 2 da implementação), slides do CheckPay, slide de tarifas e tirar o app personalizado do Investimento valem **só para o modelo do SCC Online**. Nos outros produtos o modelo fica como está: entram o nome da administradora e os valores; nenhum slide sai.

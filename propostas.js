@@ -134,6 +134,8 @@
     for (const s of ids) { const rid = s.getAttributeNS(NS_R, "id") || s.getAttribute("r:id"); const rel = relAlvo(rid); const caminho = "ppt/" + rel.getAttribute("Target").replace(/^\.?\//, ""); slides.push({ s, rel, caminho, doc: await ler(caminho) }); }
     const slideCom = (fn) => slides.find((x) => fn(semAcento(texto(x.doc))));
     const avisos = [];
+    // as regras de montar/tirar slides (conversão da Superlógica, CheckPay, tarifas, app personalizado) valem só para o modelo do SCC Online
+    const scc = !dados.produto || /scc/i.test(dados.produto);
 
     // capa: o nome da administradora é a última linha com texto da caixa "PRG Software: SCC Online"
     { const c = slides[0]; const f = acha(c.doc, (t) => t.includes("scc online") || t.includes("prg software:")) || formas(c.doc).find((x) => els(x, NS_A, "p").filter((p) => texto(p).trim()).length > 1); if (f) { const ps = els(f, NS_A, "p").filter((p) => texto(p).trim()); const ult = ps[ps.length - 1]; if (ult && ps.length > 1) { const rs = els(ult, NS_A, "r"); rs.slice(1).forEach(tirar); els(rs[0], NS_A, "t")[0].textContent = dados.administradora; } } }
@@ -142,7 +144,7 @@
     //  - Superlógica: "Conversão de dados do sistema Superlógica;" + "(migração faseada; prédio a prédio);" (é o único que convertemos)
     //  - outro sistema: "Estudo de conversão de dados do sistema X;" sem observação
     //  - sem sistema: o passo 2 sai e os outros três se espalham pela largura (1, 2, 3)
-    { const c = slideCom((t) => t.includes("procedimento de implementa")); if (c) {
+    { const c = scc && slideCom((t) => t.includes("procedimento de implementa")); if (c) {
       const sis = String(dados.sistema || "").trim(), ssa = semAcento(sis);
       const semSistema = /^(sem sistema|nenhum|nao tem|nao usa|planilha)/.test(ssa) || dados.semSistema;
       const ehSuper = /superl[oó]?gica/.test(ssa);
@@ -195,7 +197,8 @@
       if (val) trocaValor(val, dados.adesao || "A combinar", 300);
       const rotApp = acha(c.doc, (t, f) => f !== rot && /customiza|desenvolvimento|aplicativo|app personalizado/.test(t) && !/adesao|migracao|implantacao|licenca|projeto|validade/.test(t));
       const valApp = rotApp && formas(c.doc).find((f) => f !== rotApp && Math.abs(pos(f).x - pos(rotApp).x) < 20 && pos(f).y > pos(rotApp).y && pos(f).y - pos(rotApp).y < 70 && texto(f).trim());
-      if (dados.appCustomizacao) { if (valApp) trocaValor(valApp, dados.appCustomizacao, 300); else avisos.push("O modelo não tem o campo da customização do app."); }
+      if (!scc) { if (valApp && dados.appCustomizacao) trocaValor(valApp, dados.appCustomizacao, 300); }
+      else if (dados.appCustomizacao) { if (valApp) trocaValor(valApp, dados.appCustomizacao, 300); else avisos.push("O modelo não tem o campo da customização do app."); }
       else { if (rotApp) tirar(rotApp); if (valApp) tirar(valApp); }
       const v = acha(c.doc, (t) => t.includes("validade da proposta")); if (v && dados.validade) trocaTexto(v, `Validade da Proposta: ${dados.validade}`);
     } }
@@ -234,7 +237,7 @@
     } }
 
     // tarifas CondoConta / DirectBank: sai o slide inteiro se nenhuma veio; com uma só, ela vai para o meio
-    { const c = slideCom((t) => t.includes("condoconta") && t.includes("directbank") && t.includes("tarifa")); if (c) {
+    { const c = scc && slideCom((t) => t.includes("condoconta") && t.includes("directbank") && t.includes("tarifa")); if (c) {
       const tem = { condoconta: dados.condoconta, directbank: dados.directbank };
       if (!tem.condoconta && !tem.directbank) c.remover = true;
       else {
@@ -256,7 +259,7 @@
 
     // slides que explicam produtos: os do CheckPay só entram quando a proposta tem CheckPay
     const temCheck = (dados.itens || []).some((i) => /check ?pay/i.test(i.rotulo));
-    if (!temCheck) for (const x of slides) { const t = semAcento(texto(x.doc)); if (/checkpay/.test(t) || /caixa de entrada para recebimento/.test(t)) { if (!/valor mensal|investimento/.test(t)) x.remover = true; } }
+    if (scc && !temCheck) for (const x of slides) { const t = semAcento(texto(x.doc)); if (/checkpay/.test(t) || /caixa de entrada para recebimento/.test(t)) { if (!/valor mensal|investimento/.test(t)) x.remover = true; } }
     // sobrou texto de exemplo do modelo ("R$ xxx")? avisa para conferir
     slides.forEach((x, i) => { if (!x.remover && /\bx{3,}\b/i.test(texto(x.doc))) avisos.push(`Ficou um "xxx" de exemplo no slide ${slides.slice(0, i + 1).filter((y) => !y.remover).length}: confira.`); });
     for (const x of slides) {
