@@ -73,6 +73,19 @@
     return d;
   }
 
+  // Adesão: o valor da mensagem é o à vista; em 3x soma 10% de juros sobre o total e divide em 3 parcelas iguais.
+  // Ex.: R$ 1.900,00 à vista → R$ 2.090,00 → 3x de R$ 696,67. Isento ou sem valor: fica o texto como veio.
+  const reais = (n) => "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function calcAdesao(adesao) {
+    const s = String(adesao || "");
+    if (!s || /isent|gr[aá]tis|incluso|inclu[ií]d/i.test(s)) return null;
+    const semParcela = s.replace(/\d+\s*x\s*de\s*R\$ ?[\d.]+,\d{2}/gi, ""); // se o Matheus já mandou parcelado, vale o à vista
+    const m = semParcela.match(/R\$ ?([\d.]+,\d{2})/) || s.match(/R\$ ?([\d.]+,\d{2})/);
+    if (!m) return null;
+    const vista = num(m[1]), total = Math.round(vista * 1.1 * 100) / 100, parcela = Math.round((total / 3) * 100) / 100;
+    return { vista: reais(vista), total: reais(total), parcela: reais(parcela), parcelado: `3x de ${reais(parcela)}`, aVista: `Ou ${reais(vista)} à vista.` };
+  }
+
   /* ------------------------------------------------------------ 2. mexer no PowerPoint */
   const els = (n, ns, tag) => Array.from(n.getElementsByTagNameNS(ns, tag));
   const texto = (n) => els(n, NS_A, "t").map((t) => t.textContent).join("");
@@ -195,7 +208,22 @@
       const rot = acha(c.doc, (t) => /(migracao|adesao|implantacao) scc online:/.test(t));
       const val = rot && formas(c.doc).find((f) => f !== rot && Math.abs(pos(f).x - pos(rot).x) < 20 && pos(f).y > pos(rot).y && pos(f).y - pos(rot).y < 45 && texto(f).trim());
       if (rot) trocaTexto(rot, dados.rotuloAdesao || "Adesão SCC Online:");
-      if (val) trocaValor(val, dados.adesao || "A combinar", 300);
+      const calc = calcAdesao(dados.adesao), linhaVista = acha(c.doc, (t, f) => f !== val && /a vista/.test(t));
+      if (val) trocaValor(val, calc ? calc.parcelado : dados.adesao || "A combinar", 300);
+      if (calc && val) {
+        if (linhaVista) trocaTexto(linhaVista, calc.aVista);
+        else if (rot) { // o modelo não tem a linha do à vista: cria embaixo do valor, no estilo do rótulo, e desce o que vem depois
+          const novo = rot.cloneNode(true), c0 = els(novo, NS_P, "cNvPr")[0]; c0.setAttribute("id", proximoId(c.doc)); c0.setAttribute("name", "adesao-a-vista");
+          trocaTexto(novo, calc.aVista); els(novo, NS_A, "rPr").forEach((r) => r.setAttribute("b", "0"));
+          const hVal = +els(val, NS_A, "ext").find((e) => e.parentNode.localName === "xfrm").getAttribute("cy") / EMU;
+          const yNovo = pos(val).y + hVal + 4; mover(novo, pos(val).x - pos(rot).x, yNovo - pos(rot).y);
+          val.parentNode.insertBefore(novo, val.nextSibling);
+          for (const f of formas(c.doc)) if (f !== novo && f !== val && f !== rot && Math.abs(pos(f).x - pos(val).x) < 40 && pos(f).y > pos(val).y + 5 && pos(f).y < yNovo + 30 && !/validade/.test(semAcento(texto(f)))) {
+            for (const g of formas(c.doc)) if (g !== novo && Math.abs(pos(g).x - pos(val).x) < 40 && pos(g).y >= pos(f).y && !/validade/.test(semAcento(texto(g)))) mover(g, 0, 24);
+            break;
+          }
+        }
+      } else if (linhaVista && val) tirar(linhaVista); // só mexe aqui quando achou o campo da adesão do SCC
       const rotApp = acha(c.doc, (t, f) => f !== rot && /customiza|desenvolvimento|aplicativo|app personalizado/.test(t) && !/adesao|migracao|implantacao|licenca|projeto|validade/.test(t));
       const valApp = rotApp && formas(c.doc).find((f) => f !== rotApp && Math.abs(pos(f).x - pos(rotApp).x) < 20 && pos(f).y > pos(rotApp).y && pos(f).y - pos(rotApp).y < 70 && texto(f).trim());
       if (!scc) { if (valApp && dados.appCustomizacao) trocaValor(valApp, dados.appCustomizacao, 300); }
@@ -241,13 +269,10 @@
     if (!scc) {
       const inv = slideCom((t) => t.includes("investimento"));
       if (inv && dados.adesao) {
-        const parc = acha(inv.doc, (t) => /\d+\s*x\s*de\s*r\$/.test(t)), vista = acha(inv.doc, (t) => /a vista/.test(t));
-        const ad = dados.adesao, mP = ad.match(/(\d+)\s*x\s*de\s*(R\$ ?[\d.]+,\d{2})/i), vals = ad.match(/R\$ ?[\d.]+,\d{2}/g) || [];
-        const aVista = (mP ? vals.find((v) => v !== mP[2]) : vals[0]) || "";
-        const fmt = (v) => v.replace(/R\$ ?/, "R$ ");
-        if (mP && parc) trocaValor(parc, `${mP[1]}x de ${fmt(mP[2])}`, 300);
-        if (mP && vista) { if (aVista) trocaTexto(vista, `Ou ${fmt(aVista)} à vista.`); else tirar(vista); }
-        if (!mP) { const alvo = parc || vista; if (alvo) trocaValor(alvo, aVista ? `${fmt(aVista)} à vista` : ad, 300); if (parc && vista) tirar(vista); }
+        const parc = acha(inv.doc, (t) => /\d+\s*x\s*de\s*r\$|r\$\s*x{2,}/.test(t)), vista = acha(inv.doc, (t, f) => f !== parc && /a vista/.test(t));
+        const calc = calcAdesao(dados.adesao);
+        if (parc) trocaValor(parc, calc ? calc.parcelado : dados.adesao, 300);
+        if (vista) { if (calc) trocaTexto(vista, calc.aVista); else tirar(vista); }
         if (!parc && !vista) avisos.push("Não achei onde vai a adesão no modelo.");
       }
       const men = slideCom((t) => t.includes("valor mensal") || t.includes("mensalidade"));
@@ -296,6 +321,6 @@
     return { arquivo, avisos, slides: slides.filter((x) => !x.remover).length, nome: `Proposta Comercial _ ${dados.produto || "SCC Online"} - ${dados.administradora}` };
   }
 
-  const API = { lerMensagem, gerarProposta };
+  const API = { lerMensagem, gerarProposta, calcAdesao };
   if (typeof module !== "undefined" && module.exports) module.exports = API; else raiz.Propostas = API;
 })(typeof window !== "undefined" ? window : globalThis);

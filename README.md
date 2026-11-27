@@ -175,3 +175,9 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - O nome do produto ("SCL Online:", "WO", "SFP"...) no começo da mensagem não vira mais o nome da administradora. Uma linha solta só com um nome (ex.: "Auxiliadora") passa a ser a administradora.
 - A administradora é procurada em todas as fichas, não só nas que viram demo.
 - Nos modelos dos outros produtos (SCL etc.), o sistema preenche os "xxx": no Investimento, "3x de R$ xxx" e "Ou R$ … à vista" (se a mensagem trouxer só um valor, sai "R$ … à vista"); na Mensalidade, o primeiro "R$ xxx".
+
+## v79 — Adesão: à vista e 3x com 10% de juros (regra fixa)
+- O valor de adesão da mensagem é o **à vista**. O parcelado é calculado sozinho: à vista + 10% de juros, dividido em 3 parcelas iguais (arredondado em centavos). Ex.: R$ 1.900,00 → R$ 2.090,00 → **3x de R$ 696,67**.
+- Na proposta: a caixa da adesão mostra "3x de R$ 696,67" e, embaixo, "Ou R$ 1.900,00 à vista." Vale para todos os produtos. Se o modelo do SCC não tiver a linha do à vista, o sistema cria embaixo do valor e desce a customização do app.
+- Se o Matheus já mandar parcelado, vale o à vista da mensagem e o parcelado é recalculado pela regra. Isento (ex.: Black Friday) sai como veio, sem parcelado.
+- A página mostra o cálculo antes de baixar.

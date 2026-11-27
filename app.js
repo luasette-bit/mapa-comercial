@@ -4288,17 +4288,18 @@
   function prResultado() {
     const P = S.pr; if (!P.msg.trim()) return "";
     const { d } = prDados();
+    const ca = Propostas.calcAdesao(d.adesao), adTxt = ca ? `${ca.vista} à vista ou 3x de ${ca.parcela} (com 10%)` : d.adesao;
     const ok = '<span class="pr-ic pr-ic-ok"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-5"/></svg></span>', no = '<span class="pr-ic"></span>';
     const tem = (re) => d.itens.find((i) => re.test(i.rotulo));
     const check = tem(/check ?pay/i), wpp = tem(/whats/i), nfs = tem(/nfs/i), appM = tem(/aplicativo/i), novos = d.itens.filter((i) => i.novo);
     const tar = [d.condoconta && "CondoConta " + d.condoconta.tarifa, d.directbank && "DirectBank " + d.directbank.tarifa].filter(Boolean).join(" · ");
-    const prods = [["SCC Online", !!d.mensal, d.mensal ? `${d.mensal}/mês · adesão ${d.adesao || "—"}` : "Sem mensalidade na mensagem"],
+    const prods = [["SCC Online", !!d.mensal, d.mensal ? `${d.mensal}/mês · adesão ${adTxt || "—"}` : "Sem mensalidade na mensagem"],
       ["App personalizado", !!(d.appCustomizacao || appM), d.appCustomizacao || appM ? [d.appCustomizacao && "Customização " + d.appCustomizacao, appM && "manutenção " + appM.valor].filter(Boolean).join(" · ") : "Não entra"],
       ["CheckPay" + (check && /comprov/i.test(check.rotulo) ? " + comprovantes" : ""), !!check, check ? check.valor : "Não entra"],
       ["Boletos por WhatsApp", !!wpp, wpp ? wpp.valor : "Não entra"], ["NFS moradores", !!nfs, nfs ? nfs.valor : "Não entra"], ["Tarifas CondoConta / DirectBank", !!tar, tar || "Não entra"],
       ...novos.map((o) => [o.rotulo.replace(/:$/, ""), true, o.valor + " · item novo, confira"])];
     const scc = P.tipo === "scc";
-    const geral = [["Adesão / implantação", !!d.adesao, d.adesao || "Não veio na mensagem"], ["Mensalidade", !!d.mensal, d.mensal ? d.mensal + (d.notaMensal ? " · " + d.notaMensal : "") : "Não veio na mensagem"],
+    const geral = [["Adesão / implantação", !!d.adesao, adTxt || "Não veio na mensagem"], ["Mensalidade", !!d.mensal, d.mensal ? d.mensal + (d.notaMensal ? " · " + d.notaMensal : "") : "Não veio na mensagem"],
       ...(d.appCustomizacao ? [["Customização / desenvolvimento", true, d.appCustomizacao]] : []), ...d.itens.map((i) => [i.rotulo.replace(/:$/, ""), true, i.valor]),
       ...(tar ? [["Tarifas", true, tar]] : [])];
     const n = 19 - (check ? 0 : 2) - (tar ? 0 : 1);
