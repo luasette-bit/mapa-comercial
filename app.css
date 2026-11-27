@@ -2326,3 +2326,5 @@ body.menu-mini .lateral .lat-recolher svg { transform: rotate(180deg); }
 .pr-vazio b { color: var(--azul-escuro); font-size: 15px; }
 @media (max-width: 1100px) { .pr-resumo { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .pr-resumo { grid-template-columns: minmax(0, 1fr); } .pr-busca { max-width: none; } }
+.pr-faixa-orig { align-self: flex-start; font-size: 11px; font-weight: 600; background: rgba(255, 255, 255, .18); border: 1px solid rgba(255, 255, 255, .3); border-radius: 99px; padding: 1px 9px; margin: 2px 0 4px; position: relative; z-index: 1; }
+.pr-origem { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; background: var(--cinza); border-radius: 12px; padding: 10px 14px; }

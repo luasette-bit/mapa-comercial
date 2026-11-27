@@ -187,3 +187,8 @@ Sistema interno da equipe comercial para mapear administradoras de condomínio p
 - **Propostas feitas:** quatro números no topo (propostas no mês, nos últimos 7 dias, administradoras, total de mensalidades propostas no mês); filtros Minhas / Do time, por produto (só os que têm proposta) e busca pelo nome; cards separados por mês.
 - **Card:** faixa na cor do produto com o produto, a administradora, a data e a cidade; mensalidade em destaque; adesão à vista e parcelado; adicionais em etiquetas; quem gerou; "versão X de Y" (mesma administradora e mesmo produto). Botões **Baixar**, **Nova versão** (volta para Fazer proposta com a mensagem e a administradora daquela proposta, para mudar os valores) e lixeira (quem gerou ou admin; pede confirmação).
 - Depois de baixar em Fazer proposta aparece "Proposta pronta" com o atalho **Ver nas propostas feitas**. A tabela "Propostas geradas" do fim da página saiu (virou a página de cards).
+
+## v81 — Propostas separadas pela origem do cliente
+- Em Propostas feitas, o filtro "Minhas / Do time" virou **Todas · Prospecção · Captação direta**. Os números do topo seguem o filtro; cada card mostra a origem.
+- Origem automática pela ficha, igual a Oportunidades: primeira demo agendada por vendedor ou gestor = Captação direta; por outra função (SDR) = Prospecção; sem ficha ou sem demo = Captação direta. Em Fazer proposta aparece "De onde veio o cliente" com a origem achada e o botão para trocar antes de baixar.
+- Banco: coluna `propostas.origem` (prospeccao, direta). As propostas já feitas receberam a origem pela ficha.

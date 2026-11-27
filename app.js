@@ -4246,7 +4246,7 @@
     const P = S.pr; if (P.carregando) return; P.carregando = true;
     try {
       const [l, m, fs] = await Promise.all([
-        sb.from("propostas").select("id,tipo,ficha_id,administradora,mensagem,dados,mensal,adesao,slides,usuario_id,criado_em").order("criado_em", { ascending: false }).limit(300),
+        sb.from("propostas").select("id,tipo,origem,ficha_id,administradora,mensagem,dados,mensal,adesao,slides,usuario_id,criado_em").order("criado_em", { ascending: false }).limit(300),
         sb.storage.from("propostas").list("", { search: "modelo", limit: 100 }),
         sb.from("fichas").select("id,nome,sistema,cidade,uf").limit(10000),
       ]);
@@ -4264,7 +4264,7 @@
     const P = S.pr;
     if (!P.lista && !P.carregando) carregarPropostas();
     if (!S.op.lista && !S.op.carregando && !S.op.erro) carregarOportunidades(true);
-    const minhasN = (P.lista || []).filter((p) => p.usuario_id === S.user.id).length, feitas = P.aba === "feitas";
+    const minhasN = (P.lista || []).length, feitas = P.aba === "feitas";
     const cab = `<div class="cabeca"><div class="pilha" style="gap:4px"><h1>Propostas</h1><p class="fraco" style="margin:0">${feitas ? "Todas as propostas que você já fez, em cards. Baixe de novo, faça uma nova versão ou exclua." : "Cole a mensagem do Matheus. O sistema descobre para quem é, quais produtos entram e monta a proposta no modelo da PRG."}</p></div></div>
       <div class="pr-abas" role="tablist" aria-label="Páginas de Propostas">
         <button type="button" role="tab" data-acao="pr-aba" data-v="fazer" aria-selected="${!feitas}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Fazer proposta</button>
@@ -4285,11 +4285,22 @@
       <div class="campo"><label for="pr-obs">Observação da migração</label><input id="pr-obs" class="input" value="${esc(P.obs)}" placeholder="Só se precisar mudar o padrão"></div></div></details></section>`;
     return cab + tipos + modelo + cola + `<section class="cartao pr-res" id="pr-res" ${P.msg.trim() ? "" : "hidden"}>${prResultado()}</section>`;
   }
+  // De onde veio o cliente: pela primeira demo da ficha e a FUNÇÃO de quem agendou (igual a Oportunidades).
+  // Vendedor/gestor agendou = captação direta; outra função (SDR) = prospecção; sem ficha ou sem demo = captação direta.
+  const PR_ORIG = { prospeccao: "Prospecção", direta: "Captação direta" };
+  function prOrigemFicha(fichaId) {
+    if (!fichaId) return "direta";
+    const ds = (S.op.demos || []).filter((d) => d.ficha_id === fichaId); if (!ds.length) return "direta";
+    const d = ds.find((x) => !x.reagendada_de) || ds[0], pes = d.agendada_por ? (S.op.pessoas || []).find((x) => x.id === d.agendada_por) : null;
+    return pes && (pes.funcao === "vendedor" || pes.funcao === "gestor") ? "direta" : "prospeccao";
+  }
+  const prOrigem = () => (S.pr.origemManual ? S.pr.origem : prOrigemFicha(S.pr.ficha));
+
   /* ---- página 2: propostas feitas, em cards ---- */
   const fmtMoeda = (n) => "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const PR_COR = { scc: "#2C63DB", scl: "#1F3FD8", app: "#6D3FCF", omp: "#0A8793", wo: "#B4400E", sfp: "#1E7A46" };
   const prValor = (s) => { const m = String(s || "").match(/R\$ ?([\d.]+,\d{2})/); return m ? +m[1].replace(/\./g, "").replace(",", ".") : 0; };
-  function prBaseFeitas() { const P = S.pr; return (P.lista || []).filter((p) => (P.ver || "minhas") === "time" || p.usuario_id === S.user.id); }
+  function prBaseFeitas() { const P = S.pr, o = P.orig || "todas"; return (P.lista || []).filter((p) => o === "todas" || (p.origem || "direta") === o); }
   function telaPropostasFeitas() {
     const P = S.pr; if (!P.lista) return `<div class="cartao vazio">Carregando…</div>`;
     const b = prBaseFeitas(), hj = hojeISO(), mes = hj.slice(0, 7), semana = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
@@ -4300,7 +4311,7 @@
       [ic.pr, "#6D3FCF", new Set(b.map((p) => p.ficha_id || p.administradora)).size, "administradoras"], [ic.din, "#1E7A46", fmtMoeda(doMes.reduce((s, p) => s + prValor(p.mensal), 0)), "em mensalidades propostas no mês"]]
       .map(([i, c, n, l]) => `<div class="pr-res-n"><i style="background:${c}"><svg viewBox="0 0 24 24" aria-hidden="true">${i}</svg></i><div><b>${n}</b><span>${l}</span></div></div>`).join("");
     const usados = [...new Set(b.map((p) => p.tipo || "scc"))], prodSel = usados.includes(P.prod) ? P.prod : "todos";
-    const barra = `<div class="pr-barra"><div class="op-seg" role="group" aria-label="De quem">${[["minhas", "Minhas"], ["time", "Do time"]].map(([k, l]) => `<button type="button" data-acao="pr-ver" data-v="${k}" aria-pressed="${(P.ver || "minhas") === k}">${l}</button>`).join("")}</div>
+    const barra = `<div class="pr-barra"><div class="op-seg" role="group" aria-label="De onde veio o cliente">${[["todas", "Todas"], ["prospeccao", "Prospecção"], ["direta", "Captação direta"]].map(([k, l]) => `<button type="button" data-acao="pr-orig" data-v="${k}" aria-pressed="${(P.orig || "todas") === k}">${l}</button>`).join("")}</div>
       <div class="pr-filtros" role="group" aria-label="Produto">${[["todos", "Todos"], ...usados.map((t) => [t, PR_NOME[t] || "SCC Online"])].map(([k, l]) => `<button type="button" data-acao="pr-prod" data-v="${k}" aria-pressed="${prodSel === k}">${k !== "todos" ? `<i style="background:${PR_COR[k]}"></i>` : ""}${esc(l)}</button>`).join("")}</div>
       <input type="search" id="pr-busca" class="input pr-busca" placeholder="Procurar administradora" value="${esc(P.busca || "")}" aria-label="Procurar administradora"></div>`;
     return `<div class="pr-feitas"><div class="pr-resumo">${resumo}</div>${barra}<div id="pr-cards" class="pr-cards">${prCards()}</div></div>`;
@@ -4308,7 +4319,7 @@
   function prCards() {
     const P = S.pr, b = prBaseFeitas(), q = prSa(P.busca || "").trim(), usados = new Set(b.map((p) => p.tipo || "scc")), prod = usados.has(P.prod) ? P.prod : "todos";
     const l = b.filter((p) => (prod === "todos" || (p.tipo || "scc") === prod) && (!q || prSa(p.administradora).includes(q)));
-    if (!l.length) return `<div class="pr-vazio"><b>${q ? "Nada encontrado" : (P.ver || "minhas") === "minhas" ? "Você ainda não fez nenhuma proposta" : "O time ainda não fez nenhuma proposta"}</b><span>${q ? "Tente outro nome." : "As propostas que você baixar em Fazer proposta aparecem aqui."}</span></div>`;
+    if (!l.length) return `<div class="pr-vazio"><b>${q ? "Nada encontrado" : (P.orig || "todas") === "todas" ? "Nenhuma proposta feita ainda" : (P.orig === "prospeccao" ? "Nenhuma proposta de prospecção ainda" : "Nenhuma proposta de captação direta ainda")}</b><span>${q ? "Tente outro nome." : "As propostas que você baixar em Fazer proposta aparecem aqui."}</span></div>`;
     const grupos = new Map(); for (const p of l) { const k = String(p.criado_em).slice(0, 7); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(p); }
     const versao = (p) => { const irmas = (P.lista || []).filter((x) => (x.tipo || "scc") === (p.tipo || "scc") && (p.ficha_id ? x.ficha_id === p.ficha_id : x.administradora === p.administradora)).sort((a, c) => (a.criado_em < c.criado_em ? -1 : 1)); return [irmas.indexOf(p) + 1, irmas.length]; };
     const ficha = (id) => (S.pr.fichas || []).find((f) => f.id === id) || (S.op.lista || []).find((o) => o.ficha_id === id);
@@ -4316,7 +4327,7 @@
       const t = p.tipo || "scc", d = p.dados || {}, ca = Propostas.calcAdesao(d.adesao || p.adesao), f = p.ficha_id ? ficha(p.ficha_id) : null, [v, nv] = versao(p);
       const tags = [...(d.itens || []).map((i) => i.rotulo.replace(/:$/, "")), d.appCustomizacao && "Customização do app", d.condoconta && "Tarifa CondoConta", d.directbank && "Tarifa DirectBank"].filter(Boolean);
       const dt = String(p.criado_em).slice(0, 10), pes = opPessoa(p.usuario_id), meu = p.usuario_id === S.user.id || S.perfil?.papel === "admin";
-      return `<article class="pr-card"><div class="pr-faixa" style="--c:${PR_COR[t]}"><span class="pr-faixa-prod">${esc(PR_NOME[t] || "SCC Online")}</span><h3>${esc(p.administradora)}</h3><span class="pr-faixa-data">${ddmmaaaa(dt)}${f && f.cidade ? ` · ${esc(f.cidade)}${f.uf ? " - " + esc(f.uf) : ""}` : ""}</span></div>
+      return `<article class="pr-card"><div class="pr-faixa" style="--c:${PR_COR[t]}"><span class="pr-faixa-prod">${esc(PR_NOME[t] || "SCC Online")}</span><h3>${esc(p.administradora)}</h3><span class="pr-faixa-orig">${esc(PR_ORIG[p.origem || "direta"])}</span><span class="pr-faixa-data">${ddmmaaaa(dt)}${f && f.cidade ? ` · ${esc(f.cidade)}${f.uf ? " - " + esc(f.uf) : ""}` : ""}</span></div>
         <div class="pr-corpo"><div class="pr-mensal"><b>${esc(p.mensal || "—")}</b>${p.mensal ? "<span>por mês</span>" : ""}</div>
           <div class="pr-adesao"><span>Adesão</span><b>${ca ? `${esc(ca.vista)} à vista ou ${esc(ca.parcelado)}` : esc(d.adesao || p.adesao || "Não informada")}</b></div>
           <div class="pr-tags">${tags.length ? tags.map((x) => `<span class="pr-tag2">${esc(x)}</span>`).join("") : '<span class="pr-tag2 pr-tag-sem">Sem adicionais</span>'}</div>
@@ -4360,6 +4371,8 @@
       ${d.naoEntendi.length ? `<p class="pr-aviso"><b>Não entendi estas linhas, elas não entram:</b> ${d.naoEntendi.map(esc).join(" · ")}</p>` : ""}
       ${scc ? `<b class="t13">A proposta vai sair com ${n} slides. Em azul, os que o sistema preenche com a mensagem:</b>
       <div class="pr-slides">${sl.map(([t, k]) => `<span class="pr-sl ${k === 1 ? "pr-muda" : k === -1 ? "pr-sai" : ""}">${esc(t)}${k === -1 ? " (sai)" : ""}</span>`).join("")}</div>` : `<p class="t13 fraco" style="margin:0">Os slides vêm do modelo de ${esc(PR_NOME[P.tipo])}: o sistema coloca o nome da administradora e os valores da mensagem. Se sobrar algum "xxx" do modelo, ele avisa.</p>`}
+      ${(() => { const o = prOrigem(); return `<div class="pr-origem"><span class="t13"><b>De onde veio o cliente</b> <span class="fraco">${P.origemManual ? "(escolhido por você)" : P.ficha ? "(pela demo da ficha)" : "(sem ficha: confira)"}</span></span>
+        <div class="op-seg" role="radiogroup" aria-label="De onde veio o cliente">${Object.entries(PR_ORIG).map(([k, l]) => `<button type="button" role="radio" data-acao="pr-origem" data-v="${k}" aria-checked="${o === k}" aria-pressed="${o === k}">${l}</button>`).join("")}</div></div>`; })()}
       ${P.feita ? `<div class="pr-pronta"><span><b>Proposta pronta.</b> O PowerPoint baixou e ela já está nas propostas feitas.</span><button type="button" class="mini" data-acao="pr-aba" data-v="feitas">Ver nas propostas feitas</button></div>` : ""}
       <div class="pr-acoes"><button type="button" class="btn btn-primario pr-gerar" data-acao="pr-gerar" ${P.gerando || !P.adm || P.modelosInfo?.[P.tipo] === null ? "disabled" : ""}>${P.gerando ? "Montando…" : "Baixar PowerPoint"}</button>
         <span class="t12 fraco">${P.modelosInfo?.[P.tipo] === null ? `Falta enviar o modelo de ${esc(PR_NOME[P.tipo])} (lá em cima).` : "Para o PDF: abra o PowerPoint e use Arquivo › Salvar como PDF. A proposta fica salva aqui e na oportunidade."}</span></div>`;
@@ -4391,7 +4404,7 @@
     P.gerando = true; prAtualizar();
     try {
       const r = await prMontar(dados, P.tipo);
-      const { error } = await sb.from("propostas").insert({ tipo: P.tipo, ficha_id: P.ficha, administradora: dados.administradora, mensagem: P.msg, dados, mensal: d.mensal || null, adesao: d.adesao || null, slides: r.slides, usuario_id: S.user.id });
+      const { error } = await sb.from("propostas").insert({ tipo: P.tipo, origem: prOrigem(), ficha_id: P.ficha, administradora: dados.administradora, mensagem: P.msg, dados, mensal: d.mensal || null, adesao: d.adesao || null, slides: r.slides, usuario_id: S.user.id });
       if (error) { console.error(error); toast("O PowerPoint baixou, mas não deu para salvar no histórico."); }
       else { P.feita = true; toast(r.avisos.length ? "Proposta pronta. " + r.avisos.join(" ") : "Proposta pronta e salva."); }
       await carregarPropostas();
@@ -4415,7 +4428,7 @@
     const t = ev.target, P = S.pr;
     if (t.id === "pr-busca") { P.busca = t.value; const c = $("#pr-cards"); if (c) c.innerHTML = prCards(); return; }
     if (t.id === "pr-msg") {
-      P.msg = t.value; P.editado = false; P.feita = false; prDetectar();
+      P.msg = t.value; P.editado = false; P.feita = false; P.origemManual = false; prDetectar();
       const tipo = P.tipoManual ? P.tipo : prTipoDaMensagem(P.msg);
       if (tipo !== P.tipo || (!P.msg.trim()) !== (!$("#pr-res")?.innerHTML.trim())) { // trocou o produto: redesenha e volta o cursor para o texto
         P.tipo = tipo; const pos = t.selectionStart; render(); const n = $("#pr-msg"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } } return;
@@ -4433,11 +4446,12 @@
     const b = ev.target.closest("[data-acao]"); if (!b || !b.dataset.acao.startsWith("pr-")) return;
     if (b.dataset.acao === "pr-gerar") prGerar();
     else if (b.dataset.acao === "pr-aba") { S.pr.aba = b.dataset.v; render(); window.scrollTo(0, 0); }
-    else if (b.dataset.acao === "pr-ver") { S.pr.ver = b.dataset.v; S.pr.prod = "todos"; render(); }
+    else if (b.dataset.acao === "pr-orig") { S.pr.orig = b.dataset.v; S.pr.prod = "todos"; render(); }
+    else if (b.dataset.acao === "pr-origem") { S.pr.origem = b.dataset.v; S.pr.origemManual = true; prAtualizar(); }
     else if (b.dataset.acao === "pr-prod") { S.pr.prod = b.dataset.v; render(); }
     else if (b.dataset.acao === "pr-versao") { // nova versão: volta para Fazer proposta com a mensagem e a administradora dessa proposta
       const p = (S.pr.lista || []).find((x) => String(x.id) === b.dataset.id); if (!p) return;
-      Object.assign(S.pr, { aba: "fazer", msg: p.mensagem || "", adm: p.administradora, sis: p.dados?.sistema || "", obs: p.dados?.obsMigracao || "", ficha: p.ficha_id, editado: true, tipo: p.tipo || "scc", tipoManual: true, feita: false });
+      Object.assign(S.pr, { aba: "fazer", msg: p.mensagem || "", adm: p.administradora, sis: p.dados?.sistema || "", obs: p.dados?.obsMigracao || "", ficha: p.ficha_id, editado: true, tipo: p.tipo || "scc", tipoManual: true, feita: false, origem: p.origem || "direta", origemManual: true });
       render(); window.scrollTo(0, 0); setTimeout(() => $("#pr-msg")?.focus(), 50); toast("Mude os valores na mensagem e baixe: vira uma versão nova.");
     }
     else if (b.dataset.acao === "pr-tipo") { S.pr.tipo = b.dataset.v; S.pr.tipoManual = true; render(); }
@@ -4452,7 +4466,7 @@
       S.pr.lista = (S.pr.lista || []).filter((x) => String(x.id) !== b.dataset.id); toast("Proposta excluída."); renderDados();
     } else if (b.dataset.acao === "pr-nova") { // vindo de Oportunidades: já com a administradora
       const o = (S.op.lista || []).find((x) => x.ficha_id === b.dataset.id);
-      Object.assign(S.pr, { aba: "fazer", feita: false, msg: "", adm: o?.nome || "", sis: o?.sistema || "", obs: "", ficha: b.dataset.id, editado: true, tipo: "scc", tipoManual: false });
+      Object.assign(S.pr, { aba: "fazer", feita: false, origemManual: false, msg: "", adm: o?.nome || "", sis: o?.sistema || "", obs: "", ficha: b.dataset.id, editado: true, tipo: "scc", tipoManual: false });
       S.voltarAtivo = true; S.view = "propostas"; render(); setTimeout(() => $("#pr-msg")?.focus(), 50);
     }
   });
